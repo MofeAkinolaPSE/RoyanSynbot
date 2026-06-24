@@ -1,0 +1,446 @@
+{
+  "run_at": "2026-06-24T09:17:30.339784+00:00",
+  "base_url": "https://localhost",
+  "scenarios": {
+    "A_existing_patient": {
+      "status": "PASS",
+      "mrn": "RH16-27",
+      "passed": 24,
+      "total": 24,
+      "steps": {
+        "get_patient_card": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "MRN=RH16-27, name=Henry Nj Warner",
+          "duration_ms": 13.2
+        },
+        "get_profile_cprs": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "encounters=7, lab_orders=7, timeline_entries=26",
+          "duration_ms": 28.6
+        },
+        "open_encounter": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "encounter_id=525564, queue_number=OPD-014",
+          "duration_ms": 27.5
+        },
+        "record_vitals": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "vitals_id=14, bp=120/80",
+          "duration_ms": 21.9
+        },
+        "triage": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=triaged",
+          "duration_ms": 18.9
+        },
+        "nurse_done": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=nurse_assessment",
+          "duration_ms": 18.6
+        },
+        "call_patient": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=called, room=Consulting Room 3",
+          "duration_ms": 18.1
+        },
+        "consult": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=consulting",
+          "duration_ms": 19.4
+        },
+        "add_note": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "note_id=16",
+          "duration_ms": 17.6
+        },
+        "lab_order": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "order_id=240522, status=ordered",
+          "duration_ms": 24.3
+        },
+        "advance_lab_ordered": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=lab_ordered",
+          "duration_ms": 28.5
+        },
+        "lab_result": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "result_id=14, critical=False",
+          "duration_ms": 42.4
+        },
+        "prescribe": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "rx_id=289721, allergy_alert=False",
+          "duration_ms": 31.7
+        },
+        "advance_pharmacy": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=pharmacy_dispensing",
+          "duration_ms": 26.8
+        },
+        "create_bill": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "bill_id=294621, total=N9,500, due=N9,500, status=pending",
+          "duration_ms": 41.3
+        },
+        "advance_billing": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=billing_pending",
+          "duration_ms": 38.9
+        },
+        "payment": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "payment_id=11, bill_status=paid",
+          "duration_ms": 27.9
+        },
+        "discharge": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=discharged, discharged_at=2026-06-24T09:17:26",
+          "duration_ms": 17.2
+        },
+        "cprs_profile": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "encounters=8, lab_orders=8, prescriptions=8, bills=6, timeline_entries=30",
+          "duration_ms": 30.2
+        },
+        "db_encounter_discharged": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=discharged, discharge_at=set",
+          "duration_ms": 35.4
+        },
+        "db_note_exists": {
+          "passed": true,
+          "status_code": null,
+          "detail": "notes_count=1",
+          "duration_ms": 39.3
+        },
+        "db_vitals_exist": {
+          "passed": true,
+          "status_code": null,
+          "detail": "vitals_count=1",
+          "duration_ms": 26.6
+        },
+        "db_lab_resulted": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=resulted",
+          "duration_ms": 27.0
+        },
+        "db_bill_paid": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=paid",
+          "duration_ms": 26.7
+        }
+      }
+    },
+    "B_new_patient": {
+      "status": "PASS",
+      "mrn": "RH2026000009",
+      "passed": 23,
+      "total": 23,
+      "steps": {
+        "register_patient": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "MRN=RH2026000009, patient_id=310524",
+          "duration_ms": 34.0
+        },
+        "open_encounter": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "encounter_id=525565, queue_number=OPD-015",
+          "duration_ms": 26.9
+        },
+        "record_vitals": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "vitals_id=15, bp=120/80",
+          "duration_ms": 27.0
+        },
+        "triage": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=triaged",
+          "duration_ms": 23.0
+        },
+        "nurse_done": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=nurse_assessment",
+          "duration_ms": 23.2
+        },
+        "call_patient": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=called, room=Consulting Room 3",
+          "duration_ms": 22.7
+        },
+        "consult": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=consulting",
+          "duration_ms": 22.4
+        },
+        "add_note": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "note_id=17",
+          "duration_ms": 20.7
+        },
+        "lab_order": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "order_id=240523, status=ordered",
+          "duration_ms": 14.7
+        },
+        "advance_lab_ordered": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=lab_ordered",
+          "duration_ms": 15.9
+        },
+        "lab_result": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "result_id=15, critical=False",
+          "duration_ms": 19.1
+        },
+        "prescribe": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "rx_id=289722, allergy_alert=False",
+          "duration_ms": 14.9
+        },
+        "advance_pharmacy": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=pharmacy_dispensing",
+          "duration_ms": 16.1
+        },
+        "create_bill": {
+          "passed": true,
+          "status_code": 201,
+          "detail": "bill_id=294622, total=N9,500, due=N9,500, status=pending",
+          "duration_ms": 19.2
+        },
+        "advance_billing": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=billing_pending",
+          "duration_ms": 16.0
+        },
+        "payment": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "payment_id=12, bill_status=paid",
+          "duration_ms": 21.6
+        },
+        "discharge": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "status=discharged, discharged_at=2026-06-24T09:17:26",
+          "duration_ms": 17.2
+        },
+        "cprs_profile": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "encounters=1, lab_orders=1, prescriptions=1, bills=1, timeline_entries=4",
+          "duration_ms": 21.0
+        },
+        "db_encounter_discharged": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=discharged, discharge_at=set",
+          "duration_ms": 39.0
+        },
+        "db_note_exists": {
+          "passed": true,
+          "status_code": null,
+          "detail": "notes_count=1",
+          "duration_ms": 46.9
+        },
+        "db_vitals_exist": {
+          "passed": true,
+          "status_code": null,
+          "detail": "vitals_count=1",
+          "duration_ms": 25.1
+        },
+        "db_lab_resulted": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=resulted",
+          "duration_ms": 25.5
+        },
+        "db_bill_paid": {
+          "passed": true,
+          "status_code": null,
+          "detail": "status=paid",
+          "duration_ms": 53.8
+        }
+      }
+    },
+    "frontend_contracts": {
+      "status": "PARTIAL",
+      "passed": 18,
+      "total": 21,
+      "steps": {
+        "hms_hospital_status": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "keys=['patients_waiting', 'active_consultations', 'patients_seen_today', 'avg_wait_minutes', 'total_encounters_today', 'queue_by_department']",
+          "duration_ms": 2833.2
+        },
+        "hms_queue_board": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "count=5",
+          "duration_ms": 9.9
+        },
+        "hms_lab_orders": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "count=5",
+          "duration_ms": 45.5
+        },
+        "hms_pharmacy_prescriptions": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "count=5",
+          "duration_ms": 44.9
+        },
+        "hms_billing_list": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "count=5",
+          "duration_ms": 14.4
+        },
+        "hms_cprs_vitals": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "vitals_count=1",
+          "duration_ms": 9.4
+        },
+        "hms_cprs_lab_history": {
+          "passed": false,
+          "status_code": 200,
+          "detail": "HTTP 200: records=0 (expect \u22651 from lifecycle)",
+          "duration_ms": 9.2
+        },
+        "hms_staff_dashboard": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "keys=['user_id', 'activities', 'pending_approvals', 'tasks', 'assigned_projects', 'kpis']",
+          "duration_ms": 13.8
+        },
+        "portal_login": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "token=set, patient.mrn=RH2026000009",
+          "duration_ms": 62.5
+        },
+        "portal_me": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "mrn=RH2026000009, first_name=PESE",
+          "duration_ms": 7.9
+        },
+        "portal_appointments": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "appointments=0",
+          "duration_ms": 8.9
+        },
+        "portal_lab_results": {
+          "passed": false,
+          "status_code": 200,
+          "detail": "HTTP 200: results=0 (expect \u22651 from lifecycle)",
+          "duration_ms": 9.7
+        },
+        "portal_bills": {
+          "passed": false,
+          "status_code": 200,
+          "detail": "HTTP 200: bills=0 (expect \u22651 from lifecycle)",
+          "duration_ms": 10.1
+        },
+        "portal_prescriptions": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "prescriptions=1 (expect \u22651 from lifecycle)",
+          "duration_ms": 9.6
+        },
+        "portal_vitals": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "vitals=1 (expect \u22651 from lifecycle)",
+          "duration_ms": 8.4
+        },
+        "portal_notifications": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "notifications=0",
+          "duration_ms": 8.2
+        },
+        "portal_telemedicine": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "sessions=0",
+          "duration_ms": 10.5
+        },
+        "portal_auth_guard_401": {
+          "passed": true,
+          "status_code": 401,
+          "detail": "correctly rejected unauthenticated request",
+          "duration_ms": 37.2
+        },
+        "portal_payments_initiate": {
+          "passed": true,
+          "status_code": 422,
+          "detail": "bill already settled (422) \u2014 endpoint reachable",
+          "duration_ms": 10.2
+        },
+        "synbotui_schemas_list": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "type=list, count=0",
+          "duration_ms": 7.7
+        },
+        "synbotui_staff_dashboard": {
+          "passed": true,
+          "status_code": 200,
+          "detail": "keys=['user_id', 'activities', 'pending_approvals', 'tasks', 'assigned_projects', 'kpis']",
+          "duration_ms": 11.4
+        }
+      }
+    }
+  },
+  "total_checks": 68,
+  "passed": 65,
+  "failed": 3,
+  "failures": [
+    "frontend_contracts.hms_cprs_lab_history: HTTP 200: records=0 (expect \u22651 from lifecycle)",
+    "frontend_contracts.portal_lab_results: HTTP 200: results=0 (expect \u22651 from lifecycle)",
+    "frontend_contracts.portal_bills: HTTP 200: bills=0 (expect \u22651 from lifecycle)"
+  ],
+  "duration_seconds": 4.44
+}

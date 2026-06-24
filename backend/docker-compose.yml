@@ -1,0 +1,76 @@
+# ─── Backend-only quick-dev compose ──────────────────────────────────────────
+# Use this ONLY for isolated backend/API development.
+# For a full-stack demo or staging run, use the canonical compose instead:
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# Ports are intentionally offset so this can run alongside the full stack:
+#   Postgres  → localhost:5433  (not 5432)
+#   Backend   → localhost:8001  (not 8000)
+#   Frontend  → localhost:8080  (not 80)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  db:
+    build:
+      context: ./db
+    image: synbothealth-postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin1234
+      POSTGRES_DB: synbot_health
+    init: true
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d synbot_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    container_name: synbot-backend-dev
+    build: .
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:admin1234@db:5432/synbot_health
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin1234
+      POSTGRES_DB: synbot_health
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 40s
+
+  # ── React Frontend (served by nginx) ──────────────────────────────────────
+  frontend:
+    container_name: synbot-frontend-dev
+    build:
+      context: ../SynbotUI
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db_data:
+    name: synbothealth_db_data_dev

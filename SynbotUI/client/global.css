@@ -1,0 +1,196 @@
+/** @import must precede all other statements */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  :root {
+    /* ── SynbotHealth Light — Royan Hospital clinical platform ────────────── */
+    /* Brand source: colourscheme.md — Classic hospital: blue-led, cyan highlights, neutral structure */
+
+    --background: 0 0% 96%;              /* #F6F6F6 — brand main BG */
+    --foreground: 0 0% 9%;               /* #171717 — brand text primary */
+
+    --card: 0 0% 100%;                   /* #FFFFFF */
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 220 75% 35%;              /* #17449E — primary brand blue */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 219 71% 38%;            /* #1C4CA5 — support blue */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 0 0% 96%;                   /* #F4F4F4 — neutral section BG */
+    --muted-foreground: 0 0% 55%;        /* #8B8B8B — soft label text */
+
+    --accent: 197 84% 48%;               /* #13A7E0 — cyan medical accent */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 15 100% 35%;          /* #B22D00 — muted danger */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 87%;                  /* #DFDFDF — brand border */
+    --input: 0 0% 100%;
+    --ring: 220 75% 35%;
+
+    --warning: 36 71% 53%;               /* #DD9933 — gold alert */
+    --warning-foreground: 0 0% 100%;
+
+    --success: 142 70% 49%;              /* #25D366 */
+    --success-foreground: 0 0% 100%;
+
+    --info: 197 84% 48%;                 /* #13A7E0 */
+    --info-foreground: 0 0% 100%;
+
+    --radius: 0.5rem;                    /* 8px — brand spec: 6–8px card radius */
+
+    --background-0: 0 0% 100%;           /* #FFFFFF */
+    --background-1: 0 0% 96%;            /* #F6F6F6 */
+    --background-2: 0 0% 96%;            /* #F4F4F4 */
+    --background-3: 0 0% 87%;            /* #DFDFDF */
+
+    --gradient-primary: linear-gradient(135deg, hsl(220 75% 35%) 0%, hsl(197 84% 48%) 100%);
+    --gradient-soft: linear-gradient(135deg, hsl(220 75% 35% / 0.10) 0%, hsl(197 84% 48% / 0.10) 100%);
+
+    --shadow-elevation-1: 0 1px 4px hsl(220 75% 10% / 0.06), 0 2px 8px hsl(220 75% 10% / 0.04);
+    --shadow-elevation-2: 0 4px 16px hsl(220 75% 10% / 0.08), 0 8px 24px hsl(220 75% 10% / 0.05);
+    --shadow-elevation-3: 0 12px 40px hsl(220 75% 10% / 0.12), 0 20px 52px hsl(220 75% 10% / 0.07);
+    --shadow-glow: 0 0 28px hsl(220 75% 35% / 0.28);
+
+    /* Sidebar: #17449E primary blue nav */
+    --sidebar-background: 220 75% 35%;   /* #17449E — brand primary nav */
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 197 84% 48%;      /* #13A7E0 — cyan for active nav items */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 75% 27%;       /* #113379 — deep blue for hover */
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 220 60% 30%;
+    --sidebar-ring: 197 84% 48%;
+  }
+
+  .dark {
+    /* ── SynbotHealth Dark — deep navy, Royan Hospital operations platform ── */
+    /* Hues stay locked to brand (220° blue, 197° cyan); only lightness is lifted for readability */
+    --background: 220 40% 10%;
+    --foreground: 0 0% 95%;
+
+    --card: 220 38% 14%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 38% 14%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 220 75% 58%;              /* #17449E brightened for dark bg */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 219 71% 55%;            /* #1C4CA5 brightened for dark bg */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 30% 20%;
+    --muted-foreground: 0 0% 62%;
+
+    --accent: 197 84% 58%;               /* #13A7E0 brightened for dark bg */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 15 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 25% 25%;
+    --input: 220 35% 16%;
+    --ring: 220 75% 58%;
+
+    --warning: 36 71% 55%;
+    --warning-foreground: 220 40% 10%;
+
+    --success: 142 70% 52%;
+    --success-foreground: 220 40% 10%;
+
+    --info: 197 84% 58%;
+    --info-foreground: 0 0% 100%;
+
+    --background-0: 220 40% 10%;
+    --background-1: 220 38% 14%;
+    --background-2: 220 32% 18%;
+    --background-3: 220 28% 24%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(220 75% 58%) 0%, hsl(197 84% 58%) 100%);
+    --gradient-soft: linear-gradient(135deg, hsl(220 75% 58% / 0.16) 0%, hsl(197 84% 58% / 0.16) 100%);
+
+    --shadow-elevation-1: 0 2px 8px hsl(220 60% 2% / 0.25);
+    --shadow-elevation-2: 0 16px 40px hsl(220 60% 2% / 0.38);
+    --shadow-elevation-3: 0 24px 56px hsl(220 60% 2% / 0.48);
+    --shadow-glow: 0 0 24px hsl(220 75% 58% / 0.30);
+
+    --sidebar-background: 220 45% 12%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 197 84% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 35% 22%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 30% 22%;
+    --sidebar-ring: 197 84% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at 18% 18%, hsl(var(--primary) / 0.04), transparent 45%),
+      radial-gradient(circle at 82% 0%, hsl(197 84% 48% / 0.03), transparent 35%);
+  }
+
+  :where(p, span, li, h1, h2, h3, h4, h5, h6, a, button, label, td, th) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre,
+  code {
+    overflow-x: auto;
+    white-space: pre;
+  }
+}
+
+@layer utilities {
+  .pw-page-surface {
+    @apply relative isolate min-h-screen bg-gradient-to-br from-background via-muted/40 to-background;
+  }
+
+  .pw-page-surface::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    background:
+      radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.04), transparent 42%),
+      radial-gradient(circle at 80% 10%, hsl(197 84% 48% / 0.02), transparent 36%);
+  }
+
+  .pw-surface-base {
+    @apply border border-border/50 bg-muted/40;
+    box-shadow: var(--shadow-elevation-1);
+  }
+
+  .pw-surface-interactive {
+    @apply rounded-2xl border border-border/50 bg-background/70 backdrop-blur-md;
+    box-shadow: var(--shadow-elevation-2);
+  }
+
+  .pw-surface-floating {
+    @apply rounded-xl border border-border/40 bg-background/80 backdrop-blur-lg;
+    box-shadow: var(--shadow-elevation-3);
+  }
+}

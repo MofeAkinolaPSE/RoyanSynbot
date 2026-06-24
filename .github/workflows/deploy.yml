@@ -1,0 +1,258 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reset_db:
+        description: "Destroy and recreate the database (type YES to confirm)"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production server
+    runs-on: ubuntu-latest
+    # NOTE: Remove the comment below and create a "production" environment in
+    # GitHub → Settings → Environments before enabling this gate.
+    # environment: production
+
+    env:
+      # ── Database ─────────────────────────────────────────────────────────
+      POSTGRES_USER:              ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD:          ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB:                ${{ secrets.POSTGRES_DB }}
+      # ── Auth ─────────────────────────────────────────────────────────────
+      JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
+      JWT_AUDIENCE:               ${{ secrets.JWT_AUDIENCE }}
+      ACCESS_TOKEN_MINUTES:       ${{ secrets.ACCESS_TOKEN_MINUTES }}
+      REFRESH_TOKEN_DAYS:         ${{ secrets.REFRESH_TOKEN_DAYS }}
+      # ── LLM ──────────────────────────────────────────────────────────────
+      DEEPSEEK_API_KEY:           ${{ secrets.DEEPSEEK_API_KEY }}
+      LLM_PROVIDER:               ${{ secrets.LLM_PROVIDER }}
+      # ── Email (Gmail App Password) ────────────────────────────────────────
+      EMAIL_FROM:                 ${{ secrets.EMAIL_FROM }}
+      EMAIL_PASS:                 ${{ secrets.EMAIL_PASS }}
+      SMTP_HOST:                  ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:                  ${{ secrets.SMTP_PORT }}
+      # ── SMS (Termii) ──────────────────────────────────────────────────────
+      TERMII_API_KEY:             ${{ secrets.TERMII_API_KEY }}
+      TERMII_SENDER_ID:           ${{ secrets.TERMII_SENDER_ID }}
+      # ── Payments ─────────────────────────────────────────────────────────
+      PAYSTACK_SECRET_KEY:        ${{ secrets.PAYSTACK_SECRET_KEY }}
+      FLUTTERWAVE_SECRET_KEY:     ${{ secrets.FLUTTERWAVE_SECRET_KEY }}
+      # ── Africa's Talking (SMS fallback) ───────────────────────────────────
+      AT_API_KEY:                 ${{ secrets.AT_API_KEY }}
+      AT_USERNAME:                ${{ secrets.AT_USERNAME }}
+      # ── PACS Integration ─────────────────────────────────────────────────
+      PACS_BASE_URL:              ${{ secrets.PACS_BASE_URL }}
+      PACS_API_KEY:               ${{ secrets.PACS_API_KEY }}
+      # ── Hope Bridge ──────────────────────────────────────────────────────
+      HOPE_BRIDGE_URL:            ${{ secrets.HOPE_BRIDGE_URL }}
+      HOPE_BRIDGE_KEY:            ${{ secrets.HOPE_BRIDGE_KEY }}
+      HOPE_BRIDGE_WEBHOOK_SECRET: ${{ secrets.HOPE_BRIDGE_WEBHOOK_SECRET }}
+      HOPE_MOCK:                  ${{ secrets.HOPE_MOCK }}
+      # ── Security ─────────────────────────────────────────────────────────
+      WEBHOOK_SECRET:             ${{ secrets.WEBHOOK_SECRET }}
+      AT_REST_KEY:                ${{ secrets.AT_REST_KEY }}
+      # ── Notifications ────────────────────────────────────────────────────
+      WEEKLY_REPORT_RECIPIENTS:   ${{ secrets.WEEKLY_REPORT_RECIPIENTS }}
+      EXECUTIVE_NOTIFY_EMAILS:    ${{ secrets.EXECUTIVE_NOTIFY_EMAILS }}
+      # ── CORS / Network ───────────────────────────────────────────────────
+      CORS_ALLOW_ORIGINS:         ${{ secrets.CORS_ALLOW_ORIGINS }}
+      PORTAL_TOKEN_EXPIRE_HOURS:  ${{ secrets.PORTAL_TOKEN_EXPIRE_HOURS }}
+      DOMAIN:                     ${{ secrets.DOMAIN }}
+      # ── Admin / Seed ─────────────────────────────────────────────────────
+      ADMIN_EMAIL:                ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_USERNAME:             ${{ secrets.ADMIN_USERNAME }}
+      ADMIN_PASSWORD:             ${{ secrets.ADMIN_PASSWORD }}
+      # ── Server access ────────────────────────────────────────────────────
+      DEPLOY_HOST:                ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER:                ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY:             ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PORT:                ${{ secrets.DEPLOY_PORT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set IMAGE_TAG
+        id: tag
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      # ── 1. Write .env from secrets ──────────────────────────────────────
+      - name: Write .env to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key:      ${{ env.DEPLOY_SSH_KEY }}
+          port:     ${{ env.DEPLOY_PORT || 22 }}
+          envs: >-
+            POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,
+            JWT_SECRET,JWT_AUDIENCE,ACCESS_TOKEN_MINUTES,REFRESH_TOKEN_DAYS,
+            DEEPSEEK_API_KEY,LLM_PROVIDER,
+            EMAIL_FROM,EMAIL_PASS,SMTP_HOST,SMTP_PORT,
+            TERMII_API_KEY,TERMII_SENDER_ID,
+            PAYSTACK_SECRET_KEY,FLUTTERWAVE_SECRET_KEY,
+            AT_API_KEY,AT_USERNAME,
+            PACS_BASE_URL,PACS_API_KEY,
+            HOPE_BRIDGE_URL,HOPE_BRIDGE_KEY,HOPE_BRIDGE_WEBHOOK_SECRET,HOPE_MOCK,
+            WEBHOOK_SECRET,AT_REST_KEY,
+            WEEKLY_REPORT_RECIPIENTS,EXECUTIVE_NOTIFY_EMAILS,
+            CORS_ALLOW_ORIGINS,PORTAL_TOKEN_EXPIRE_HOURS,DOMAIN,
+            ADMIN_EMAIL,ADMIN_USERNAME,ADMIN_PASSWORD
+          script: |
+            set -euo pipefail
+            mkdir -p /opt/royan/deploy
+            cat > /opt/royan/deploy/.env <<ENVEOF
+            IMAGE_TAG=${{ steps.tag.outputs.tag }}
+            DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+            POSTGRES_USER=${POSTGRES_USER}
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            POSTGRES_DB=${POSTGRES_DB}
+            SUPABASE_URL=${SUPABASE_URL:-}
+            SUPABASE_KEY=${SUPABASE_KEY:-}
+            JWT_SECRET=${JWT_SECRET}
+            JWT_AUDIENCE=${JWT_AUDIENCE:-}
+            ACCESS_TOKEN_MINUTES=${ACCESS_TOKEN_MINUTES:-45}
+            REFRESH_TOKEN_DAYS=${REFRESH_TOKEN_DAYS:-7}
+            DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+            LLM_PROVIDER=${LLM_PROVIDER:-deepseek}
+            EMAIL_FROM=${EMAIL_FROM:-}
+            EMAIL_PASS=${EMAIL_PASS:-}
+            SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+            SMTP_PORT=${SMTP_PORT:-587}
+            TERMII_API_KEY=${TERMII_API_KEY:-}
+            TERMII_SENDER_ID=${TERMII_SENDER_ID:-RoyanHospital}
+            PAYSTACK_SECRET_KEY=${PAYSTACK_SECRET_KEY:-}
+            FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:-}
+            AT_API_KEY=${AT_API_KEY:-}
+            AT_USERNAME=${AT_USERNAME:-sandbox}
+            PACS_BASE_URL=${PACS_BASE_URL:-}
+            PACS_API_KEY=${PACS_API_KEY:-}
+            HOPE_BRIDGE_URL=${HOPE_BRIDGE_URL:-}
+            HOPE_BRIDGE_KEY=${HOPE_BRIDGE_KEY:-}
+            HOPE_BRIDGE_WEBHOOK_SECRET=${HOPE_BRIDGE_WEBHOOK_SECRET:-}
+            HOPE_MOCK=${HOPE_MOCK:-1}
+            WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+            AT_REST_KEY=${AT_REST_KEY:-}
+            WEEKLY_REPORT_RECIPIENTS=${WEEKLY_REPORT_RECIPIENTS:-}
+            WEEKLY_REPORT_ENABLED=1
+            EXECUTIVE_NOTIFY_EMAILS=${EXECUTIVE_NOTIFY_EMAILS:-}
+            CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+            PORTAL_TOKEN_EXPIRE_HOURS=${PORTAL_TOKEN_EXPIRE_HOURS:-24}
+            DOMAIN=${DOMAIN:-}
+            ADMIN_EMAIL=${ADMIN_EMAIL}
+            ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+            ADMIN_PASSWORD=${ADMIN_PASSWORD}
+            PORT=8000
+            ENVIRONMENT=production
+            DEV_TOKEN_ENABLED=0
+            SAGE_MOCK=0
+            KNOWLEDGE_REWRITE_ENABLED=0
+            KNOWLEDGE_RERANK_ENABLED=0
+            ENVEOF
+            chmod 600 /opt/royan/deploy/.env
+
+      # ── 2. Sync repo and build + push images ────────────────────────────
+      - name: Sync repo, build and push images
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key:      ${{ env.DEPLOY_SSH_KEY }}
+          port:     ${{ env.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            DEPLOY_DIR="/opt/royan"
+            IMAGE_TAG="${{ steps.tag.outputs.tag }}"
+            REGISTRY="localhost:5000"
+
+            if [[ -d "${DEPLOY_DIR}/.git" ]]; then
+                git -C "${DEPLOY_DIR}" fetch origin main
+                git -C "${DEPLOY_DIR}" reset --hard origin/main
+            else
+                git clone ${{ github.server_url }}/${{ github.repository }}.git "${DEPLOY_DIR}"
+            fi
+
+            cd "${DEPLOY_DIR}"
+
+            _build_push() {
+                local name="$1" ctx="$2"
+                docker build -t "${REGISTRY}/royan_${name}:${IMAGE_TAG}" "${ctx}"
+                docker push "${REGISTRY}/royan_${name}:${IMAGE_TAG}"
+                docker tag "${REGISTRY}/royan_${name}:${IMAGE_TAG}" "${REGISTRY}/royan_${name}:latest"
+                docker push "${REGISTRY}/royan_${name}:latest"
+            }
+
+            _build_push backend        backend
+            _build_push frontend       SynbotUI
+            _build_push patient_portal patient-portal
+            _build_push db             backend/db/postgres-pgvector
+
+      # ── 3. Deploy stack ─────────────────────────────────────────────────
+      - name: Deploy Swarm stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key:      ${{ env.DEPLOY_SSH_KEY }}
+          port:     ${{ env.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/royan/deploy
+            set -a; source .env; set +a
+            export IMAGE_TAG="${{ steps.tag.outputs.tag }}"
+            docker stack deploy \
+                --compose-file docker-compose.swarm.yml \
+                --with-registry-auth \
+                royan
+
+      # ── 4. Wait for convergence and probe ───────────────────────────────
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key:      ${{ env.DEPLOY_SSH_KEY }}
+          port:     ${{ env.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            STACK_NAME="royan"
+            echo "Waiting for services to converge..."
+            deadline=$(( $(date +%s) + 180 ))
+            while (( $(date +%s) < deadline )); do
+                not_ready=$(docker service ls \
+                    --filter "label=com.docker.stack.namespace=${STACK_NAME}" \
+                    --format '{{.Replicas}}' | grep -v '^\([0-9]*\)/\1$' | wc -l || true)
+                [[ "${not_ready}" -eq 0 ]] && break
+                echo "${not_ready} service(s) still converging..."
+                sleep 10
+            done
+
+            docker service ls --filter "label=com.docker.stack.namespace=${STACK_NAME}"
+
+            sleep 5
+            curl -fsk --max-time 15 "http://localhost/api/health" \
+                && echo "Health probe: OK" \
+                || { echo "Health probe FAILED"; docker service ps royan_backend --no-trunc; exit 1; }
+
+      # ── 5. Diagnostics on failure ────────────────────────────────────────
+      - name: Collect diagnostics on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key:      ${{ env.DEPLOY_SSH_KEY }}
+          port:     ${{ env.DEPLOY_PORT || 22 }}
+          script: |
+            docker service ls || true
+            docker service ps royan_backend --no-trunc 2>/dev/null | tail -20 || true
+            docker service logs royan_backend --tail 50 2>/dev/null || true

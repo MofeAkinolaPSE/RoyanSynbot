@@ -1,0 +1,221 @@
+# ════════════════════════════════════════════════════════════════════════════
+# Royan Hospital — Docker Swarm Stack Compose
+# ════════════════════════════════════════════════════════════════════════════
+# Deploy:  docker stack deploy --compose-file docker-compose.swarm.yml royan
+# NOTE: All env vars must be exported in the shell before stack deploy.
+#       start-stack.sh and init-swarm.sh handle this automatically.
+# ════════════════════════════════════════════════════════════════════════════
+version: "3.9"
+
+x-log-config: &log-config
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-update-start-first: &update-start-first
+  update_config:
+    parallelism: 1
+    order: start-first
+    failure_action: rollback
+    delay: 5s
+  rollback_config:
+    parallelism: 1
+    order: stop-first
+
+services:
+
+  # ── Backend API ──────────────────────────────────────────────────────────
+  backend:
+    image: localhost:5000/royan_backend:${IMAGE_TAG:-latest}
+    environment:
+      PORT: "8000"
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-45}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-7}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      FLUTTERWAVE_SECRET_KEY: ${FLUTTERWAVE_SECRET_KEY:-}
+      AT_API_KEY: ${AT_API_KEY:-}
+      AT_USERNAME: ${AT_USERNAME:-sandbox}
+      PACS_BASE_URL: ${PACS_BASE_URL:-}
+      PACS_API_KEY: ${PACS_API_KEY:-}
+      HOPE_BRIDGE_URL: ${HOPE_BRIDGE_URL:-http://host-gateway:7070}
+      HOPE_BRIDGE_KEY: ${HOPE_BRIDGE_KEY:-}
+      HOPE_MOCK: ${HOPE_MOCK:-1}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-https://localhost}
+      PORTAL_TOKEN_EXPIRE_HOURS: ${PORTAL_TOKEN_EXPIRE_HOURS:-24}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - royan_net
+    deploy:
+      replicas: 1
+      <<: *update-start-first
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    logging: *log-config
+
+  # ── PostgreSQL Database ──────────────────────────────────────────────────
+  db:
+    image: localhost:5000/royan_db:${IMAGE_TAG:-latest}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - royan_net
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    logging: *log-config
+
+  # ── Admin Frontend SPA ───────────────────────────────────────────────────
+  frontend:
+    image: localhost:5000/royan_frontend:${IMAGE_TAG:-latest}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - royan_net
+    deploy:
+      replicas: 1
+      <<: *update-start-first
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    logging: *log-config
+
+  # ── Patient Portal ───────────────────────────────────────────────────────
+  patient_portal:
+    image: localhost:5000/royan_patient_portal:${IMAGE_TAG:-latest}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - royan_net
+    deploy:
+      replicas: 1
+      <<: *update-start-first
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    logging: *log-config
+
+  # ── Nginx Reverse Proxy ──────────────────────────────────────────────────
+  nginx:
+    image: cgr.dev/chainguard/nginx:latest
+    user: root
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    volumes:
+      - nginx_ssl:/etc/nginx/ssl:ro
+      - nginx_conf:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - royan_net
+    depends_on:
+      - backend
+      - frontend
+      - patient_portal
+    deploy:
+      replicas: 1
+      <<: *update-start-first
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    logging: *log-config
+
+networks:
+  royan_net:
+    driver: overlay
+    attachable: true
+
+volumes:
+  db_data:
+    driver: local
+  nginx_ssl:
+    driver: local
+  nginx_conf:
+    driver: local

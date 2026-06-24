@@ -1,0 +1,49 @@
+import { PropsWithChildren } from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "./AuthProvider";
+
+const ProtectedRoute = ({ children }: PropsWithChildren) => {
+  const { isAuthenticated, isLoading, roles } = useAuth();
+  const location = useLocation();
+
+  const hasRole = (allowed: string[]) => roles.some((role) => allowed.includes(role));
+
+  const accessMap: Array<{ startsWith: string; allowed: string[] }> = [
+    { startsWith: "/finance",                  allowed: ["admin", "finance"] },
+    { startsWith: "/hr",                       allowed: ["admin", "hr"] },
+    { startsWith: "/operations",               allowed: ["admin", "ops", "operations"] },
+    { startsWith: "/crm",                      allowed: ["admin", "crm", "sales"] },
+    { startsWith: "/workflow",                 allowed: ["admin"] },
+    { startsWith: "/admin/users",              allowed: ["admin"] },
+    { startsWith: "/settings",                 allowed: ["admin"] },
+    { startsWith: "/executive",                allowed: ["admin", "management"] },
+    { startsWith: "/compliance",               allowed: ["admin", "quality", "quality_assurance", "qa", "ops"] },
+    // Hospital role-specific dashboards
+    { startsWith: "/hospital/admin-dashboard", allowed: ["admin", "management"] },
+    { startsWith: "/hospital/nurse",           allowed: ["admin", "nurse"] },
+    { startsWith: "/hospital/doctor",          allowed: ["admin", "doctor", "management"] },
+    { startsWith: "/hospital/billing",         allowed: ["admin", "finance"] },
+    { startsWith: "/hospital/front-desk",      allowed: ["admin", "ops", "front_desk", "management", "nurse"] },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="pw-page-surface min-h-screen flex items-center justify-center text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const matched = accessMap.find((rule) => location.pathname.startsWith(rule.startsWith));
+  if (matched && !hasRole(matched.allowed)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+export default ProtectedRoute;

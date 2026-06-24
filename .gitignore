@@ -1,0 +1,39 @@
+# Environment & secrets
+.env
+**/credentials.json
+**/token.json
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+
+# Node
+node_modules
+
+# Database dumps & staging (large files, not for version control)
+*.dump
+*.sql.gz
+*.sqlite
+*.db
+data-assimilation/staging/
+
+# Build artifacts
+dist/
+build/
+.next/
+
+# Sensitive documents
+*.docx
+*.pdf
+*.zip
+
+# Claude / editor state
+.claude/
+workspace-files.txt
+DrM File
+
+# Scripts (local only)
+scripts

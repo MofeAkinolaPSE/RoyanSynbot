@@ -1,0 +1,1872 @@
+[
+  {
+    "module": "Above PAR (APAR)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ABOVE PAR VASI Name:  Above PAR [NOT A SYSTEM] (APAR) VASI ID: 1893 VASI System Status: Not A System Version: 1.5 Namespace: DSIY SPM Product Line: Healthcare Environment and Logis...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Accounts Receivable (AR)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: ACCOUNTS RECEIVABLE VASI Name:  VistA - Accounts Receivable (VistA-AR) VASI ID: 1777 VASI System Status: Production Version: 4.5 Namespace: PRCA SPM Product Line: VHA Finance Brief...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Admission, Discharge, Transfer (ADT)/Registration",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: REGISTRATION VASI Name: VistA - Admission Discharge Transfer (VistA-ADT) VASI ID: 1778 VASI System Status: Production Version: 5.3 Namespace: DG SPM Product Line: Health Informatic...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Advanced Prosthetics Acquisition Tool (APAT)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ADVANCED PROSTHETICS ACQUISITION TOOL VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Production Version: N/A Namespace: DSIVA SPM Product Line: Healthcare Enviro...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Anticoagulation Management Tool",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ANTICOAGULATION MANAGEMENT VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: OR SPM Product Line: VistA Office (VO)...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Automated Information Collection System (AICS)",
+    "domain": "Emergency Department",
+    "description": "VistA Package Name: AUTOMATED INFO COLLECTION SYS VASI Name: VistA - Automated Information Collection System (AICS) VASI ID: 1780 VASI System Status: Production Version: 3.0 Namespace: IBD SPM Product...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Automated Medical Information Exchange (AMIE)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: AUTOMATED MED INFO EXCHANGE VASI Name: VistA CAPRI - Automated Medical Information Exchange (AMIE) VASI ID: 1031 VASI System Status: Production Version: 2.7 Namespace: DVBA SPM Pro...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Automated Safety Incident Surveillance Tracking System (ASISTS)",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: ASISTS VASI Name: VistA - Automated Safety Incident Surveillance and Tracking System [INACTIVE] (ASISTS) VASI ID: 1037 VASI System Status: Inactive Version: 2.0 Namespace: OOPS SPM...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Bar Code Medication Administration (BCMA) Backup Utility",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: BAR CODE MED ADMIN VASI Name: VistA Pharmacy - Bar Code Medication Administration (BCMA) VASI ID: 1047 VASI System Status: Production Version: 3.0 Namespace: PSB or BCBU SPM Produc...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Bed Management Solution (BMS)",
+    "domain": "Nursing",
+    "description": "VistA Package Name: BED MANAGEMENT SOLUTION VASI Name:  Bed Management Solution (BMS) VASI ID: 1052 VASI System Status: Production Version: 3.6 Namespace: WEBB SPM Product Line: VHA Front Office Brief...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Beneficiary Travel",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: BENEFICIARY TRAVEL VASI Name: VistA ADT - Beneficiary Travel (DGBT) VASI ID: 1781 VASI System Status: Production Version: 1.39 Namespace: DGBT SPM Product Line: VHA Front Office Br...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Blind Rehabilitation/VIST",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VISUAL IMPAIRMENT SERVICE TEAM VASI Name: Blind Rehabilitation Services (BRVS) VASI ID: 1064 VASI System Status: Production Version: 5.1 Namespace: ANRV SPM Product Line: Patient C...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Capacity Management Tools",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: CAPACITY MANAGEMENT TOOLS VASI Name: VistA - Capacity Management Tools [NOT A SYSTEM] (CMT) VASI ID: 1783 VASI System Status: Not A System Version: 3.0 Namespace: KMPD SPM Product ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Care Management",
+    "domain": "Nursing",
+    "description": "VistA Package Name: CARE MANAGEMENT VASI Name: VistA - Care Management [INACTIVE] (VistA-CM) VASI ID: 1784 VASI System Status: Inactive Version: 1.0 Namespace: ORRC SPM Product Line: VistA Office (VO)...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Caribou Community Living Care (CLC) Suite (Caribou)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: CARIBOU CLC SUITE VASI Name: Community Living Centers Resident Assessment Instrument (CLC-RAI) VASI ID: 2290 VASI System Status: Production Version: 3.0 Namespace: DSIB SPM Product...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Case Registries (CCR)",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: CLINICAL CASE REGISTRIES VASI Name: Clinical Case Registries - National Database (CCR) VASI ID: 1113 VASI System Status: Not A System Version: 1.5 Namespace: ROR SPM Product Line: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Case Registries: Hepatitis C (HepC)",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: CLINICAL CASE REGISTRIES VASI Name: Hepatitis C Registry [INACTIVE] (HEPC) VASI ID: 1327 VASI System Status: Inactive Version: 1.5 Namespace: ROR SPM Product Line: VistA Office (VO...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Case Registries: Human Immunodeficiency Virus (HIV)",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: CLINICAL CASE REGISTRIES VASI Name: Clinical Case Registries - National Database (CCR) VASI ID: 1113 VASI System Status: Production Version: 1.5 Namespace: ROR SPM Product Line: He...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Context Object Workgroup",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: RPC BROKER VASI Name: Clinical Context Object Workgroup [NOT A SYSTEM] (CCOW) VASI ID: 1114 VASI System Status: Not A System Version: 4.3 Namespace: XWB SPM Product Line: VistA Off...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Information Support System (CISS)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: CLINICAL INFO SUPPORT SYSTEM VASI Name: Clinical Information Support System [INACTIVE] (CISS) VASI ID: 1904 VASI System Status: Inactive Version: 1.0 Namespace: CISS SPM Product Li...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Monitoring System",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: CLINICAL MONITORING SYSTEM VASI Name:  VistA - Clinical Monitoring System [NOT A SYSTEM] (VistA-CMS) VASI ID: 1785 VASI System Status: Not A System Version: 1.0 Namespace: QAM SPM ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Clinical Procedures",
+    "domain": "Radiology & Imaging",
+    "description": "VistA Package Name: CLINICAL PROCEDURES VASI Name: VistA - Clinical Procedures (VistA-CP) VASI ID: 1787 VASI System Status: Production Version: 1.0 Namespace: MD SPM Product Line: Clinical Services Br...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "CMOP (Consolidated Mail Output Pharmacy) Pharmaceutical System (CPS)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: CMOP VASI Name:  CMOP Pharmaceutical System (CPS) - #1084 VASI ID: 1084 VASI System Status: Production Version: 1.0 Namespace: PBM, PSX SPM Product Line: Patient Care Services Brie...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Compensation and Pension Record Interchange (CAPRI)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: AUTOMATED MED INFO EXCHANGE VASI Name: Compensation and Pension Record Interchange (CAPRI) VASI ID: 1130 VASI System Status: Production Version: 2.7 Namespace: DVBA SPM Product Lin...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Consolidated Mail Output Pharmacy (CMOP)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: CMOP VASI Name: VistA Pharmacy - Consolidated Mail Outpatient Pharmacy (CMOP) VASI ID: 1788 VASI System Status: Production Version: 2.0 Namespace: PSX SPM Product Line: Patient Car...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "CPRS: Adverse Reaction Tracking (ART)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: ADVERSE REACTION TRACKING VASI Name: VistA Pharmacy - Adverse Reaction Tracking (Pharm-ART) VASI ID: 1779 VASI System Status: Production Version: 4.0 Namespace: GMRA SPM Product Li...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "CPRS: Authorization/Subscription (ASU)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: AUTHORIZATION/SUBSCRIPTION VASI Name: VistA - Authorization/Subscription (ASU) VASI ID: 2362 VASI System Status: Production Version: 1.0 Namespace: USR SPM Product Line: Clinical S...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Cross Application Integration Protocol (CAIP)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: Not Applicable Namespace: Not Applicable SPM Product Line: VistA ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Decision Support System (DSS) Extracts",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: DSS EXTRACTS VASI Name: VistA - Decision Support System (VistA - DSS) VASI ID: 1214 VASI System Status: Production Version: 3.6 Namespace: ECX SPM Product Line: VHA Finance Brief D...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Dental Record Manager (DRM) Plus",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: DENTAL VASI Name: Dental Record Manager Plus (DRM Plus) VASI ID: 1180 VASI System Status: Production Version: 86 Namespace: DENT SPM Product Line: Clinical Services Brief Descripti...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Diagnostic Related Grouper (DRG)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: DRG GROUPER VASI Name: VistA - Diagnostic Related Group Grouper (VistA-DRG) VASI ID: 1185 VASI System Status: Production Version: 18.0 Namespace: ICD SPM Product Line: Health Infor...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "DocManager",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: Not Applicable VASI Name: DocManager (DocManager) VASI ID: 1191 VASI System Status: Production Version: Not Applicable Namespace: DSIV SPM Product Line: Clinical Services Brief Des...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Duplicate Record Merge",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: DUPLICATE RECORD MERGE: PATIENT MERGE VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 7.3 Namespace: XDR SPM Product Line: VistA...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Electronic Claims Management Engine (ECME) (AKA: ePharmacy)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: E CLAIMS MGMT ENGINE VASI Name: VistA IB - Electronic Claims Management Engine (ECME) VASI ID: 1205 VASI System Status: Production Version: 1.0 Namespace: BPS SPM Product Line: VHA...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Electronic Error and Enhancement Reporting (E3R)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ELECTRONIC ERROR & ENHANCEMENT VASI Name: VistA - Electronic Error and Enhancement Reporting [INACTIVE] (E3R) VASI ID: 1210 VASI System Status: Inactive Version: 1.0 Namespace: NTS...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Electronic Signature (Esig)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: ELECTRONIC SIGNATURE VASI Name: VistA - Electronic Signature [NOT A SYSTEM] (ESig) VASI ID: 1791 VASI System Status: Not A System Version: 1.0 Namespace: XOBE SPM Product Line: Vis...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Emergency Department Integration Software (EDIS)",
+    "domain": "Emergency Department",
+    "description": "VistA Package Name: EMERGENCY DEPARTMENT VASI Name: Emergency Department Integration System (EDIS) VASI ID: 1792 VASI System Status: Production Version: Vista v2.20 / Gui v2.2.44 Namespace: EDP SPM Pr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Emerging Pathogens Initiative (EPI)",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: LABORATORY: EMERGING PATHOGENS INITIATIVE (EPI) - ARCHIVE VASI Name: Emerging Pathogens Initiative [NOT A SYSTEM] (EPI) VASI ID: 1221 VASI System Status: Not A System Version: 5.2 ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Encoder Product Suite (EPS)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: Not Applicable VASI Name: Health Information Coding Billing and Auditing (HICBA) VASI ID: 2087 VASI System Status: Production Version: Not Applicable Namespace: DSIP SPM Product Li...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Engineering (AEMS/MERS)",
+    "domain": "HR & Administration",
+    "description": "VistA Package Name: ENGINEERING VASI Name: VistA - Automated Engineering Management System/Medical Equipment Reporting System (AEMS/MERS) VASI ID: 1996 VASI System Status: Production Version: 7.0 Name...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Enrollment Application System",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ENROLLMENT APPLICATION SYSTEM VASI Name: VistA - Enrollment Application System (VistA-EAS) VASI ID: 1244 VASI System Status: Production Version: 1.0 Namespace: EAS SPM Product Line...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Enrollment Application System: Long Term Care (LTC) Copayment",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ENROLLMENT APPLICATION SYSTEM VASI Name: VistA - Enrollment Application System (VistA-EAS) VASI ID: 1244 VASI System Status: Production Version: 1.0 Namespace: EAS SPM Product Line...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Enrollment System",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VA ENROLLMENT SYSTEM VASI Name: Veterans Health Administration Enrollment System (VES) VASI ID: 1231 VASI System Status: Production Version: 5.10.1 Namespace: VES SPM Product Line:...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Enterprise Exception Log Services (EELS)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: ENTERPRISE EXCEPTION LOG SVC VASI Name: Not Applicable VASI ID: Not Applicable VASI System Status: Technical Reference Only Version: 3.0 Namespace: SVE SPM Product Line: VistA Offi...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Enterprise Health Management Platform",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: HEALTH MANAGEMENT PLATFORM VASI Name: Enterprise Health Management Platform [INACTIVE] (eHMP) VASI ID: 2052 VASI System Status: Inactive Version: 2.0 Namespace: HMP SPM Product Lin...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Equipment /Turn-In Request",
+    "domain": "Equipment Management",
+    "description": "VistA Package Name: EQUIPMENT/TURN-IN REQUEST VASI Name: VistA - Equipment/Turn-In Request (EQUIP) VASI ID: 1794 VASI System Status: Production Version: 1.0 Namespace: PRCN SPM Product Line: Healthcar...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Event Capture System",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: EVENT CAPTURE VASI Name: VistA - Event Capture (VistA-EC) VASI ID: 1795 VASI System Status: Production Version: 2.0 Namespace: EC SPM Product Line: VHA Finance Brief Description: ​...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Fat Client Kernel Authentication and Authorization (FatKAAT)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: KERNEL VASI Name: Fat-client Kernel Authentication & Authorization Tool [NOT A SYSTEM] (FatKAAT) VASI ID: 1257 VASI System Status: Not A System Version: Not Applicable Namespace: X...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Fee Basis",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: FEE BASIS VASI Name: VistA - Fee Basis (VistA-FB) VASI ID: 1796 VASI System Status: Production Version: 3.5 Namespace: FB SPM Product Line: VHA Finance Brief Description: ​The Fee ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Fee Basis Claims Archive (FBCA)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: FEE BASIS CLAIMS SYSTEM VASI Name: VistA - Fee Basis Claims Archive (FBCA) VASI ID: 2085 VASI System Status: Production Version: 4.2 Namespace: DSIF SPM Product Line: Community Car...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "FileMan Delphi Components (FDMC)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: FILEMAN DELPHI COMPONENTS VASI Name: VistA - VA Fileman (Fileman) VASI ID: 1786 VASI System Status: Production Version: 1.0 Namespace: FMDC SPM Product Line: Health Informatics Bri...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Fugitive Felon Program (FFP)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Fugitive Felon Program (FFP) VASI Name: Fugitive Felon Program [NOT A SYSTEM] (FFP) VASI ID: 1291 VASI System Status: Not A System Version: 1.0 Namespace: DGFFP SPM Product Line: V...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Functional Independence Measures (FIM)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: FUNCTIONAL INDEPENDENCE VASI Name: VistA - Functional Independence Measurement (VistA-FIM) VASI ID: 1292 VASI System Status: Production Version: 1.0 Namespace: RMIM SPM Product Lin...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Generic Code Sheet",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: GENERIC CODE SHEET VASI Name: VistA - Generic Code Sheet (VistA-GCS) VASI ID: 1799 VASI System Status: Production Version: 2.0 Namespace: GEC SPM Product Line: VHA Finance Brief De...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Group Notes",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: GROUP NOTES VASI Name: VistA - Group Notes [NOT A SYSTEM] VASI ID: 1306 VASI System Status: Not A System Version: 1.0 Namespace: OR SPM Product Line: Clinical Services Brief Descri...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Data Informatics",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: HEALTH DATA & INFORMATICS VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: HDI SPM Product Line: VistA Office (VO)...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Data Repository",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: HEALTH DATA REPOSITORY VASI Name: Health Data Repository (HDR II) VASI ID: 1311 VASI System Status: Production Version: 3.41 Namespace: HDR SPM Product Line: Data and Analytics Bri...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Information Technology Sharing (HITS): Bi-Directional Health Information Exchange (BHIE) and Legacy Viewer Sustainment (LVS)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: JOINT LEGACY VIEWER (JLV - #2057) VASI Name: Standards and COTS Integration Platform (formerly BHIE) (SCIP) VASI ID: 1899 VASI System Status: Production Version: 1.0 Namespace: SCI...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Information Technology Sharing (HITS): Clinical Health Data Repository (CHDR)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: JOINT LEGACY VIEWER (JLV - #2057) VASI Name: Clinical Health Data Repository (CHDR) VASI ID: 1115 VASI System Status: Production Version: 1.0 Namespace: CHDR SPM Product Line: Heal...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Information Technology Sharing (HITS): Federal Health Information Exchange (FHIE)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: JOINT LEGACY VIEWER (JLV - #2057) VASI Name: Legacy Viewer Sustainment [NOT A SYSTEM] (LVS) VASI ID: 1261 VASI System Status: Not A System Version: 1.0 Namespace: Multiple Namespac...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Information Technology Sharing (HITS): Global War on Terror",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Global War on Terror Big 7 - OIF/OEF Combat Veteran Identifier [NOT A SYSTEM (GWOTID) VASI ID: 1924 VASI System Status: Technical Reference Only Version: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Information Technology Sharing (HITS): Laboratory Data Sharing and Interoperability (LDSI)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Laboratory Data Sharing and Interoperability [NOT A SYSTEM] (LDSI) VASI ID: 1382 VASI System Status: Not A System Version: 5.2 Namespace: LR SPM Product L...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Level 7 (HL7) (VistA Messaging)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: HEALTH LEVEL SEVEN VASI Name: VistA - Health Level Seven (VistA - HL7) VASI ID: 2392 VASI System Status: Production Version: 1.6 Namespace: HL SPM Product Line: Health Informatics ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Health Level Seven Optimized (HLO) (VistA Messaging)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: HEALTH LEVEL SEVEN VASI Name: VistA - Health Level Seven (VistA - HL7) VASI ID: 2392 VASI System Status: Production Version: 1.6 Namespace: HL SPM Product Line: Health Informatics ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Home Based Primary Care (HBPC)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: HOSPITAL BASED HOME CARE VASI Name: VistA - Home Based Primary Care (HBPC) VASI ID: 1330 VASI System Status: Production Version: 1.0 Namespace: HBH SPM Product Line: Patient Care S...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Home Telehealth/Integrated Home Telehealth (IHTA)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: INTEGRATED HOME TELEHEALTH VASI Name: Home Telehealth Reporting (HTR) VASI ID: 1359 VASI System Status: Production Version: WEBI V.23.0.5 Namespace: WEBI SPM Product Line: Teleheal...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Homeless Management Information (HMIS)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: HOMELESS MANAGEMENT INFORMATION (HMIS) VASI Name: Homeless Management Information System (HMIS) VASI ID: 1333 VASI System Status: Production Version: 1.0 Namespace: HMI SPM Product...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Hospital Inquiry (HINQ)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: HINQ VASI Name: VistA - Hospital Inquiry System [INACTIVE] (HINQ) VASI ID: 1860 VASI System Status: Inactive Version: 4.0 Namespace: DVB SPM Product Line: VHA Front Office Brief De...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "HOWDY Computerized Login Process",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: LAB SERVICE VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 5.2 Namespace: LR SPM Product Line: Clinical Services Brief Descript...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Identity Management (IdM) Service",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: IAM - Person Services Identity Management [NOT A SYSTEM] (PSIM) - #1510 VASI ID: 1510 VASI System Status: Not A System Version: 1.0 Namespace: N/A SPM Pro...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Incident Reporting",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: INCIDENT REPORTING VASI Name: VistA - Incident Reporting [INACTIVE] (VistA-QAN) VASI ID: 1963 VASI System Status: Inactive Version: 2.0 Namespace: QAN SPM Product Line: VistA Offic...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Income Verification Match (IVM)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: INCOME VERIFICATION MATCH VASI Name: VistA - Income Verification Match (Vista-IVM) VASI ID: 1964 VASI System Status: Production Version: 2.0 Namespace: IVM SPM Product Line: Eligib...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Incomplete Records Tracking (IRT)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: INCOMPLETE RECORDS TRACKING VASI Name: VistA ADT - Incomplete Records Tracking [NOT A SYSTEM] (VistA-IRT) VASI ID: 1804 VASI System Status: Not A System Version: 1.0 Namespace: DGJ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Insurance Capture Buffer",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: INSURANCE CAPTURE BUFFER VASI Name: VistA - Insurance Capture Buffer [INACTIVE] (ICB) VASI ID: 1882 VASI System Status: Inactive Version: 2.2 Namespace: DSIV SPM Product Line: Comm...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Intake and Output",
+    "domain": "Nursing",
+    "description": "VistA Package Name: GEN. MED. REC. - I/O VASI Name: VistA Nursing - Intake and Output (I&O) VASI ID: 1356 VASI System Status: Production Version: 4.0 Namespace: GMRY SPM Product Line: Patient Care Ser...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Integrated Billing (IB)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: INTEGRATED BILLING VASI Name: VistA - Integrated Billing (VistA-IB) VASI ID: 1806 VASI System Status: Production Version: 2.0 Namespace: IB SPM Product Line: VHA Finance Brief Desc...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Integrated Funds Distribution, Control Point Activity, Accounting and Procurement (IFCAP)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: IFCAP VASI Name: VistA - Integrated Funds Distribution Control Point Activity Accounting and (IFCAP) VASI ID: 1807 VASI System Status: Production Version: 5.1 Namespace: PRC SPM Pr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Joint Longitudinal Viewer (JLV)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: JOINT LONGITUDINAL VIEWER VASI Name: Joint Longitudinal Viewer (JLV) VASI ID: 2057 VASI System Status: Production Version: 3.5 Namespace: JLV SPM Product Line: Health Informatics B...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Kernel",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: KERNEL VASI Name: VistA - Kernel (Kernel) VASI ID: 2364 VASI System Status: Production Version: 8.0 Namespace: XU SPM Product Line: Health Informatics Brief Description: ​Kernel pr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Kernel Authentication & Authorization for Java 2 Enterprise Edition (KAAJEE)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: KERNEL VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.1 Namespace: XU SPM Product Line: VistA Office (VO) VistA Infrastructur...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Kernel Delphi Components (KDC)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: NA VASI System Status: Technical Reference Only Version: 1.0 Namespace: KDC SPM Product Line: VistA Office (VO) VistA Infrastructu...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Kernel Toolkit",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: TOOLKIT VASI Name: System Toolkit [INACTIVE] (STK) VASI ID: 1626 VASI System Status: Inactive Version: 7.3 Namespace: XT SPM Product Line: VistA Office (VO) VistA Infrastructure Br...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Kernel Unwinder",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 7.1 Namespace: XQOR SPM Product Line: VistA Office (VO) VistA Inf...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Lexicon Utility",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: VistA - Lexicon Utility (Lexicon) VASI ID: 1814 VASI System Status: Production Version: 2.0 Namespace: LEX SPM Product Line: Health Informatics Brief Desc...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Library",
+    "domain": "Support Services",
+    "description": "VistA Package Name: LIBRARY VASI Name: VistA - Library [INACTIVE] (VistA-LIB) VASI ID: 1815 VASI System Status: Inactive Version: 2.5 Namespace: LBR SPM Product Line: VistA Office (VO) Technical Refer...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "List Manager",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: LIST MANAGER VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: VALM SPM Product Line: VistA Office (VO) Technical R...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Mailman",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: MAILMAN VASI Name: VistA - Mailman (Mailman) VASI ID: 1817 VASI System Status: Production Version: 8.0 Namespace: XM SPM Product Line: Health Informatics Brief Description: ​The Vi...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Master Patient Index (MPI)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: MASTER PATIENT INDEX VISTA VASI Name: VA Master Person Index (VA MPI) (VA MPI) VASI ID: 1406 VASI System Status: Production Version: 1.0 Namespace: MPIF SPM Product Line: Identity ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Maximo (Max)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: MAXIMO (MAX) VASI Name: MAXIMO Enterprise Asset and Work Management (EAWM) VASI ID: 2065 VASI System Status: Production Version: 7.6.1.2 Namespace: Not Applicable SPM Product Line:...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Medical Domain Web Services (MDWS)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: MEDICAL DOMAIN WEB SERVICES (MDWS) VASI Name: Medical Domain Web Services [INACTIVE] (MDWS) VASI ID: 2000 VASI System Status: Inactive Version: 1.0 Namespace: MWSV SPM Product Line...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Medicine",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: MEDICINE VASI Name: VistA - Medicine (VistA-MED) VASI ID: 1818 VASI System Status: Production Version: 2.3 Namespace: MC SPM Product Line: Clinical Services Brief Description: ​The...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Mental Health",
+    "domain": "Mental Health",
+    "description": "VistA Package Name: MENTAL HEALTH VASI Name: Mental Health [INACTIVE] (VHA MH) VASI ID: 2172 VASI System Status: Inactive Version: 5.01 Namespace: YS SPM Product Line: VistA Office (VO) Technical Refe...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Mental Health Suite",
+    "domain": "Mental Health",
+    "description": "VistA Package Name: MENTAL HEALTH SUITE VASI Name: Mental Health Suite (MHS) VASI ID: 1528 VASI System Status: Production Version: Not Applicable Namespace: DSIU SPM Product Line: Clinical Services Br...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Methicillin Resistant Staphylococcus Aureus Program Tools (MRSA-PT)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: MRSA INITIATIVE REPORTS VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: MMRS SPM Product Line: VistA Office (VO) ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Mobile Electronic Documentation",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: MOBILE ELECTRONIC DOCUMENTATION VASI Name: Not Applicable VASI ID: NA VASI System Status: Technical Reference Only Version: 2.3 Namespace: Not Applicable SPM Product Line: VistA Of...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "M-to-M Broker",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: RPC BROKER VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: Not Applicable Namespace: XWB SPM Product Line: VistA Office (VO) Vis...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "My HealtheVet",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: My HealtheVet VASI Name: My HealtheVet (MHV) VASI ID: 1820 VASI System Status: Production Version: 1.0 Namespace: MHV SPM Product Line: Digital Experience Brief Description: My Hea...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "National Laboratory Tests Documents and LOINC Request Form",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: NATIONAL LABORATORY TESTS DOCUMENTS AND LOINC REQUEST FORM VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 5.2 Namespace: LR SPM...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "National Patch Module (NPM)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name:  Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 2.10 Namespace: A1AE SPM Product Line: VistA Office (VO) Technic...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "National Provider Identifier (NPI)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: KERNEL VASI Name: National Provider Identification Crosswalk [NOT A SYSTEM] (NPIC) VASI ID: No VASI ID VASI System Status: Not A System Version: Not Applicable Namespace: XU SPM Pr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "National Utilization Management Integration (NUMI)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: National Utilization Management Integration (NUMI) VASI ID: 1453 VASI System Status: Production Version: 1.1.15.11 Namespace: WEBN SPM Product Line: VHA F...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Network Health Exchange (NHE)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: NETWORK HEALTH EXCHANGE VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 5.1 Namespace: AFJX SPM Product Line: VistA Office (VO) ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Nursing",
+    "domain": "Nursing",
+    "description": "VistA Package Name: NURSING SERVICE VASI Name: VistA - Nursing (NURSING) VASI ID: 1465 VASI System Status: Production Version: 4.0 Namespace: NUR SPM Product Line: Patient Care Services Brief Descript...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Nutrition and Food Service (N&FS)",
+    "domain": "Support Services",
+    "description": "VistA Package Name: DIETETICS VASI Name: VistA - Nutrition and Food Service (N&FS) VASI ID: 1466 VASI System Status: Production Version: 5.5 Namespace: FH SPM Product Line: Clinical Services Brief Des...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Occupational Health Recordkeeping System (OHRS)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: OCCUPAT HEALTH RECORD-KEEPING VASI Name: Occupational Health Record-Keeping System (OHRS) VASI ID: 1467 VASI System Status: Inactive Version: 1.4 Namespace: OHRS SPM Product Line: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Occurrence Screen",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: OCCURRENCE SCREEN VASI Name: VistA - Occurrence Screen [NOT A SYSTEM] (VistA-QAO) VASI ID: 1826 VASI System Status: Not A System Version: 3.0 Namespace: QAO SPM Product Line: VistA...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Oncology",
+    "domain": "Surgery",
+    "description": "VistA Package Name: ONCOLOGY VASI Name: Veterans Administration Central Cancer Registry (VACCR) VASI ID: 1716 VASI System Status: Production Version: 2.2 Namespace: ONC SPM Product Line: Health Inform...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Advocate Tracking System (PATS)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: Not Applicable VASI Name: Patient Advocate Tracking System [INACTIVE] (PATS) VASI ID: 1492 VASI System Status: Inactive Version: 1.0.2 Namespace: QACV (QAC for patches) SPM Product...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Care Encounter (PCE)",
+    "domain": "Billing & Finance",
+    "description": "VistA Package Name: PCE PATIENT CARE ENCOUNTER VASI Name: VistA - Patient Care Encounter (VistA-PCE) VASI ID: 1829 VASI System Status: Production Version: 1.0 Namespace: PX SPM Product Line: Health In...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Centered Management Module (PCMM Web)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: PATIENT CENTERED MANAGEMENT MODULE (PCMM Web) VASI Name: Patient Centered Management Module Web (PCMM Web) VASI ID: 1530 VASI System Status: Production Version: 1.0-27-02 Namespace...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Data Exchange (PDX)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: PATIENT DATA EXCHANGE VASI Name: VistA - Patient Data Exchange [NOT A SYSTEM] (PDX) VASI ID: 1463 VASI System Status: Not A System Version: 1.5 Namespace: VAQ SPM Product Line: Vis...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Record Flags (PRF)",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: DGPF SPM Product Line: VistA Office (VO) Technical...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Patient Representative",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: PATIENT REPRESENTATIVE VASI Name: VistA - Patient Representative [INACTIVE] (PATREP) VASI ID: 1464 VASI System Status: Inactive Version: 2.0 Namespace: QAC SPM Product Line: VistA ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Personnel and Accounting Integrated Data (PAID)",
+    "domain": "HR & Administration",
+    "description": "VistA Package Name: PAID VASI Name: Personnel and Accounting Integrated Data (PAID) VASI ID: 1830 VASI System Status: Inactive Version: 4.0 Namespace: PRS SPM Product Line: Financial Management Brief ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Personnel and Accounting Integrated Data (PAID)",
+    "domain": "HR & Administration",
+    "description": "VistA Package Name: PAID VASI Name: Personnel and Accounting Integrated Data (PAID) VASI ID: 1887 VASI System Status: Production Version: 4.0 Namespace: PRS SPM Product Line: Financial Management Brie...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Automatic Replenishment/Ward Stock (AR/WS)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: AUTO REPLENISHMENT/WARD STOCK VASI Name: VistA Pharmacy - Auto Replenishment/Ward Stock (PSGW) VASI ID: 1515 VASI System Status: Production Version: 2.3 Namespace: PSGW SPM Product...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Bar Code Medication Administration (BCMA)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: BAR CODE MED ADMIN VASI Name: VistA Pharmacy - Bar Code Medication Administration (BCMA) VASI ID: 1047 VASI System Status: Production Version: 3.0 Namespace: PSB SPM Product Line: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Controlled Substances",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: CONTROLLED SUBSTANCES VASI Name: VistA Pharmacy - Controlled Substances (Pharm-CS) VASI ID: 1190 VASI System Status: Production Version: 3.0 Namespace: PSB SPM Product Line: Patien...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Drug Accountability/Inventory Interface",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: DRUG ACCOUNTABILITY VASI Name: VistA Pharmacy - Drug Accountability (Pharm-DA) VASI ID: 1790 VASI System Status: Production Version: 3.0 Namespace: PSA SPM Product Line: Patient Ca...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Inpatient Medications",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: INPATIENT MEDICATIONS VASI Name: VistA Pharmacy - Inpatient Medications (Pharm-IM) VASI ID: 1965 VASI System Status: Production Version: 5.0 Namespace: PSA SPM Product Line: Patien...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Inpatient Medications - Intravenous (IV)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: INPATIENT MEDICATIONS VASI Name: VistA Pharmacy - Inpatient Medications (Pharm-IM) VASI ID: 1965 VASI System Status: Production Version: 5.0 Namespace: PSA SPM Product Line: Patien...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Inpatient Medications - Unit Dose (UD)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: INPATIENT MEDICATIONS VASI Name: VistA Pharmacy - Inpatient Medications (Pharm-IM) VASI ID: 1965 VASI System Status: Production Version: 5.0 Namespace: PSA SPM Product Line: Patien...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Medication Order Check Healthcare Application (MOCHA)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: Not Applicable VASI Name: Medication Order Check Healthcare Application (MOCHA) VASI ID: 1414 VASI System Status: Production Version: 3.0 Namespace: PREM SPM Product Line: Patient ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: National Drug File (NDF)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: NATIONAL DRUG FILE VASI Name: VistA Pharmacy - National Drug File (Pharm-NDF) VASI ID: 1821 VASI System Status: Production Version: 4.0 Namespace: PSN SPM Product Line: Patient Car...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Outpatient Pharmacy",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: OUTPATIENT PHARMACY VASI Name: VistA Pharmacy - Outpatient Pharmacy (Pharm-OP) VASI ID: 1972 VASI System Status: Production Version: 7.0 Namespace: PSO SPM Product Line: Patient Ca...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Pharmacy Benefits Management (PBM)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: PHARMACY BENEFITS MANAGEMENT VASI Name: VistA Pharmacy - Pharmacy Benefits Management (Pharm-PBM) VASI ID: 1832 VASI System Status: Production Version: 4.0 Namespace: PSU SPM Produ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Pharmacy Data Management (PDM)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: PHARMACY DATA MANAGEMENT VASI Name: VistA Pharmacy - Pharmacy Data Management (Pharm-PDM) VASI ID: 1833 VASI System Status: Production Version: 1.0 Namespace: PSS SPM Product Line:...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Pharmacy Enterprise Customization System (PECS)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: PHARM ENTER CUSTOM SYSTEM VASI Name: Pharmacy Enterprise Customization System (PECS) VASI ID: 1588 VASI System Status: Production Version: 6.1 Namespace: PREC SPM Product Line: Pat...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Pharmacy: Pharmacy Product System - National Registries (PSS-N)",
+    "domain": "Pharmacy",
+    "description": "VistA Package Name: PHARMACY PRODUCT SYSTEM - NATIONAL VASI Name: Pharmacy Product System - National (PPS-N) VASI ID: 1518 VASI System Status: Production Version: 3.0 Namespace: PPS-N SPM Product Line...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Primary Care Management Module",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: PRIMARY CARE MANAGEMENT MODULE VASI Name: Patient Centered Management Module Web (PCMM Web) VASI ID: 1530 VASI System Status: Inactive Version: 1.0 Namespace: SD SPM Product Line: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Prosthetics",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: PROSTHETICS VASI Name:  VistA - Prosthetics (Prosth) VASI ID: 1836 VASI System Status: Production Version: 3.0 Namespace: RMPR SPM Product Line: Patient Care Services Brief Descrip...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Quality Audiology and Speech Analysis and Reporting (QUASAR)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: QUASAR VASI Name: VistA - Quality Audiology & Speech Analysis Reporting (QUASAR) VASI ID: 1506 VASI System Status: Production Version: 3.0 Namespace: ACKQ SPM Product Line: Patient...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Quality Management Integration Module",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: QUALITY ASSURANCE INTEGRATION VASI Name: VistA - Quality Management Integration Module (QMIM) VASI ID: 1947 VASI System Status: Production Version: 1.7 Namespace: QAQ SPM Product L...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Radiology/Nuclear Medicine",
+    "domain": "Radiology & Imaging",
+    "description": "VistA Package Name: RADIOLOGY/NUCLEAR MEDICINE VASI Name: VistA - Radiology/Nuclear Medicine (RAD/NM) VASI ID: 1837 VASI System Status: Production Version: 5.0 Namespace: RA SPM Product Line: Clinical...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Record Tracking",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: RECORD TRACKING VASI Name: VistA - Record Tracking (VistA-RT) VASI ID: 1971 VASI System Status: Production Version: 2.0 Namespace: RT SPM Product Line: Health Informatics Brief Des...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Release of Information (ROI)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: RELEASE OF INFORMATION - DSSI VASI Name:  Release of Information Plus (ROI) VASI ID: 1564 VASI System Status: Production Version: Not Applicable Namespace: DSIR SPM Product Line: H...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Remote Order Entry System (ROES)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: REMOTE ORDER/ENTRY SYSTEM VASI Name: Remote Order Entry System (ROES) VASI ID: 1838 VASI System Status: Production Version: 3.0 Namespace: RMPF SPM Product Line: Healthcare Environ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Remote Procedure Call Broker (RPC)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: RPC BROKER VASI Name: VistA - Remote Procedure Call Broker (RPC) VASI ID: 2365 VASI System Status: Production Version: 1.1 Namespace: XWB SPM Product Line: Health Informatics Brief...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Repositories: Administrative Data Repository (ADR)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Administrative Data Repository (ADR) VASI ID: 1006 VASI System Status: Production Version: Not Applicable Namespace: Multiple Namespace SPM Product Line: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Repositories: Clinical Data Repository/Health Data Repository (CHDR)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Clinical Health Data Repository (CHDR) VASI ID: 1115 VASI System Status: Production Version: 2.1.2 Namespace: CHDR SPM Product Line: Health Informatics Br...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Resident Assessment Instrument/Minimum Data Set (RAI/MDS)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: Not Applicable VASI Name: Minimum Data Set (MDS) VASI ID: 1571 VASI System Status: Production Version: Not Applicable Namespace: DGRU SPM Product Line: Patient Care Services Brief ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Resource Usage Monitor (RUM)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: NA VASI System Status: Technical Reference Only Version: 2.0 Namespace: KMPR SPM Product Line: VistA Office (VO) VistA Infrastruct...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Scheduling",
+    "domain": "Patient Management",
+    "description": "VistA Package Name: SCHEDULING VASI Name: VistA - Scheduling (VSE) VASI ID: 1840 VASI System Status: Production Version: 5.3 Namespace: SD, SC, SDES SPM Product Line: Telehealth and Scheduling Brief D...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Shift Handoff Tool",
+    "domain": "Nursing",
+    "description": "VistA Package Name: SHIFT CHANGE HANDOFF TOOL VASI Name: VistA - Shift Handoff Tool (Handoff) VASI ID: 1591 VASI System Status: Production Version: 1.0 Namespace: CRHD SPM Product Line: Patient Care S...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Single Sign On/User Context (SSO/UC)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: Not Applicable VASI ID: Not Applicable VASI System Status: Technical Reference Only Version: Not Applicable Namespace: XU SPM Product Line: VistA Office (...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "SlotMaster (Kernel ZSLOT)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: SlotMaster [INACTIVE] (Kernel ZSLOT) VASI ID: 1596 VASI System Status: Inactive Version: 8.0 Namespace: ZSL SPM Product Line: VistA Office (VO) VistA Infr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Social Work",
+    "domain": "Support Services",
+    "description": "VistA Package Name: SOCIAL WORK VASI Name: VistA - Social Work [INACTIVE] (VistA-SW) VASI ID: 1841 VASI System Status: Inactive Version: 3.0 Namespace: SOW SPM Product Line: VistA Office (VO) VistA In...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Spinal Cord Injury and Disorders Outcomes (SCIDO)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: SPINAL CORD DYSFUNCTION VASI Name: Spinal Cord Injury and Disorders Outcome [INACTIVE] (SCIDO) VASI ID: 1605 VASI System Status: Inactive Version: 3.0 Namespace: SPN SPM Product Li...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Standards and Terminology Services (STS)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: STANDARDS AND TERMINOLOGY SERVICES (STS) VASI Name: Standards and Terminology Services (STS) VASI ID: 1610 VASI System Status: Production Version: 1.0 Namespace: Multiple Namespace...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Statistical Analysis of Global Growth (SAGG)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: SAGG PROJECT VASI Name: Not Applicable VASI ID: NA VASI System Status: Technical Reference Only Version: 2.0 Namespace: KMPS SPM Product Line: VistA Office (VO) VistA Infrastructur...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Surgery",
+    "domain": "Surgery",
+    "description": "VistA Package Name: SURGERY VASI Name: VistA - Surgery VASI ID: 1046 VASI System Status: Production Version: 3.0 Namespace: SR SPM Product Line: Clinical Services Brief Description: The Surgery packag...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Survey Generator",
+    "domain": "Support Services",
+    "description": "VistA Package Name: SURVEY GENERATOR VASI Name: VistA - Survey Generator [INACTIVE] VASI ID: 1842 VASI System Status: Inactive Version: 2.0 Namespace: QAP SPM Product Line: VistA Office (VO) Technical...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Telecare Record Manager (TRM)",
+    "domain": "Specialty Services",
+    "description": "VistA Package Name: Not Applicable VASI Name: Telecare Record Manager (TRM) VASI ID: 1805 VASI System Status: Production Version: 3.9 Namespace: DSIT SPM Product Line: Telehealth and Scheduling Brief ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Traumatic Brain Injury Registry (TBI)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: Traumatic Brain Injury Registry [NOT A SYSTEM] (TBI Registry) VASI ID: 1630 VASI System Status: Not a System Version: 2.0 Namespace: TBI SPM Product Line:...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VA FileMan",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: VA FILEMAN VASI Name: VistA - VA Fileman (Fileman) VASI ID: 1786 VASI System Status: Production Version: 22.2 Namespace: DI SPM Product Line: Health Informatics Brief Description: ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Veterans Crisis Line (VCL)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: Veterans Crisis Line - Medora (VCL - Medora) VASI ID: 1619 VASI System Status: Production Version: 1.0 Namespace: VCL SPM Product Line: Veteran Relationsh...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Veterans Health Identification Card (VHIC)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: IAM - Veterans Health Identification Card (VHIC) VASI ID: 1710 VASI System Status: Production Version: 4.13.1 Namespace: WEBC SPM Product Line: Identity A...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Veterans Personal Finance System (VPFS)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: IAM - Veterans Personal Finance System (VPFS) VASI ID: 1751 VASI System Status: Production Version: 1.2 Namespace: VPFS SPM Product Line: VHA Finance Brie...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Veterans Point of Service",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VPS KIOSK VASI Name: Veterans Point of Service Kiosk (VPS) VASI ID:  1752 VASI System Status: Production Version: 1.0 Namespace: VPS SPM Product Line: Digital Experience Brief Desc...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Virtual Electronic eHealth Exchange (VLER)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: Not Applicable VASI Name: Data Access Services (DAS) VASI ID:  1979 VASI System Status: Production Version: 6.0.1.3 Namespace: NHIN SPM Product Line: Customer Master Data Managemen...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Virtual Patient Record (VPR)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: VIRTUAL PATIENT RECORD VASI Name: Not Applicable VASI ID: No VASI ID VASI System Status: Technical Reference Only Version: 1.0 Namespace: VPR SPM Product Line: VistA Office (VO) Te...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Blood Establishment Computer Software",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VBECS VASI Name: VistA - Blood Establishment Computer Software (VBECS) VASI ID: 1525 VASI System Status: Production Version: 1.0 Namespace: VBEC SPM Product Line: Clinical Services...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Clinical Case Registries",
+    "domain": "Quality & Safety",
+    "description": "VistA Package Name: CLINICAL CASE REGISTRIES VASI Name: VistA - Clinical Case Registries (ROR) VASI ID: 2992 VASI System Status: Production Version: 1.5 Namespace: ROR SPM Product Line: Health Informa...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Clinical Reminders",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: CLINICAL REMINDERS VASI Name: VistA - Clinical Reminders (PXRM) VASI ID: 1183 VASI System Status: Production Version: 2.0 Namespace: PXRM SPM Product Line: Clinical Services Brief ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Consult/Request Tracking",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: CONSULT/REQUEST TRACKING VASI Name: VistA - Consult/Request Tracking (VistA-GMRC) VASI ID:  1789 VASI System Status: Production Version: 3.0 Namespace: GMRC SPM Product Line: Clini...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Health Summary",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: HEALTH SUMMARY VASI Name: VistA - Health Summary (VistA-HS) VASI ID: 1800 VASI System Status: Production Version: 2.7 Namespace: GMTS SPM Product Line: Clinical Services Brief Desc...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Order Entry/Results Reporting",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: ORDER ENTRY/RESULTS REPORTING VASI Name: VistA - Order Entry/Results Reporting (OERR) VASI ID: 1828 VASI System Status: Production Version: 3.0 Namespace: OR SPM Product Line: Clin...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Problem List",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: PROBLEM LIST VASI Name: VistA - Problem List (GMPL) VASI ID: 1494 VASI System Status: Production Version: 2.0 Namespace: GMPL SPM Product Line: Clinical Services Brief Description:...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Text Integration Utilities (TIU)",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: TEXT INTEGRATION UTILITIES VASI Name: VistA - Text Integration Utility (VistA-TIU) VASI ID: 1159 VASI System Status: Production Version: 1.0 Namespace: TIU SPM Product Line: Clinic...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - CPRS: Women's Health",
+    "domain": "Clinical Documentation",
+    "description": "VistA Package Name: WOMEN'S HEALTH VASI Name: VistA - Womens Health (VistA-WH) VASI ID: 1846 VASI System Status: Production Version: 1.0 Namespace: WV SPM Product Line: Clinical Services Brief Descrip...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA – Laboratory",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: VISTA - LABORATORY VASI Name: VistA - Laboratory (VistA-LAB) VASI ID: 1381 VASI System Status: Production Version: 5.2 Namespace: LR and LA SPM Product Line: Clinical Services Brie...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Laboratory: Anatomic Pathology (AP)",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: VISTA - LABORATORY: ANATOMIC PATHOLOGY (AP) VASI Name: VistA Laboratory - Anatomic Pathology [NOT A SYSTEM] (LAB-AP) VASI ID: 1810 VASI System Status: Not A System Version: 5.2 Nam...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Laboratory: Blood Bank",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: VBECS VASI Name: VistA - Blood Establishment Computer Software (VBECS) VASI ID: 1525 VASI System Status: Production Version: 5.2 Namespace: LR SPM Product Line: Clinical Services B...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Laboratory: Electronic Data Interchange",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: VISTA - LABORATORY: ELECTRONIC DATA INTERCHANGE VASI Name: VistA Laboratory - Electronic Data Interchange [NOT A SYSTEM] (LEDI) VASI ID: 1383 VASI System Status: Not A System Versi...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Laboratory: Point of Care",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: LABORATORY: POINT OF CARE (POC) VASI Name: VistA Laboratory - Point of Care VASI ID: 1812 VASI System Status: Not A System Version: 5.2 Namespace: LR SPM Product Line: Clinical Ser...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA - Laboratory: Universal Interface",
+    "domain": "Laboratory",
+    "description": "VistA Package Name: VISTA - LABORATORY: UNIVERSAL INTERFACE VASI Name: VistA Laboratory - Universal Interface VASI ID: 1813 VASI System Status: Not A System Version: 5.2 Namespace: LA SPM Product Line...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA Chemotherapy Manager (VCM)",
+    "domain": "Surgery",
+    "description": "VistA Package Name: Not Applicable VASI Name: VistA Chemotherapy Manager (VCM) VASI ID: 1883 VASI System Status: Production Version: 1.84.95 (DSIQ 1.3) Namespace: DSIQ SPM Product Line: Clinical Servi...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA Data Extraction Framework (VDEF)",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: VDEF VASI Name: Not Applicable VASI ID: NA VASI System Status: Technical Reference Only Version: 1.0 Namespace: VDEF SPM Product Line: VistA Office (VO) VistA Infrastructure Brief ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistA Imaging System",
+    "domain": "Radiology & Imaging",
+    "description": "VistA Package Name: IMAGING VASI Name: VistA - Imaging (IMAGE) VASI ID: 1328 VASI System Status: Production Version: 3.0 Namespace: MAG SPM Product Line: Clinical Services Brief Description: VistA Ima...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistALink",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: VISTALINK VASI Name: VistA - VistaLink [NOT A SYSTEM] VASI ID: 1844 VASI System Status: Not A System Version: 1.6 Namespace: XOBV SPM Product Line: VistA Office (VO) VistA Infrastr...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "VistAWeb",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VISTA WEB VASI Name: VistAWeb [INACTIVE] (NVW) VASI ID: 1853 VASI System Status: Inactive Version: 1.0 Namespace: WEBV SPM Product Line: VistA Office (VO) Technical Reference Brief...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Visual Impairment Service Team",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: VISUAL IMPAIRMENT SERVICE TEAM VASI Name: Not Applicable VASI ID:  NA VASI System Status: Technical Reference Only Version: 4.0 Namespace: ANRV SPM Product Line: Patient Care Servi...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Vitals/Measurements",
+    "domain": "Nursing",
+    "description": "VistA Package Name: GEN. MED. REC. - VITALS VASI Name: VistA Nursing - Vitals / Measurements (Vitals-R) VASI ID: 1854 VASI System Status: Production Version: 5.0 Namespace: GMRV SPM Product Line: Pati...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Voluntary Service System",
+    "domain": "Support Services",
+    "description": "VistA Package Name: Not Applicable VASI Name: Voluntary Service System [INACTIVE] (VSS) VASI ID: 1483 VASI System Status: Inactive Version: 5.3 Namespace: VSS SPM Product Line: VistA Office (VO) Techn...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Web VistA Remote Access Management (WebVRAM)",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: WEB VISTA REMOTE ACCESS MANAGEMENT VASI Name: Web VistA Remote Access Management (WebVRam) VASI ID: 2298 VASI System Status: Production Version: 1.0 Namespace: WEBG SPM Product Lin...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "Wounded, Injured and Ill Veterans",
+    "domain": "Uncategorized",
+    "description": "VistA Package Name: WOUNDED INJURED ILL WARRIORS VASI Name: Web VistA Remote Access Management (WebVRam) VASI ID: 1847 VASI System Status: Inactive Version: 1.0 Namespace: WII SPM Product Line: VistA ...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 1,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  },
+  {
+    "module": "XML Parser",
+    "domain": "Infrastructure",
+    "description": "VistA Package Name: Not Applicable VASI Name: VistA - XML Parser [NOT A SYSTEM] VASI ID: 1871 VASI System Status: Not A System Version: 1.1 Namespace: MXML SPM Product Line: VistA Office (VO) VistA In...",
+    "features": [],
+    "typical_users": [],
+    "dependencies": [],
+    "relevance_score": 3,
+    "relevance_notes": "Auto-classified — run LLM stage for detailed features."
+  }
+]

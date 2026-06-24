@@ -1,0 +1,299 @@
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study1.md#1-1), lines 1 to 100
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study2.md#1-1), lines 1 to 100
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study3.md#1-1), lines 1 to 100
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study4.md#1-1), lines 1 to 100
+
+Deep repo scan for cloning
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study5.md#1-1), lines 1 to 120
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study6.md#1-1), lines 1 to 120
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynboyHealth/Study7.md#1-1), lines 1 to 120
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/src)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/migrations)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/tests)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynbotUI/src)
+
+Searched for regex `^` (`**/backend/src/routers/**`), 50 results
+
+Searched for regex `^` (`**/backend/src/services/**`), 50 results
+
+Searched for files matching `**/backend/src/routers/**`, 20 matches
+
+Searched for files matching `**/backend/src/services/**`, 20 matches
+
+Searched for files matching `**/SynbotUI/src/**`, 7 matches
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/config.yaml)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/src/constants.py)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/src/deepseek.py)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/src/db.py)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/SynbotUI/src/App.jsx)
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/app.py#1-1), lines 1 to 100
+
+Read [](file:///c%3A/Users/DELL/Desktop/Moe/Chat%20Assisant%20%20placeware%20x1/backend/app.py)
+
+Created memory file [](file:///c%3A/Users/DELL/AppData/Roaming/Code/User/workspaceStorage/e9bccf69ffc81fb4e5737fabad787bdd/GitHub.copilot-chat/memory-tool/memories/OWExZDMwOWYtMzNmNS00MjYyLWJiNWEtYTQ1YWFmMGQ5MTRh/codebase_inventory.md)
+
+Searched for regex `nafdac|pharma|cold.chain|cold_chain|temperature|compliance|vaccine|drug|distribution` (`**/backend/src/**/*.py`), 100 results
+
+Searched for files matching `**/backend/src/routers/*.py`, 20 matches
+
+Searched for files matching `**/backend/src/services/*.py`, 20 matches
+
+Read [](file:///c%3A/Users/DELL/AppData/Roaming/Code/User/workspaceStorage/e9bccf69ffc81fb4e5737fabad787bdd/GitHub.copilot-chat/chat-session-resources/9a1d309f-33f5-4262-bb5a-a45aaf0d914a/toolu_bdrk_01M94GFmUkpVrPhWwwGhQ7i4__vscode-1777558512756/content.txt#1-1), lines 1 to 300
+
+Now I have everything I need. Let me synthesize the research and repo scan into a comprehensive plan. 
+
+Created memory file [](file:///c%3A/Users/DELL/AppData/Roaming/Code/User/workspaceStorage/e9bccf69ffc81fb4e5737fabad787bdd/GitHub.copilot-chat/memory-tool/memories/OWExZDMwOWYtMzNmNS00MjYyLWJiNWEtYTQ1YWFmMGQ5MTRh/plan.md)
+
+Here is the full analysis and the starter pack plan.
+
+---
+
+## Architecture Decision — My Recommendation
+
+**Keep FastAPI. Do NOT switch to Django.**
+
+Your Study7 makes the Django case well for a greenfield hospital system. But you're not starting from zero — you have 40+ routers, 30+ services, a working EOS agent framework, auth, workflow engine, and audit logging already built and tested. Throwing that away and rebuilding in Django would cost 3–4 months of lost ground. FastAPI handles relational, integrity-sensitive data fine through Supabase + Pydantic schemas. The right call is:
+
+> **FastAPI = Synbot Health overlay + gradual HMS (Phase 1–4)**
+> Django Admin = optional internal management panel if needed (Phase 3+, additive not replacement)
+
+This matches your own strategy: overlay first, phase the incumbent out. FastAPI IS the overlay layer.
+
+---
+
+## Plan: Synbot Health — Starter Pack
+
+**TL;DR:** Clone the repo, execute a clean pharma → hospital swap in one focused sprint (remove 6 pharma modules, rebrand 4 files, add hospital config + knowledge base), then build hospital-specific modules on top of the solid generic infrastructure already in place.
+
+---
+
+### Phase 0 — Clone & Sanitize (Day 1)
+
+1. Clone repo into `SynbotHealth/` (or separate Git repo)
+2. Create `.env.hospital` from `.env.example` — new Supabase project, same DeepSeek key
+3. Remove pharma-specific files entirely:
+
+| Remove | Reason |
+|---|---|
+| compliance.py | NAFDAC, pharma QMS — irrelevant |
+| qc.py | Pharma batch temp, batch release |
+| logistics.py | Cold chain logistics |
+| replenishment.py | Pharma stock replenishment |
+| cold_chain_integrity_agent.py | Pharma cold storage |
+| cold_room_capacity_agent.py | Pharma cold storage |
+| compliance_agent.py | NAFDAC-specific |
+| `migrations/042_cold_room_monitoring.sql` | Pharma schema |
+| `migrations/083_qc_temperature_nafdac.sql` | Pharma NAFDAC/QC schema |
+
+4. Remove all `app.py` router registrations for the above
+5. Run smoke tests — confirm zero regressions on generic routes (`/chat`, `/auth`, `/staff`, `/dashboard`)
+
+---
+
+### Phase 1 — Rebrand & Hospital Config (Day 1–2)
+
+**constants.py** — Change:
+- `BOT_BRAND = "Royan Hospital"` / `BOT_NAME = "SynbotHealth"`
+- `NAFDAC_DISCLAIMER` → `NDPA_DISCLAIMER` (Nigeria Data Protection Act 2023 — patient data)
+- Workflow stages: remove `nafdac_sampling`, `cold_room_stacked`, `port_clearing` → replace with clinical stages: `patient_registered → triaged → consulting → lab_ordered → discharged`
+- Table prefix: `placeware_` → `royan_`
+
+**config.yaml** — Replace entirely:
+- Company: Royan Hospital, Lagos
+- Services: Outpatient, Inpatient, Diagnostics, Pharmacy, Emergency
+- Departments: A&E, OPD, Ward, Lab, Pharmacy, Billing
+- Email routing per department head
+
+**deepseek.py** — New system prompt:
+- Clinical AI assistant for Royan Hospital
+- Helps patients with appointments, services, departments, doctor queries
+- Staff assistant for clinical workflows, scheduling, reporting
+- Appends NDPA 2023 patient data disclaimer
+
+**tool_manifest.py** — Remap intents:
+- Remove: `trigger_replenishment`, cold chain intents
+- Add: `book_appointment`, `check_bed_availability`, `request_lab_order`, `discharge_patient`, `generate_billing_summary`
+
+**App.jsx** — New nav:
+- Dashboard → Clinical Dashboard
+- Remove: SageImport, Finance Analytics (or repurpose)
+- Add: Queue, EMR, Wards, Lab, Pharmacy, Billing, Ask SynbotHealth
+
+---
+
+### Phase 2 — Hospital Knowledge Base (Day 2–3)
+
+1. Create `data/hospital_qna_pairs.csv` — seed Q&A pairs about:
+   - Royan Hospital services, departments, doctors, opening hours, contacts
+   - Common patient questions (appointment booking, fees, insurance, location)
+   - Staff-facing: procedures, SOPs, escalation paths
+2. Run seed_qna.py against new Supabase project to embed + store (384-dim, existing pipeline unchanged)
+3. Run retrieval.py validation test — confirm `match_documents` RPC returns hospital answers
+
+---
+
+### Phase 3 — Hospital Database Schema (Day 3–5)
+
+New migrations to write (building on existing `000_full_schema_with_rls.sql` foundation):
+
+| Migration | Creates |
+|---|---|
+| `100_patients.sql` | `royan_patients` — demographics, MRN, registration |
+| `101_encounters.sql` | `royan_encounters` — visits, triage, consultation |
+| `102_beds_wards.sql` | `royan_beds`, `royan_wards` — bed occupancy tracking |
+| `103_lab_orders.sql` | `royan_lab_orders`, `royan_lab_results` |
+| `104_prescriptions.sql` | `royan_prescriptions`, `royan_dispensing` |
+| `105_billing_hospital.sql` | `royan_billing`, `royan_payments`, `royan_insurance_claims` |
+| `106_appointments.sql` | `royan_appointments` — pre-book, slots, reminders |
+
+Reuse: `royan_staff`, `royan_workflows`, `royan_audit_log`, `royan_agent_memory` (prefix-renamed from existing)
+
+---
+
+### Phase 4 — Hospital Routers (Day 5–10)
+
+Build these new routers (use staff_ops.py and `crm.py` as templates for patterns):
+
+| New Router | Replaces | Hospital Function |
+|---|---|---|
+| `patient_registration.py` | CRM leads flow | Register patients, MRN generation, demographics |
+| `queue_clinical.py` | Existing `frontdesk.py` (extend) | Walk-in triage queue, real-time wait times |
+| `appointments.py` | `calendar_tasks.py` (extend) | Doctor slots, booking, reminders |
+| `wards.py` | — (new) | Bed availability, admissions, ward rounds |
+| `lab.py` | — (new) | Lab order lifecycle, result upload |
+| `pharmacy_dispensing.py` | — (new) | Prescription fulfillment, stock check |
+| `billing_hospital.py` | Extend `billing.py` | Itemized bills, insurance/HMO splits, Paystack |
+
+---
+
+### Phase 5 — Hospital Agents (Day 10–14)
+
+New agents (use agents existing agents as template — they follow a common `run()` interface):
+
+| Agent | Replaces | Purpose |
+|---|---|---|
+| `patient_flow_agent.py` | `cold_chain_integrity_agent` | Monitor queue bottlenecks, triage delays |
+| `bed_capacity_agent.py` | `cold_room_capacity_agent` | Ward occupancy, discharge predictions |
+| `clinical_compliance_agent.py` | `compliance_agent` | NDPA 2023, clinical audit, record integrity |
+| `lab_turnaround_agent.py` | (new) | Lab TAT alerts, result delays |
+| `billing_reconciliation_agent.py` | (new) | Unpaid bills, insurance claims status |
+
+---
+
+### What Stays 100% Unchanged (Generic Infrastructure)
+
+These need zero modification — use as-is:
+- Auth system (`auth_utils.py`, `middleware.py`, JWT, refresh tokens)
+- EOS framework (`eos/tool_manifest.py` structure, `eos/service.py`)
+- Workflow engine (`workflow.py`, `workflow_engine.py`)
+- Agent memory (`agent_memory.py` — 30-day TTL, 200 per agent — perfect for clinical context)
+- Retrieval + embedding (`retrieval.py`, `embed_proxy.py`, `llm_client.py`)
+- Document engine (`document_engine.py`, `document_storage.py`)
+- Maintenance tracking (`maintenance_tracking.py`) — hospitals have equipment maintenance too, keep it
+- Schema registry (`schema_registry.py`) — drives dynamic forms, perfect for patient intake forms
+- WebSocket realtime (`realtime_ws.py`) — live queue updates, bed status
+- KPI watchdog (`kpi_watchdog.py`) — repurpose for clinical KPIs
+- React frontend shell + component library
+- WP chat widget (placeware-chat-widget) — deploy on royanhospital.com
+
+---
+
+### Relevant Files Summary
+
+| File | Action |
+|---|---|
+| constants.py | **MODIFY** — branding, table prefix, workflow stages, disclaimer |
+| config.yaml | **REPLACE** — full hospital config |
+| deepseek.py | **MODIFY** — system prompt only |
+| tool_manifest.py | **MODIFY** — remap hospital intents |
+| db.py | **MINOR MODIFY** — table name constants only |
+| App.jsx | **MODIFY** — nav + routes |
+| placeware-chat.php | **MINOR** — namespace rebrand |
+| compliance.py | **DELETE** |
+| qc.py | **DELETE** |
+| logistics.py | **DELETE** |
+| qna_pairs_with_embeddings.csv | **REPLACE** — hospital Q&A dataset |
+| `migrations/100–106_*.sql` | **CREATE** — hospital schema |
+
+---
+
+### Verification Checkpoints
+
+1. After Phase 0: `pytest backend/tests/test_smoke.py` passes with zero pharma routes referenced
+2. After Phase 1: `/chat` endpoint returns responses branded as SynbotHealth with hospital context
+3. After Phase 2: Knowledge retrieval returns relevant hospital answers for "what are your hours", "how do I book an appointment"
+4. After Phase 3: Supabase tables `royan_patients`, `royan_encounters`, `royan_beds` exist with correct RLS policies
+5. After Phase 4: `/patient/register`, `/queue/clinical`, `/appointments/book` return 200 with correct Pydantic schemas
+6. Integration test: Full patient journey — registration → queue → consultation → lab order → billing — end-to-end in test environment
+
+---
+
+### Key Decisions
+
+- **Architecture: FastAPI stays** — Django not needed; existing infrastructure is solid
+- **Overlay strategy confirmed** — Hope HMS continues running; Synbot Health runs alongside via WP widget embed on hospital website
+- **Hope HMS integration** — Phase 2: lightweight API bridge or webhook to pull existing patient records if Hope exposes any API; fallback is manual data entry initially
+- **NDPA 2023 compliance** — replaces NAFDAC disclaimer; patient data must never be logged raw; audit trail required on all EMR touches
+- **Excluded from scope initially**: FHIR/HL7 compliance, full inpatient billing with HMO integration (Phase 3+), mobile app, offline mode
+
+---
+
+Does this plan match your vision? Two things I want your input on before we start:
+
+1. **Repo structure** — Should Synbot Health live as a branch on the same Git repo, or a completely separate new repo? (Separate is cleaner for client isolation, same repo is easier to pull infrastructure fixes back)
+2. **Hope HMS integration** — Do you know if Hope Software has an API or export capability? That determines whether Phase 2 can pull existing patient records automatically or needs a CSV import path first.You've used 64% of your weekly rate limit. Your weekly rate limit will reset on May 4 at 1:00 AM. [Learn More](https://aka.ms/github-copilot-rate-limit-error)
+
+
+
+Updated memory file [](file:///c%3A/Users/DELL/AppData/Roaming/Code/User/workspaceStorage/e9bccf69ffc81fb4e5737fabad787bdd/GitHub.copilot-chat/memory-tool/memories/OWExZDMwOWYtMzNmNS00MjYyLWJiNWEtYTQ1YWFmMGQ5MTRh/plan.md)
+
+Good — two things to add before you switch over.
+
+---
+
+## Additions to the Plan
+
+### 1. Hope HMS Integration Layer (new Phase)
+
+Your API integration research matters here. Hope HMS is a desktop-first Nigerian system — it almost certainly does **not** have a public REST API. Based on that assumption:
+
+- **Immediate (Phase 1–2):** CSV export path — reuse the existing `sage_csv_import.py` + `data_ingest.py` pattern to build a `hope_csv_import.py` adapter. It's already built for exactly this scenario.
+- **If Hope exposes any API/webhooks:** Build `backend/src/services/hope_adapter.py` — a thin one-way bridge mapping Hope patient IDs → `royan_patients` MRNs. Read-only during the overlay phase. No dual-write until Hope is fully phased out.
+- **Rule during overlay:** Synbot Health **never writes back** to Hope's database. Overlay = read + enhance, not replace data.
+
+### 2. Pre-Flight Checklist — First 30 Minutes in the New Repo
+
+When you open ROYANsynbot, do these before anything else so the environment is clean:
+
+| # | Task |
+|---|---|
+| 1 | Create a new **local post gres SQL project** for Royan Hospital — separate from the pharma project |
+| 2 | Copy .env → .env in new repo, swap 'postgresURL` + `postgrestURL_KEY` to the new project |
+| 3 | Confirm `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are still valid (reuse same key) |
+| 4 | Run `pip install -r backend/requirements.txt` in the new repo |
+| 5 | Run `pytest test_smoke.py -q` to confirm baseline passes before any changes |
+| 6 | **Share this plan with me** (paste it in chat) — I won't have memory of this session in the new workspace |
+
+### 3. One Naming Decision to Lock In Now
+
+All new hospital tables use prefix `royan_` and migration files start at `100_`. This avoids any conflict if you ever need to reference the original pharma migrations for comparison. Confirm this is fine and I'll use it consistently from day one in the new repo.
+
+---
+
+That's everything. The plan is solid. Open ROYANsynbot, share the plan with me there, and we start with Phase 0 — deleting the pharma files and running the first smoke test.

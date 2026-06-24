@@ -1,0 +1,576 @@
+import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
+import {
+  LayoutDashboard,
+  DollarSign,
+  BarChart3,
+  Users,
+  Settings,
+  MessageSquare,
+  Workflow,
+  Shield,
+  ShieldCheck,
+  Bot,
+  ClipboardList,
+  ChevronDown,
+  LogOut,
+  MoreVertical,
+  Sun,
+  Moon,
+  Activity,
+  FlaskConical,
+  Pill,
+  BedDouble,
+  Receipt,
+  Package,
+  CalendarCheck,
+  Building2,
+  Stethoscope,
+  ScanLine,
+  Scissors,
+  HeartPulse,
+  MessageSquare as MsgSquare,
+  CreditCard,
+  ConciergeBell,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "./AuthProvider";
+import { api } from "@/lib/api-client";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type SidebarProps = {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+};
+
+type NavChild = { label: string; href: string };
+
+type NavItem = {
+  label: string;
+  icon: React.ElementType;
+  href?: string;
+  badge?: string;
+  roles?: string[];
+  children?: NavChild[];
+  aiPulse?: boolean;
+};
+
+const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
+  const location = useLocation();
+  const { roles, isLoading: authLoading, logout } = useAuth();
+
+  // Track which collapsible groups are open
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  // Live badge counts for clinical nav items
+  const { data: queueData } = useQuery({
+    queryKey: ["sidebar-queue-badge"],
+    queryFn: () => api.hospital.queue.list({ status: "patient_registered" }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const { data: labData } = useQuery({
+    queryKey: ["sidebar-lab-badge"],
+    queryFn: () => api.hospital.lab.listOrders({ status: "ordered" }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const queueCount: number = queueData?.count ?? 0;
+  const labCount: number = labData?.count ?? 0;
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  const isActive = (path: string) => location.pathname === path;
+  const isActiveGroup = (paths: string[]) =>
+    paths.some((p) => location.pathname.startsWith(p));
+
+  const navItems: NavItem[] = [
+    {
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      href: "/",
+    },
+
+    // ── Hospital Operations (primary) ──────────────────────────────────
+    {
+      label: "Admin Dashboard",
+      icon: LayoutDashboard,
+      href: "/hospital/admin-dashboard",
+      roles: ["admin", "management"],
+    },
+    {
+      label: "My Dashboard",
+      icon: Stethoscope,
+      href: "/hospital/doctor",
+      roles: ["doctor", "admin", "management"],
+    },
+    {
+      label: "Nurse Dashboard",
+      icon: HeartPulse,
+      href: "/hospital/nurse",
+      roles: ["nurse", "admin"],
+    },
+    {
+      label: "Front Desk",
+      icon: ConciergeBell,
+      href: "/hospital/front-desk",
+      roles: ["admin", "ops", "front_desk", "management", "nurse"],
+    },
+    {
+      label: "CPRS / Patients",
+      icon: Users,
+      href: "/hospital/patients",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Queue & Flow",
+      icon: Activity,
+      href: "/hospital/queue",
+      badge: queueCount > 0 ? String(queueCount) : undefined,
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Appointments",
+      icon: CalendarCheck,
+      href: "/hospital/appointments",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Lab & Diagnostics",
+      icon: FlaskConical,
+      href: "/hospital/lab",
+      badge: labCount > 0 ? String(labCount) : undefined,
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Pharmacy",
+      icon: Pill,
+      href: "/hospital/pharmacy",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Nursing Station",
+      icon: Activity,
+      href: "/hospital/nursing",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Radiology",
+      icon: ScanLine,
+      href: "/hospital/radiology",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Surgical Theatre",
+      icon: Scissors,
+      href: "/hospital/theatre",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Specialist Clinics",
+      icon: Stethoscope,
+      href: "/hospital/specialist",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "MCH / OB-GYN",
+      icon: HeartPulse,
+      href: "/hospital/mch",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Digital Engagement",
+      icon: MsgSquare,
+      href: "/hospital/engagement",
+      roles: ["admin", "ops", "management"],
+    },
+    {
+      label: "Quality & Safety",
+      icon: ShieldCheck,
+      href: "/hospital/quality",
+      roles: ["admin", "ops", "nurse", "doctor", "management", "quality_assurance", "qa"],
+    },
+    {
+      label: "HR — Shifts",
+      icon: Users,
+      href: "/hospital/hr",
+      roles: ["admin", "hr", "management"],
+    },
+    {
+      label: "Reports & Analytics",
+      icon: BarChart3,
+      href: "/hospital/reports",
+      roles: ["admin", "management", "finance", "quality_assurance", "qa"],
+    },
+    {
+      label: "Scheduling",
+      icon: CalendarCheck,
+      href: "/calendar/tasks",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Wards & Beds",
+      icon: BedDouble,
+      href: "/hospital/wards",
+      roles: ["admin", "ops", "nurse", "doctor", "management"],
+    },
+    {
+      label: "Compliance & Audits",
+      icon: ShieldCheck,
+      href: "/compliance",
+      roles: ["admin", "quality_assurance", "qa", "management"],
+    },
+    {
+      label: "Billing",
+      icon: Receipt,
+      href: "/hospital/billing",
+      roles: ["admin", "finance"],
+    },
+    {
+      label: "HMO & Coverage",
+      icon: Building2,
+      href: "/hospital/hmo",
+      roles: ["admin", "finance"],
+    },
+
+    // ── Management & Admin (secondary) ────────────────────────────────
+    {
+      label: "Executive Summary",
+      icon: BarChart3,
+      href: "/executive",
+      roles: ["admin", "management"],
+    },
+    {
+      label: "Finance",
+      icon: DollarSign,
+      roles: ["admin", "finance"],
+      children: [
+        { label: "Analytics",        href: "/finance/analytics" },
+        { label: "Reports",          href: "/finance/reports" },
+        { label: "AR & Alerts",      href: "/finance/ar" },
+        { label: "Vendor Payments",  href: "/finance/vendor-payments" },
+        { label: "Budget",           href: "/finance/budget" },
+      ],
+    },
+    {
+      label: "HR",
+      icon: Users,
+      href: "/hr",
+      roles: ["admin", "hr"],
+    },
+    {
+      label: "Staff Dashboard",
+      icon: ClipboardList,
+      roles: ["admin", "hr", "ops", "management"],
+      children: [
+        { label: "Dashboard",     href: "/staff/dashboard" },
+        { label: "Time Tracker",  href: "/staff/time-tracker" },
+        { label: "Collaboration", href: "/staff/collaboration" },
+      ],
+    },
+    {
+      label: "Procurement",
+      icon: Package,
+      href: "/operations/suppliers",
+      roles: ["admin", "ops"],
+    },
+    {
+      label: "Workflow",
+      icon: Workflow,
+      href: "/workflow",
+      roles: ["admin"],
+    },
+    {
+      label: "User Access",
+      icon: Shield,
+      href: "/admin/users",
+      roles: ["admin"],
+    },
+    {
+      label: "Fee Schedule",
+      icon: DollarSign,
+      href: "/admin/fee-schedule",
+      roles: ["admin", "finance"],
+    },
+    {
+      label: "Payment Gateway",
+      icon: CreditCard,
+      href: "/admin/payments",
+      roles: ["admin", "finance"],
+    },
+    {
+      label: "Audit Log",
+      icon: ClipboardList,
+      href: "/admin/audit-log",
+      roles: ["admin"],
+    },
+
+    // ── AI & Tools ─────────────────────────────────────────────────────
+    {
+      label: "Ask Synbot",
+      icon: MessageSquare,
+      href: "/synbot",
+      badge: "AI",
+      aiPulse: true,
+    },
+    {
+      label: "Agent Stack",
+      icon: Bot,
+      href: "/agents",
+      badge: "AI",
+      aiPulse: true,
+      roles: ["admin", "management"],
+    },
+
+    {
+      label: "Settings",
+      icon: Settings,
+      href: "/settings",
+      roles: ["admin"],
+    },
+  ];
+
+  const canView = (allowed?: string[]) => {
+    if (authLoading) return true;
+    if (!allowed || allowed.length === 0) return true;
+    return roles.some((role) => allowed.includes(role));
+  };
+
+  const visibleNavItems = navItems.filter((item) => canView(item.roles));
+
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  // Derive user initials from roles/auth — fallback to "PW"
+  const userRole = roles[0] ?? "user";
+  const initials = userRole.slice(0, 2).toUpperCase();
+
+  return (
+    <>
+      {/* Mobile overlay */}
+      <div
+        className={cn(
+          "fixed inset-0 z-20 bg-black/40 transition-opacity lg:hidden",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        onClick={onMobileClose}
+      />
+
+      {/* Sidebar panel */}
+      <div
+        className={cn(
+          "fixed left-0 top-0 z-30 flex h-screen w-64 flex-col border-r border-sidebar-border/70 bg-sidebar/95 text-sidebar-foreground backdrop-blur-lg transition-transform duration-300",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:translate-x-0",
+        )}
+      >
+        {/* Logo/Header */}
+        <div className="border-b border-sidebar-border/80 px-4 py-3.5">
+          <div
+            className="relative overflow-hidden rounded-xl px-3 py-2"
+            style={{
+              background: "linear-gradient(135deg, rgba(0,200,220,0.07) 0%, rgba(0,90,200,0.05) 100%)",
+              border: "1px solid rgba(0,200,220,0.15)",
+              boxShadow: "0 0 18px rgba(0,200,220,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+          >
+            {/* Radial highlight shimmer */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              aria-hidden
+              style={{
+                background: "radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255,255,255,0.07) 0%, transparent 70%)",
+              }}
+            />
+            <img
+              src="/royan-logo.png"
+              alt="Royan Hospital"
+              className="relative w-full h-auto object-contain"
+              style={{
+                maxHeight: "48px",
+                filter: "drop-shadow(0 2px 8px rgba(0,200,220,0.28)) drop-shadow(0 0 2px rgba(255,255,255,0.15))",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3 scrollbar-thin">
+          <div className="space-y-0.5">
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const hasChildren = !!item.children;
+              const groupOpen = !!openGroups[item.label];
+              const childActive = hasChildren
+                ? isActiveGroup(item.children!.map((c) => c.href))
+                : false;
+              const itemActive = !hasChildren && isActive(item.href ?? "");
+
+              if (hasChildren) {
+                return (
+                  <Collapsible
+                    key={item.label}
+                    open={groupOpen}
+                    onOpenChange={() => toggleGroup(item.label)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <button
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                          childActive
+                            ? "bg-sidebar-accent/70 text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{item.label}</span>
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 opacity-50 transition-transform duration-200",
+                            groupOpen && "rotate-180",
+                          )}
+                        />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                      <div className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/50 pl-3 pb-1">
+                        {item.children!.map((child) => (
+                          <Link
+                            key={child.href}
+                            to={child.href}
+                            onClick={onMobileClose}
+                            className={cn(
+                              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-all duration-150",
+                              isActive(child.href)
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-elevation-1"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                            )}
+                          >
+                            <span className="h-1 w-1 rounded-full bg-current opacity-50" />
+                            {child.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.label}
+                  to={item.href ?? "/"}
+                  onClick={onMobileClose}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                    itemActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-elevation-1"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.aiPulse && (
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                    </span>
+                  )}
+                  {item.badge && !item.aiPulse && (
+                    <span className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                      item.badge === "AI"
+                        ? "bg-gradient-primary text-primary-foreground"
+                        : "bg-orange-500 text-white",
+                    )}>
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* User Profile Footer */}
+        <div className="border-t border-sidebar-border/80 p-3">
+          <div className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-sidebar-accent/40 transition-colors duration-150">
+            {/* Avatar */}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-primary text-xs font-bold text-primary-foreground shadow-elevation-1">
+              {initials}
+            </div>
+            {/* Name + role */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-medium leading-tight">
+                Roy
+              </span>
+              <span className="truncate text-[11px] capitalize text-sidebar-foreground/50 leading-tight">
+                {userRole}
+              </span>
+            </div>
+            {/* Actions dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
+                  aria-label="User options"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                side="top"
+                sideOffset={8}
+                className="w-48"
+              >
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setTheme(isDark ? "light" : "dark")}
+                >
+                  {isDark ? (
+                    <Sun className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Moon className="mr-2 h-4 w-4" />
+                  )}
+                  {isDark ? "Light mode" : "Dark mode"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => logout()}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default Sidebar;
