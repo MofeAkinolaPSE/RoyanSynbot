@@ -16,9 +16,12 @@ else
 fi
 
 echo "[docker] Using: ${DOCKER}"
-echo "[docker] Tearing down old volumes..."
+echo "[docker] Stopping containers (data volumes preserved)..."
 cd "${ROOT}/deploy"
-"${DOCKER}" compose down -v 2>/dev/null || true
+"${DOCKER}" compose down 2>/dev/null || true
 
 echo "[docker] Building and starting full stack..."
-"${DOCKER}" compose up --build "$@"
+"${DOCKER}" compose up -d --build "$@"
+echo ""
+echo "[docker] Stack is up. Your login credentials and patient data are preserved."
+echo "[docker] To wipe everything and start fresh, run: bash reset-dev.sh"
