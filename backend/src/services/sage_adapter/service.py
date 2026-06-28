@@ -154,7 +154,7 @@ def ar_aging_customers(
     return []
 
 
-def get_latest_gl_snapshot(client: Any = None) -> List[Dict[str, Any]]:
+def get_latest_gl_snapshot(client: Any = None, limit: int = 1000) -> List[Dict[str, Any]]:
     return []
 
 

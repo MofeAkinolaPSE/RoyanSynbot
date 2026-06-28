@@ -215,7 +215,7 @@ async def update_order_status(request: Request, order_id: str, payload: OrderSta
     )
     return {"order_id": order_id, "from": current_status, "to": new_status, "status": "updated"}
 from src.llm_client import LLMClient  # new microservice-based LLM abstraction (to be added)
-from src.middleware import verify_jwt, rate_limit, RequestTimingMiddleware
+from src.middleware import verify_jwt, rate_limit, RequestTimingMiddleware, CorrelationIDMiddleware
 from src.db import (
     db,
     audit_event, 
@@ -288,22 +288,9 @@ from src.auth_utils import (
     verify_password,
     hash_password,
 )
-from src.services.sage_adapter.schemas import ImportBundle, ImportMeta
 from src.services.sage_adapter.validators import (
     resolve_headers,
     canonicalize_rows,
-    REQUIRED_CUSTOMERS,
-    REQUIRED_AR,
-    REQUIRED_AP,
-    REQUIRED_GL,
-    REQUIRED_INVENTORY,
-    REQUIRED_STAFF,
-    ALIASES_CUSTOMERS,
-    ALIASES_AR,
-    ALIASES_AP,
-    ALIASES_GL,
-    ALIASES_INVENTORY,
-    ALIASES_STAFF,
     ALIASES_HR_PAYROLL,
     ALIASES_HR_ABSENCES,
     ALIASES_OPS_ORDERS,
@@ -311,14 +298,6 @@ from src.services.sage_adapter.validators import (
     ALIASES_CRM_PIPELINE,
 )
 from src.services.sage_adapter.parser import parse_tabular_upload
-from src.services.sage_adapter.normalizer import (
-    to_customers,
-    to_ar,
-    to_ap,
-    to_gl,
-    to_inventory,
-    to_staff,
-)
 from src.services.sage_adapter.service import latest_inventory_snapshot, inventory_by_skus, ar_trend_summary, kpis, ar_aging_buckets, ar_aging_customers
 from src.services.forecasting import forecast_ar_balance
 from src.services.hr import payroll_and_absence_summary
@@ -541,6 +520,16 @@ app.include_router(digital_twin_router)
 app.include_router(capability_discovery_router)
 from src.routers.diagnostics import router as diagnostics_router
 app.include_router(diagnostics_router)
+from src.routers.canonical import router as canonical_router
+app.include_router(canonical_router)
+from src.routers.observability import router as observability_router
+app.include_router(observability_router)
+from src.routers.privacy import router as privacy_router
+app.include_router(privacy_router)
+from src.routers.workflow_transitions import router as workflow_transitions_router
+app.include_router(workflow_transitions_router)
+from src.routers.mdm_governance import router as mdm_governance_router
+app.include_router(mdm_governance_router)
 
 # Register tracking webhook + order status endpoints on the real app
 app.add_api_route("/webhook/tracking", webhook_tracking_update, methods=["POST"])
@@ -731,6 +720,7 @@ async def _start_workflow_automation():
         logging.warning(f"Workflow automation startup failed: {e}")
 
 
+app.add_middleware(CorrelationIDMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 allow_credentials = CORS_ALLOW_ORIGINS != ["*"]
 app.add_middleware(
@@ -1806,7 +1796,7 @@ async def _run_import_with_retry(
     return None
 
 
-def _ifrs_finance_lineage_warnings(bundle: ImportBundle) -> list[dict]:
+def _ifrs_finance_lineage_warnings(bundle) -> list[dict]:
     """Return non-blocking IFRS baseline warnings for finance datasets.
 
     Warnings are designed for lineage/compliance visibility and do not block import.
@@ -2977,12 +2967,16 @@ def _build_demand_forecast_manifest(
     }
 
 
-async def _process_sage_import_job(
+async def _process_sage_import_job_removed() -> None:
+    """Removed — Sage CSV import pipeline is not used in SynbotHealth."""
+    pass
+
+
+async def _process_sage_import_job_disabled(
     *,
     job_id: str | None,
     batch_id: str,
     imported_at: str,
-    meta: ImportMeta,
     datasets: dict[str, dict],
     idempotency_key: str | None,
     raise_on_error: bool,
@@ -3961,71 +3955,33 @@ def chrome_devtools_probe():
 
 @app.get("/health")
 def health_check():
-    """Structured health check for EOS and monitoring systems.
-
-    Returns DB connectivity, latest import timestamp, row counts for
-    the two primary data tables, and a stale_pipeline_alert flag.
-    """
-    from src.constants import PIPELINE_STALE_HOURS
+    """Structured health check for EOS and monitoring systems."""
     import datetime
 
     db_connected = False
-    last_sage_import: str | None = None
-    sage_ar_row_count = 0
-    sage_gl_row_count = 0
-    stale_pipeline_alert = True
+    patient_count = 0
+    billing_count = 0
+    stale_pipeline_alert = False
 
     try:
         from src.db import db as _db
-        # Lightweight connectivity probe using a core hospital table
         probe = _db.table("royan_users").select("id", count="exact").limit(1).execute()
         db_connected = True
 
-        # Most recent successful import timestamp
         try:
-            from src.db import get_latest_successful_import_batch
-            batch_id = get_latest_successful_import_batch("sage")
-            if batch_id:
-                import_row = (
-                    _db.table("royan_import_jobs")
-                    .select("completed_at")
-                    .eq("batch_id", batch_id)
-                    .order("completed_at", desc=True)
-                    .limit(1)
-                    .execute()
-                    .data
-                )
-                if import_row:
-                    last_sage_import = import_row[0].get("completed_at")
+            pt = _db.table("royan_patients").select("id", count="exact").limit(1).execute()
+            patient_count = pt.count or 0
         except Exception:
             pass
 
-        # AR snapshot row count (royan billing used as proxy)
         try:
-            ar_resp = _db.table("royan_billing").select("id", count="exact").limit(1).execute()
-            sage_ar_row_count = ar_resp.count or 0
+            bl = _db.table("royan_billing").select("id", count="exact").limit(1).execute()
+            billing_count = bl.count or 0
         except Exception:
             pass
 
-        # GL snapshot row count
-        try:
-            gl_resp = _db.table("royan_gl_snapshot").select("id", count="exact").limit(1).execute()
-            sage_gl_row_count = gl_resp.count or 0
-        except Exception:
-            pass
+        stale_pipeline_alert = patient_count == 0
 
-        # Staleness check
-        if last_sage_import:
-            try:
-                ts = datetime.datetime.fromisoformat(last_sage_import.replace("Z", "+00:00"))
-                age_hours = (datetime.datetime.now(datetime.timezone.utc) - ts).total_seconds() / 3600
-                stale_pipeline_alert = age_hours > PIPELINE_STALE_HOURS
-            except Exception:
-                stale_pipeline_alert = True
-        else:
-            stale_pipeline_alert = sage_ar_row_count == 0
-
-        # Upsert a heartbeat row in agent_registry so EOS can query DB directly
         try:
             _db.table("agent_registry").upsert(
                 {
@@ -4047,11 +4003,9 @@ def health_check():
     return {
         "status": status,
         "db_connected": db_connected,
-        "last_sage_import": last_sage_import,
-        "sage_ar_row_count": sage_ar_row_count,
-        "sage_gl_row_count": sage_gl_row_count,
+        "patient_count": patient_count,
+        "billing_count": billing_count,
         "stale_pipeline_alert": stale_pipeline_alert,
-        "pipeline_stale_threshold_hours": PIPELINE_STALE_HOURS,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
@@ -5743,100 +5697,9 @@ async def update_user_status(request: Request, user_id: str, payload: UserStatus
     return {"status": "ok"}
 
 
-# ---- Sage Adapter Import ----------------------------------------------------
-
-@app.post("/sage/import")
-async def sage_import(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    customers: UploadFile | None = File(default=None),
-    ar: UploadFile | None = File(default=None),
-    ap: UploadFile | None = File(default=None),
-    gl: UploadFile | None = File(default=None),
-    inventory: UploadFile | None = File(default=None),
-    staff: UploadFile | None = File(default=None),
-    async_mode: bool = False,
-    admin_ok: bool = Depends(require_admin_token),
-):
-    """Accept CSV files for Sage snapshots, validate headers, normalize, and return counts.
-
-    This MVP endpoint validates and echoes counts only; persistence to Supabase
-    snapshot tables and audit logging will be added next.
-    """
-    import uuid, datetime
-
-    batch_id = str(uuid.uuid4())
-    imported_at = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-    meta = ImportMeta(batch_id=batch_id, imported_at=imported_at)
-    idempotency_key = _extract_idempotency_key(request)
-
-    if idempotency_key:
-        existing = find_import_job_by_idempotency("sage", idempotency_key)
-        if existing:
-            return _replay_or_busy_response(existing, imported_at)
-
-    datasets: dict[str, dict] = {}
-    for name, file in (
-        ("customers", customers),
-        ("ar", ar),
-        ("ap", ap),
-        ("gl", gl),
-        ("inventory", inventory),
-        ("staff", staff),
-    ):
-        if file:
-            datasets[name] = {
-                "filename": file.filename,
-                "content_type": file.content_type,
-                "content": await file.read(),
-            }
-
-    job_id = create_import_job(
-        domain="sage",
-        batch_id=batch_id,
-        imported_at=imported_at,
-        metadata={
-            "source_system": "sage50",
-            "idempotency_key": idempotency_key,
-            "mode": "async" if async_mode else "sync",
-        },
-        idempotency_key=idempotency_key,
-        status="queued" if async_mode else "running",
-    )
-
-    if async_mode:
-        background_tasks.add_task(
-            _process_sage_import_job,
-            job_id=job_id,
-            batch_id=batch_id,
-            imported_at=imported_at,
-            meta=meta,
-            datasets=datasets,
-            idempotency_key=idempotency_key,
-            raise_on_error=False,
-        )
-        return JSONResponse(
-            status_code=202,
-            content={
-                "status": "queued",
-                "job_id": job_id,
-                "batch_id": batch_id,
-                "imported_at": imported_at,
-            },
-        )
-
-    result = await _process_sage_import_job(
-        job_id=job_id,
-        batch_id=batch_id,
-        imported_at=imported_at,
-        meta=meta,
-        datasets=datasets,
-        idempotency_key=idempotency_key,
-        raise_on_error=True,
-    )
-    if result is None:
-        raise HTTPException(status_code=500, detail="Import failed")
-    return result
+@app.post("/sage/import", include_in_schema=False)
+async def sage_import_removed():
+    raise HTTPException(status_code=410, detail="Sage import not available in hospital deployment")
 
 
 @app.post("/import")
@@ -5998,61 +5861,9 @@ async def import_inventory(
             pass
 
 
-@app.get("/sage/history")
-async def sage_import_history(
-    request: Request,
-    limit: int = 50,
-):
-    """Retrieve history of Sage imports from import jobs with audit fallback."""
-    require_roles(request, ["admin", "finance", "management", "ops"])
-    limit = max(1, min(limit, 200))
-
-    jobs = list_import_jobs(limit=limit, domain="sage")
-    history = []
-
-    for job in jobs:
-        counts = job.get("counts") or {}
-        if not isinstance(counts, dict):
-            counts = {}
-        count_parts = [f"{str(k).upper()}: {v}" for k, v in counts.items() if v and str(v) != "0"]
-        count_str = ", ".join(count_parts) if count_parts else "No records"
-
-        status = str(job.get("status") or "unknown").lower()
-        history.append(
-            {
-                "id": job.get("id"),
-                "date": job.get("created_at") or job.get("imported_at"),
-                "user": (job.get("metadata") or {}).get("actor_id", "System") if isinstance(job.get("metadata"), dict) else "System",
-                "action": f"Import {str(job.get('batch_id') or 'unknown')[:8]}...",
-                "status": "success" if status in {"succeeded", "partial_success"} else "error",
-                "details": count_str,
-            }
-        )
-
-    if history:
-        return {"data": history}
-
-    logs = get_audit_logs(limit=limit)
-    for log in logs:
-        evt_type = log.get("event_type")
-        if not evt_type or "sage_import" not in evt_type:
-            continue
-        details = log.get("details") or {}
-        counts = details.get("counts", {}) if isinstance(details, dict) else {}
-        count_parts = [f"{k.upper()}: {v}" for k, v in counts.items() if v and int(v) > 0]
-        count_str = ", ".join(count_parts) if count_parts else "No records"
-        history.append(
-            {
-                "id": log.get("id"),
-                "date": log.get("created_at"),
-                "user": details.get("user", "System") if isinstance(details, dict) else "System",
-                "action": f"Import {str((details or {}).get('batch_id', 'unknown'))[:8]}...",
-                "status": "success" if "validated" in evt_type or "success" in evt_type else "error",
-                "details": count_str,
-            }
-        )
-
-    return {"data": history}
+@app.get("/sage/history", include_in_schema=False)
+async def sage_import_history_removed():
+    raise HTTPException(status_code=410, detail="Sage import history not available in hospital deployment")
 
 
 @app.get("/imports/jobs")

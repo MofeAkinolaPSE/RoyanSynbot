@@ -28,26 +28,26 @@ def payroll_and_absence_summary(client: DBClient = db, periods: int = 3) -> Dict
     - avg_cost_per_employee: (salary_total + overtime_cost_total) / distinct_employees
     - absenteeism_trend: hours absent grouped by most recent N months
     """
-    # Payroll
-    p = client.table("hr_payroll_snapshot").select("employee_id,salary,overtime_hours,overtime_rate").order("imported_at", desc=True).limit(MAX_ANALYTICS_ROWS).execute()
+    # Payroll — sourced from royan_payroll_records (HMS native)
+    p = client.table("royan_payroll_records").select("staff_id,gross_salary,overtime_hours,overtime_rate").order("created_at", desc=True).limit(MAX_ANALYTICS_ROWS).execute()
     rows = p.data or []
-    salary_total = sum(float(r.get("salary") or 0) for r in rows)
+    salary_total = sum(float(r.get("gross_salary") or 0) for r in rows)
     overtime_cost_total = sum(float(r.get("overtime_hours") or 0) * float(r.get("overtime_rate") or 0) for r in rows)
-    employees = {r.get("employee_id") for r in rows if r.get("employee_id")}
+    employees = {r.get("staff_id") for r in rows if r.get("staff_id")}
     denom = max(1, len(employees))
     payroll_total = salary_total + overtime_cost_total
     overtime_pct = (overtime_cost_total / payroll_total) if payroll_total > 0 else 0.0
     avg_cost_per_emp = payroll_total / denom if denom > 0 else 0.0
 
-    # Absences by month
-    a = client.table("hr_absence_snapshot").select("date,hours").order("date", desc=True).limit(MAX_ANALYTICS_ROWS).execute()
+    # Absences by month — sourced from royan_leave_requests (HMS native)
+    a = client.table("royan_leave_requests").select("start_date,days_count").order("start_date", desc=True).limit(MAX_ANALYTICS_ROWS).execute()
     abs_rows = a.data or []
     buckets: Dict[str, float] = {}
     for r in abs_rows:
-        d = _dt_to_str(r.get("date"))[:7]  # YYYY-MM
+        d = _dt_to_str(r.get("start_date"))[:7]  # YYYY-MM
         if not d:
             continue
-        buckets[d] = buckets.get(d, 0.0) + float(r.get("hours") or 0)
+        buckets[d] = buckets.get(d, 0.0) + float(r.get("days_count") or 0) * 8  # days → hours
     # Most recent N periods
     periods_keys = sorted(buckets.keys(), reverse=True)[:periods]
     trend = [{"period": k, "hours": buckets[k]} for k in periods_keys]
@@ -58,7 +58,7 @@ def payroll_and_absence_summary(client: DBClient = db, periods: int = 3) -> Dict
         "overtime_pct_payroll": "overtime_cost_total / (salary_total + overtime_cost_total)",
         "avg_cost_per_employee": "(salary_total + overtime_cost_total) / distinct_employees",
         "absenteeism_trend": "group by YYYY-MM: sum(hours)",
-        "sources": ["hr_payroll_snapshot", "hr_absence_snapshot"],
+        "sources": ["royan_payroll_records", "royan_leave_requests"],
     }
     return {
         "salary_total": salary_total,

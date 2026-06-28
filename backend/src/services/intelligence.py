@@ -101,23 +101,17 @@ def get_workforce_dashboard(client: DBClient = db) -> Dict[str, Any]:
     
     active_count = len(active_staff)
     
-    # Fallback: If no timesheets logged (Phase 2), show total registered staff (Phase 1).
-    # No batch_id filter — the global KPI batch_id belongs to finance/GL, not staff snapshots.
+    # Fallback: If no timesheets logged, count active registered staff from royan_staff.
     if active_count == 0:
         try:
-            staff_q = client.table("sage_staff_snapshot").select("*", count="exact")
-            staff_resp = staff_q.limit(1).execute()
-            if staff_resp.count and staff_resp.count > 0:
-                active_count = staff_resp.count
-
-            # Fetch all departments for the headcount bar chart (1 person = 1 unit)
-            all_staff = client.table("sage_staff_snapshot").select("department").limit(1000).execute()
-            for s in all_staff.data:
+            staff_resp = client.table("royan_staff").select("id,department").eq("is_active", True).limit(1000).execute()
+            all_staff = staff_resp.data or []
+            active_count = len(all_staff)
+            for s in all_staff:
                 d = s.get("department") or "Unassigned"
                 dept_hours[d] = dept_hours.get(d, 0) + 1
-
         except Exception as e:
-            logger.warning(f"Workforce fallback failed: {e}")
+            logger.warning(f"Workforce staff fallback failed: {e}")
 
     return {
         "period": "current_week",

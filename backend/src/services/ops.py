@@ -32,9 +32,22 @@ MAX_ANALYTICS_ROWS = 3000
 def kpis(client: DBClient = db) -> Dict[str, Any]:
     """Operations KPIs: avg order fulfillment days, stock turnover.
 
-    Falls back to zero values when the legacy Sage snapshot tables are absent
-    (hospital deployment does not import Sage purchase orders or invoice lines).
+    Returns zero-value defaults — Sage purchase order and invoice line tables
+    do not exist in the hospital deployment.
     """
+    if not _SAGE_TABLES_AVAILABLE:
+        return {
+            "fulfillment_days_avg": 0.0,
+            "downtime_minutes_total": None,
+            "stock_turnover": 0.0,
+            "explain": {
+                "fulfillment_days_avg": "unavailable — no purchase order source in hospital deployment",
+                "downtime_minutes_total": "unavailable",
+                "stock_turnover": "unavailable — no invoice line source in hospital deployment",
+                "sources": [],
+            },
+        }
+
     import datetime
 
     def parse_date(s: str | None) -> datetime.date | None:
@@ -126,6 +139,9 @@ def kpis(client: DBClient = db) -> Dict[str, Any]:
 def stock_turnover_series(client: DBClient = db, periods: int = 6) -> Dict[str, Any]:
     """Monthly stock turnover based on invoice lines and avg inventory quantities.
     Returns empty series when the legacy snapshot tables are absent."""
+    if not _SAGE_TABLES_AVAILABLE:
+        return {"series": []}
+
     orders: list = []
     try:
         il_batch: str | None = None

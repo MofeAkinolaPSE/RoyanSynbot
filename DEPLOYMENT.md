@@ -195,16 +195,25 @@ git --version
 
 ### Step 2A — Enable WSL2 (Windows servers only — skip if already enabled)
 
-In **PowerShell as Administrator**:
+In **PowerShell as Administrator**, use the single-command method (works on Windows 10 build 18362+):
 ```powershell
-dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
-dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+wsl --install
 ```
 
-**Restart the server.** Reconnect via RDP, then:
+This enables WSL, enables Virtual Machine Platform, and queues Ubuntu 22.04 for install — all in one step. The older `dism.exe` method can fail with Error 1017 on some Windows 10 22H2 machines; use this instead.
+
+**Restart the server:**
 ```powershell
-wsl --set-default-version 2
+Restart-Computer
 ```
+
+Reconnect via RDP. Ubuntu will open automatically — create a username (e.g. `royan`) and password when prompted.
+
+**Verify WSL2 is active:**
+```powershell
+wsl -l -v
+```
+Should show `Ubuntu` with `VERSION 2`.
 
 ---
 
@@ -757,3 +766,82 @@ sudo systemctl status royan-watchdog
 # Get server LAN IP
 hostname -I
 ```
+
+---
+
+## Production Readiness Checklist (NL-implement-guide1.md)
+
+Run through these gates **before** cutting over from DRM Hope to Synbot Health as the primary HMS.
+
+### 1. Database Migrations
+- [ ] All migrations 001–135 applied in order (`psql -f backend/migrations/*.sql`)
+- [ ] Migration 136 applied (`136_schema_namespacing.sql`) — creates `workflow`, `knowledge`, `integration`, `audit`, `configuration`, `master` schemas
+- [ ] Verify schemas exist: `SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('workflow','knowledge','integration');`
+
+### 2. Master Data (MDM)
+- [ ] Departments seeded — `SELECT COUNT(*) FROM public.royan_departments;` (expect > 0)
+- [ ] Staff records loaded — `SELECT COUNT(*) FROM public.royan_staff;`
+- [ ] Lab catalog seeded — `SELECT COUNT(*) FROM public.royan_lab_catalog;`
+- [ ] Drug formulary seeded — `SELECT COUNT(*) FROM public.royan_drug_formulary;`
+- [ ] Diagnosis catalog seeded — `SELECT COUNT(*) FROM public.royan_diagnosis_catalog;`
+- [ ] Workflow definitions seeded — `SELECT COUNT(*) FROM configuration.workflow_definitions;` (expect 4)
+
+### 3. Hope Data Migration (SIF Orchestrator)
+- [ ] Bronze watermarks initialized — `SELECT * FROM public.royan_hope_sync_runs LIMIT 5;`
+- [ ] Run dry-run against sample Hope dump: `python data-assimilation/orchestrator.py --dump /path/hope.sql --dry-run`
+- [ ] No critical errors in dry-run output
+- [ ] Full run completed: `python data-assimilation/orchestrator.py --dump /path/hope.sql`
+- [ ] Row counts match Hope totals across all 5 domains (patients, encounters, lab, rx, billing)
+- [ ] Quality scores logged — `SELECT domain, COUNT(*) FROM public.royan_import_rejections GROUP BY domain;`
+- [ ] Rejection rate < 5% per domain
+
+### 4. Canonical API Verification
+- [ ] `GET /api/v1/patients/{mrn}/summary` returns populated PatientSummary
+- [ ] `GET /api/v1/patients/{mrn}/timeline` returns encounter history
+- [ ] `POST /api/v1/capabilities/register-patient` creates patient with MRN (format `RH-YYYYNNNNNN`)
+- [ ] `POST /api/v1/capabilities/start-encounter` creates encounter + workflow instance
+- [ ] `POST /api/v1/capabilities/complete-consultation/{id}` transitions encounter status
+- [ ] `GET /api/v1/workspaces/doctor/{encounter_id}` returns DoctorWorkspace in < 500ms
+- [ ] `GET /api/v1/workspaces/nurse/{encounter_id}` returns NurseWorkspace
+- [ ] `GET /api/v1/workspaces/billing/{encounter_id}` returns BillingWorkspace
+
+### 5. Workflow State Machine
+- [ ] `SELECT COUNT(*) FROM workflow.instances;` > 0 after encounter tests
+- [ ] `GET /api/v1/workflow/entity/encounter/{id}` returns current state
+- [ ] Encounter lifecycle completes: registered → triaged → in_consultation → billing_pending → discharged
+- [ ] Lab order lifecycle: pending → collected → resulted → verified
+- [ ] Prescription lifecycle: active → dispensed
+
+### 6. Observability Endpoints
+- [ ] `GET /api/v1/ops/health` returns `{"status": "ok"}`
+- [ ] `GET /api/v1/ops/clinical-kpis` returns live queue and throughput data
+- [ ] `GET /api/v1/ops/workflow-health` shows 0 stuck instances on fresh system
+- [ ] `GET /api/v1/ops/data-quality/latest` returns silver_layer_totals
+- [ ] `GET /api/v1/ops/knowledge-freshness` responds without error
+- [ ] `GET /api/v1/ops/workflow-performance` returns completion rates
+
+### 7. Privacy & Audit (NDPA)
+- [ ] `GET /api/v1/privacy/consent/{patient_id}` returns consent records
+- [ ] Clinical event log writing confirmed: `SELECT COUNT(*) FROM public.royan_clinical_event_log;`
+- [ ] `X-Correlation-ID` header present in all API responses
+- [ ] Audit log entries created on patient registration and encounter start
+
+### 8. Clinical Integration Tests
+- [ ] Run test suite: `pytest backend/tests/clinical/ -v`
+- [ ] All tests in `test_patient_workflow.py` pass or gracefully skip
+- [ ] All tests in `test_canonical_capabilities.py` pass or gracefully skip
+- [ ] Policy service unit tests pass: `pytest backend/tests/clinical/ -k TestPolicyService -v`
+
+### 9. Performance Baselines
+- [ ] `GET /workspaces/doctor/{id}` p95 < 800ms under load
+- [ ] `GET /patients/{mrn}/summary` p95 < 400ms
+- [ ] DB connection pool healthy: no pool exhaustion under 50 concurrent users
+- [ ] Memory usage stable after 1 hour under normal clinic load
+
+### 10. Go-Live Sign-off
+- [ ] PESE 68/68 tests pass: `python backend/tests/e2e_pese.py --url https://SERVER_IP --dev-token`
+- [ ] Backup confirmed: `docker compose logs backup | grep success`
+- [ ] Watchdog active: `sudo systemctl status royan-watchdog`
+- [ ] Clinical staff trained on new canonical endpoints and workspace views
+- [ ] DRM Hope read-only mode activated (prevent new data entry in legacy system)
+- [ ] Rollback plan documented and tested

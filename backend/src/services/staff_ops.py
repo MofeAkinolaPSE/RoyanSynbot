@@ -36,7 +36,7 @@ def get_staff_by_department(department: Optional[str] = None, client: DBClient =
     return resp.data or []
 
 def get_staff_by_id(staff_id: str, client: DBClient = db) -> Optional[Dict[str, Any]]:
-    resp = client.table(TABLE_STAFF).select("*").eq("staff_id", staff_id).execute()
+    resp = client.table(TABLE_STAFF).select("*").eq("id", staff_id).execute()
     return resp.data[0] if resp.data else None
 
 def get_staff_by_email(email: str, client: DBClient = db) -> Optional[Dict[str, Any]]:
