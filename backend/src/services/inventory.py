@@ -157,6 +157,15 @@ def get_recent_inventory_movements(limit: int = 20, client: DBClient = db) -> Li
         return []
 
 
+def get_latest_batch_sku_count(client: DBClient = db) -> int:
+    """Count of active SKUs in inventory_items (replaces Sage batch count)."""
+    try:
+        resp = client.table(TABLE_INVENTORY_ITEMS).select("id", count="exact").eq("is_active", True).limit(1).execute()
+        return resp.count or 0
+    except Exception:
+        return 0
+
+
 def get_expiring_inventory(thresholds: List[int] | None = None, client: DBClient = db) -> Dict[str, Any]:
     """Expiry tracking — not applicable to this deployment (no expiry_date source)."""
     return {"items": [], "summary": {"count": 0, "note": "expiry tracking not available in hospital deployment"}}
