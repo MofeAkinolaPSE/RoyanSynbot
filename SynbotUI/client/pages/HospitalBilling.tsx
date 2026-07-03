@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import {
   DollarSign, RefreshCw, Loader2, ReceiptText, Building, AlertCircle,
-  CheckCircle2,
+  CheckCircle2, ArrowLeft, User,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -94,6 +95,9 @@ const EMPTY_CLAIM   = { insurer_name: "", claim_amount: "", notes: "" };
 export default function HospitalBilling() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const patientIdFilter = Number(searchParams.get("patient_id") ?? 0) || undefined;
 
   const [tab, setTab] = useState("bills");
   const [billFilter, setBillFilter]       = useState("all");
@@ -108,8 +112,11 @@ export default function HospitalBilling() {
 
   // Queries
   const { data: billsData, isLoading: billsLoading, refetch: refetchBills, isFetching: billingFetching } = useQuery({
-    queryKey: ["hospital-bills", billFilter],
-    queryFn: () => api.hospital.billing.listBills(billFilter !== "all" ? { status: billFilter } : undefined),
+    queryKey: ["hospital-bills", billFilter, patientIdFilter],
+    queryFn: () => api.hospital.billing.listBills({
+      ...(billFilter !== "all" && { status: billFilter }),
+      ...(patientIdFilter && { patient_id: patientIdFilter }),
+    }),
     refetchInterval: 60_000,
   });
   const bills: Bill[] = Array.isArray(billsData?.bills) ? billsData.bills : Array.isArray(billsData) ? billsData : [];
@@ -163,11 +170,29 @@ export default function HospitalBilling() {
 
   return (
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
+      {/* Patient filter banner */}
+      {patientIdFilter && (
+        <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5">
+          <User className="h-4 w-4 text-blue-400 shrink-0" />
+          <span className="text-sm text-blue-300 flex-1">
+            Showing bills for Patient ID <span className="font-mono font-semibold">{patientIdFilter}</span>
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => navigate("/hospital/billing")}>
+            <ArrowLeft className="h-3.5 w-3.5" /> All Bills
+          </Button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Hospital Billing</h1>
-          <p className="text-sm text-muted-foreground">Bills, payments, and HMO claims management</p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {patientIdFilter ? "Patient Billing" : "Hospital Billing"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {patientIdFilter ? "Bills, payments and claims for this patient" : "Bills, payments, and HMO claims management"}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { void refetchBills(); void refetchClaims(); }} disabled={billingFetching} className="gap-2">
           <RefreshCw className={cn("h-3.5 w-3.5", billingFetching && "animate-spin")} /> Refresh

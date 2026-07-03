@@ -3,41 +3,17 @@ import { Link, useLocation } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard,
-  DollarSign,
-  BarChart3,
-  Users,
-  Settings,
-  MessageSquare,
-  Workflow,
-  Shield,
-  ShieldCheck,
-  Bot,
-  ClipboardList,
   ChevronDown,
   LogOut,
   MoreVertical,
   Sun,
   Moon,
-  Activity,
-  FlaskConical,
-  Pill,
-  BedDouble,
-  Receipt,
-  Package,
-  CalendarCheck,
-  Building2,
-  Stethoscope,
-  ScanLine,
-  Scissors,
-  HeartPulse,
-  MessageSquare as MsgSquare,
-  CreditCard,
-  ConciergeBell,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { api } from "@/lib/api-client";
+import { NAV_ITEMS, type NavItem } from "@/lib/nav-items";
 import {
   Collapsible,
   CollapsibleContent,
@@ -54,18 +30,6 @@ import {
 type SidebarProps = {
   mobileOpen: boolean;
   onMobileClose: () => void;
-};
-
-type NavChild = { label: string; href: string };
-
-type NavItem = {
-  label: string;
-  icon: React.ElementType;
-  href?: string;
-  badge?: string;
-  roles?: string[];
-  children?: NavChild[];
-  aiPulse?: boolean;
 };
 
 const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
@@ -100,251 +64,13 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
   const isActiveGroup = (paths: string[]) =>
     paths.some((p) => location.pathname.startsWith(p));
 
-  const navItems: NavItem[] = [
-    {
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      href: "/",
-    },
-
-    // ── Hospital Operations (primary) ──────────────────────────────────
-    {
-      label: "Admin Dashboard",
-      icon: LayoutDashboard,
-      href: "/hospital/admin-dashboard",
-      roles: ["admin", "management"],
-    },
-    {
-      label: "My Dashboard",
-      icon: Stethoscope,
-      href: "/hospital/doctor",
-      roles: ["doctor", "admin", "management"],
-    },
-    {
-      label: "Nurse Dashboard",
-      icon: HeartPulse,
-      href: "/hospital/nurse",
-      roles: ["nurse", "admin"],
-    },
-    {
-      label: "Front Desk",
-      icon: ConciergeBell,
-      href: "/hospital/front-desk",
-      roles: ["admin", "ops", "front_desk", "management", "nurse"],
-    },
-    {
-      label: "CPRS / Patients",
-      icon: Users,
-      href: "/hospital/patients",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Queue & Flow",
-      icon: Activity,
-      href: "/hospital/queue",
-      badge: queueCount > 0 ? String(queueCount) : undefined,
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Appointments",
-      icon: CalendarCheck,
-      href: "/hospital/appointments",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Lab & Diagnostics",
-      icon: FlaskConical,
-      href: "/hospital/lab",
-      badge: labCount > 0 ? String(labCount) : undefined,
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Pharmacy",
-      icon: Pill,
-      href: "/hospital/pharmacy",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Nursing Station",
-      icon: Activity,
-      href: "/hospital/nursing",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Radiology",
-      icon: ScanLine,
-      href: "/hospital/radiology",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Surgical Theatre",
-      icon: Scissors,
-      href: "/hospital/theatre",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Specialist Clinics",
-      icon: Stethoscope,
-      href: "/hospital/specialist",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "MCH / OB-GYN",
-      icon: HeartPulse,
-      href: "/hospital/mch",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Digital Engagement",
-      icon: MsgSquare,
-      href: "/hospital/engagement",
-      roles: ["admin", "ops", "management"],
-    },
-    {
-      label: "Quality & Safety",
-      icon: ShieldCheck,
-      href: "/hospital/quality",
-      roles: ["admin", "ops", "nurse", "doctor", "management", "quality_assurance", "qa"],
-    },
-    {
-      label: "HR — Shifts",
-      icon: Users,
-      href: "/hospital/hr",
-      roles: ["admin", "hr", "management"],
-    },
-    {
-      label: "Reports & Analytics",
-      icon: BarChart3,
-      href: "/hospital/reports",
-      roles: ["admin", "management", "finance", "quality_assurance", "qa"],
-    },
-    {
-      label: "Scheduling",
-      icon: CalendarCheck,
-      href: "/calendar/tasks",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Wards & Beds",
-      icon: BedDouble,
-      href: "/hospital/wards",
-      roles: ["admin", "ops", "nurse", "doctor", "management"],
-    },
-    {
-      label: "Compliance & Audits",
-      icon: ShieldCheck,
-      href: "/compliance",
-      roles: ["admin", "quality_assurance", "qa", "management"],
-    },
-    {
-      label: "Billing",
-      icon: Receipt,
-      href: "/hospital/billing",
-      roles: ["admin", "finance"],
-    },
-    {
-      label: "HMO & Coverage",
-      icon: Building2,
-      href: "/hospital/hmo",
-      roles: ["admin", "finance"],
-    },
-
-    // ── Management & Admin (secondary) ────────────────────────────────
-    {
-      label: "Executive Summary",
-      icon: BarChart3,
-      href: "/executive",
-      roles: ["admin", "management"],
-    },
-    {
-      label: "Finance",
-      icon: DollarSign,
-      roles: ["admin", "finance"],
-      children: [
-        { label: "Analytics",        href: "/finance/analytics" },
-        { label: "Reports",          href: "/finance/reports" },
-        { label: "AR & Alerts",      href: "/finance/ar" },
-        { label: "Vendor Payments",  href: "/finance/vendor-payments" },
-        { label: "Budget",           href: "/finance/budget" },
-      ],
-    },
-    {
-      label: "HR",
-      icon: Users,
-      href: "/hr",
-      roles: ["admin", "hr"],
-    },
-    {
-      label: "Staff Dashboard",
-      icon: ClipboardList,
-      roles: ["admin", "hr", "ops", "management"],
-      children: [
-        { label: "Dashboard",     href: "/staff/dashboard" },
-        { label: "Time Tracker",  href: "/staff/time-tracker" },
-        { label: "Collaboration", href: "/staff/collaboration" },
-      ],
-    },
-    {
-      label: "Procurement",
-      icon: Package,
-      href: "/operations/suppliers",
-      roles: ["admin", "ops"],
-    },
-    {
-      label: "Workflow",
-      icon: Workflow,
-      href: "/workflow",
-      roles: ["admin"],
-    },
-    {
-      label: "User Access",
-      icon: Shield,
-      href: "/admin/users",
-      roles: ["admin"],
-    },
-    {
-      label: "Fee Schedule",
-      icon: DollarSign,
-      href: "/admin/fee-schedule",
-      roles: ["admin", "finance"],
-    },
-    {
-      label: "Payment Gateway",
-      icon: CreditCard,
-      href: "/admin/payments",
-      roles: ["admin", "finance"],
-    },
-    {
-      label: "Audit Log",
-      icon: ClipboardList,
-      href: "/admin/audit-log",
-      roles: ["admin"],
-    },
-
-    // ── AI & Tools ─────────────────────────────────────────────────────
-    {
-      label: "Ask Synbot",
-      icon: MessageSquare,
-      href: "/synbot",
-      badge: "AI",
-      aiPulse: true,
-    },
-    {
-      label: "Agent Stack",
-      icon: Bot,
-      href: "/agents",
-      badge: "AI",
-      aiPulse: true,
-      roles: ["admin", "management"],
-    },
-
-    {
-      label: "Settings",
-      icon: Settings,
-      href: "/settings",
-      roles: ["admin"],
-    },
-  ];
+  // NAV_ITEMS is the single shared source of truth (also consumed by tour-config.ts).
+  // Live queue/lab badge counts are injected here at render time.
+  const navItems: NavItem[] = NAV_ITEMS.map((item) => {
+    if (item.badgeKey === "queue") return { ...item, badge: queueCount > 0 ? String(queueCount) : undefined };
+    if (item.badgeKey === "lab") return { ...item, badge: labCount > 0 ? String(labCount) : undefined };
+    return item;
+  });
 
   const canView = (allowed?: string[]) => {
     if (authLoading) return true;

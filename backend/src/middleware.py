@@ -4,7 +4,7 @@ import time
 import logging
 from functools import partial
 from typing import Dict, Optional
-from fastapi import Request, HTTPException, Query
+from fastapi import Request, HTTPException
 import jwt
 from jwt import PyJWKClient
 from .constants import JWT_SECRET, RATE_LIMIT, JWT_AUDIENCE, AUTH0_DOMAIN, AUTH0_AUDIENCE, AUTH0_ISSUER
@@ -75,7 +75,7 @@ def decode_jwt_token(token: str, required_role: str | None = None) -> dict:
     return payload
 
 
-def verify_jwt(request: Request, required_role: Optional[str] = Query(None, include_in_schema=False)) -> dict:
+def verify_jwt(request: Request, required_role: Optional[str] = None) -> dict:
     token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
     payload = decode_jwt_token(token, required_role=required_role)
     try:
@@ -155,3 +155,24 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
             path = request.url.path
             method = request.method
             logging.info(f"{method} {path} handled in {dur_ms:.1f} ms")
+
+
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    """Propagate X-Correlation-ID through every request/response pair.
+
+    If the client sends the header, it is preserved and echoed back.
+    If absent, a new UUID4 is generated. The value is stored on
+    request.state.correlation_id so any handler or service can read it.
+    """
+    import uuid as _uuid
+
+    async def dispatch(self, request: Request, call_next):
+        import uuid
+        cid = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+        try:
+            request.state.correlation_id = cid
+        except Exception:
+            pass
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = cid
+        return response

@@ -9,6 +9,32 @@ logger = logging.getLogger("ops")
 
 # --- Staff Registry Logic ---
 
+def resolve_department_id(department: str, client: DBClient = db) -> Optional[int]:
+    """Look up the canonical royan_departments.id for a free-text department name.
+
+    Matches case-insensitively against name, short_name, or code. Returns None
+    if there's no match — callers should still store the free-text value and
+    treat department_id as a best-effort enrichment, not a hard requirement.
+    """
+    if not department:
+        return None
+    try:
+        resp = client.table("royan_departments").select("id,name,short_name,code").eq("is_active", True).execute()
+        rows = resp.data or []
+    except Exception as e:
+        logger.warning(f"resolve_department_id: could not query royan_departments: {e}")
+        return None
+    needle = department.strip().lower()
+    for row in rows:
+        if needle in {
+            (row.get("name") or "").strip().lower(),
+            (row.get("short_name") or "").strip().lower(),
+            (row.get("code") or "").strip().lower(),
+        }:
+            return row.get("id")
+    return None
+
+
 def create_staff_member(
     full_name: str,
     email: str,
@@ -28,8 +54,8 @@ def create_staff_member(
     return resp.data[0] if resp.data else {}
 
 def get_staff_by_department(department: Optional[str] = None, client: DBClient = db) -> List[Dict[str, Any]]:
-    """List staff, optionally filtered by department."""
-    query = client.table(TABLE_STAFF).select("*")
+    """List staff, optionally filtered by department. Excludes quarantined (non-staff) records."""
+    query = client.table(TABLE_STAFF).select("*").is_("quarantined_at", "null")
     if department:
         query = query.eq("department", department)
     resp = query.execute()
@@ -48,10 +74,12 @@ def get_my_profile(email: str, client: DBClient = db) -> Optional[Dict[str, Any]
 
 def update_my_profile(email: str, patch_data: Dict[str, Any], client: DBClient = db) -> Optional[Dict[str, Any]]:
     """Partial-update the calling user's own staff record. Only allows safe self-service fields."""
-    allowed = {"full_name", "department", "designation", "phone", "metadata"}
+    allowed = {"full_name", "department", "designation", "phone", "metadata", "tour_state"}
     clean = {k: v for k, v in patch_data.items() if k in allowed}
     if not clean:
         return get_staff_by_email(email, client)
+    if "department" in clean:
+        clean["department_id"] = resolve_department_id(clean["department"], client)
     # Merge metadata rather than overwrite
     if "metadata" in clean:
         existing = get_staff_by_email(email, client)

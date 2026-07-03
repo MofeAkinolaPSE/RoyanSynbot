@@ -25,6 +25,7 @@ from src.constants import (
     TABLE_TWIN_ANOMALY_EVENTS,
 )
 from src.db import audit_event, db
+from src.local_db import JsonbValue
 from src.reliability.guardrails import GUARDRAILS
 from src.reliability.models import CapabilityStatus
 
@@ -289,11 +290,11 @@ def run_discovery_cycle() -> Dict[str, Any]:
                 "capability_name": blueprint["capability_name"],
                 "problem": blueprint["problem"],
                 "opportunity": blueprint["opportunity"],
-                "required_components": blueprint["required_components"],
-                "integration_points": blueprint["integration_points"],
+                "required_components": JsonbValue(blueprint["required_components"]),
+                "integration_points": JsonbValue(blueprint["integration_points"]),
                 "estimated_impact": blueprint["estimated_impact"],
                 "confidence_score": blueprint["confidence_score"],
-                "signal_ids": blueprint["signal_ids"],
+                "signal_ids": JsonbValue(blueprint["signal_ids"]),
                 "status": blueprint["status"],
             }).execute()
             proposal_id = (res.data or [{}])[0].get("id", "")

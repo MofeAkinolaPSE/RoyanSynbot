@@ -19,6 +19,7 @@ from src.constants import (
     TABLE_PAYMENTS,
 )
 from src.db import audit_event, db
+from src.services.event_service import emit_clinical_event
 from src.middleware import require_role, verify_jwt
 from src.services.coverage import CoverageInput, billing_breakdown_from_quotes, calculate_coverage
 
@@ -160,6 +161,14 @@ async def create_bill(payload: BillCreate, user=Depends(verify_jwt)):
 
     bill = (result.data or [data])[0]
     _audit("bill_created", {"bill_number": bill_number, "encounter_id": payload.encounter_id}, user, "bill", bill.get("id"))
+    emit_clinical_event(
+        event_type="BILL_GENERATED",
+        encounter_id=payload.encounter_id,
+        patient_id=payload.patient_id,
+        entity_type="bill", entity_id=bill.get("id"),
+        performed_by=user.get("sub"),
+        event_data={"bill_number": bill_number},
+    )
     return {"ok": True, "bill": _bill_with_amounts(bill)}
 
 
@@ -304,6 +313,14 @@ async def record_payment(bill_id: int, payload: PaymentCreate, user=Depends(veri
     db.table(TABLE_BILLING).update(update).eq("id", bill_id).execute()
 
     _audit("payment_recorded", {"amount": payload.amount, "method": payload.payment_method, "bill_status": new_status}, user, "bill", bill_id)
+    emit_clinical_event(
+        event_type="PAYMENT_RECEIVED",
+        encounter_id=bill.get("encounter_id"),
+        patient_id=bill.get("patient_id"),
+        entity_type="bill", entity_id=bill_id,
+        performed_by=user.get("sub"),
+        event_data={"amount": payload.amount, "method": payload.payment_method, "bill_status": new_status},
+    )
     return {"ok": True, "payment": (result.data or [data])[0], "bill_status": new_status}
 
 

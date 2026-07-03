@@ -287,6 +287,8 @@ from src.auth_utils import (
     parse_iso8601,
     verify_password,
     hash_password,
+    normalize_email,
+    validate_password_strength,
 )
 from src.services.sage_adapter.validators import (
     resolve_headers,
@@ -314,6 +316,8 @@ from src.services.tool_registry import (
 from src.routers import analytics, inventory, staff_ops, dashboard, procurement_import
 from src.deepseek import DeepSeek
 from src.constants import LLM_PROVIDER, DEEPSEEK_API_KEY
+from src.constants import STAFF_ROLES
+from src.services.roy_context import render_activity_snapshot
 
 import os
 import asyncio
@@ -397,9 +401,16 @@ async def _log_validation_error(request: Request, exc: RequestValidationError):
 
 app.include_router(analytics.router)
 app.include_router(inventory.router)
-app.include_router(staff_ops.router)
 from src.routers.staff_me import router as staff_me_router
 app.include_router(staff_me_router)
+from src.routers.public_registration import router as public_registration_router
+app.include_router(public_registration_router)
+# Must be registered BEFORE staff_ops.router: its generic GET /staff/{staff_id}
+# would otherwise swallow /staff/registrations (Starlette matches by registration
+# order, not specificity — "registrations" would resolve as a staff_id).
+from src.routers.staff_registrations_admin import router as staff_registrations_admin_router
+app.include_router(staff_registrations_admin_router)
+app.include_router(staff_ops.router)
 app.include_router(dashboard.router)
 app.include_router(procurement_import.router)
 from src.routers.workflow import router as workflow_router
@@ -1133,7 +1144,13 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
     )
 
 
-def _build_chat_instruction(mode: str, question: str = "", staff_profile: dict | None = None, roles: set | None = None) -> str:
+def _build_chat_instruction(
+    mode: str,
+    question: str = "",
+    staff_profile: dict | None = None,
+    roles: set | None = None,
+    activity_snapshot: dict | None = None,
+) -> str:
     intent = _classify_query_intent(question)
 
     if mode == "customer":
@@ -1150,6 +1167,10 @@ def _build_chat_instruction(mode: str, question: str = "", staff_profile: dict |
     staff_block = ""
     if staff_profile:
         staff_block = _build_staff_context_block(staff_profile, roles or set()) + " "
+        if activity_snapshot:
+            activity_text = render_activity_snapshot(activity_snapshot, roles or set())
+            if activity_text:
+                staff_block += "\n\nHere is the user's current activity snapshot — use it to answer questions about their own schedule, patients, or tasks:\n" + activity_text + "\n\n"
 
     # Internal (executive / assistant) mode
     base = (
@@ -3648,29 +3669,7 @@ def _is_high_impact_change(change_row: dict | None) -> bool:
     )
 
 
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ALLOWED_ROLES = {"admin", "ops", "hr", "sales", "viewer", "finance", "management"}
-
-
-def normalize_email(value: str) -> str:
-    email = (value or "").strip().lower()
-    if not EMAIL_PATTERN.match(email):
-        raise HTTPException(status_code=400, detail="Invalid email format")
-    return email
-
-
-def validate_password_strength(password: str) -> None:
-    pwd = password or ""
-    if len(pwd) < 10:
-        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
-    if not any(c.islower() for c in pwd):
-        raise HTTPException(status_code=400, detail="Password must include a lowercase letter")
-    if not any(c.isupper() for c in pwd):
-        raise HTTPException(status_code=400, detail="Password must include an uppercase letter")
-    if not any(c.isdigit() for c in pwd):
-        raise HTTPException(status_code=400, detail="Password must include a number")
-    if not any(c in "!@#$%^&*()-_=+[]{};:,.?/" for c in pwd):
-        raise HTTPException(status_code=400, detail="Password must include a special character")
 
 
 def normalize_roles(roles: list[str] | None) -> list[str]:
@@ -4049,6 +4048,15 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         except Exception as _sp_err:
             logging.debug(f"Staff profile lookup non-fatal: {_sp_err}")
 
+    # Bounded, best-effort dynamic activity snapshot (appointments/patients/tasks)
+    _activity_snapshot: dict | None = None
+    if _staff_profile and _staff_profile.get("id"):
+        try:
+            from src.services.roy_context import build_roy_activity_snapshot as _build_activity_snapshot
+            _activity_snapshot = _build_activity_snapshot(staff_id=_staff_profile["id"], actor_user_id=actor_id)
+        except Exception as _ctx_err:
+            logging.debug(f"Roy activity snapshot non-fatal: {_ctx_err}")
+
     if mode == "customer":
         try:
             intent_answer = _handle_customer_transaction_intent(question)
@@ -4321,7 +4329,7 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         answer = llm_client.generate_response(
             context=context,
             question=question,
-            instruction=_build_chat_instruction(mode=mode, question=question, staff_profile=_staff_profile, roles=roles),
+            instruction=_build_chat_instruction(mode=mode, question=question, staff_profile=_staff_profile, roles=roles, activity_snapshot=_activity_snapshot),
         )
     if not answer:
         answer = (
@@ -5307,7 +5315,7 @@ async def audit_logs_endpoint(request: Request, limit: int = 50):
 # ---- Dev Token Issuance (for local/testing only) ----------------------------
 
 @app.post("/auth/dev_token")
-async def auth_dev_token(request: Request, roles: list[str] = ["admin"]):
+async def auth_dev_token(request: Request, roles: list[str] = ["admin"], email: str = "dev-user@royanhospital.com"):
     if not DEV_TOKEN_ENABLED:
         raise HTTPException(status_code=403, detail="Dev token issuance disabled")
     # This issues a JWT for local testing of admin endpoints
@@ -5316,6 +5324,7 @@ async def auth_dev_token(request: Request, roles: list[str] = ["admin"]):
     payload = {
         "sub": "dev-user",
         "roles": roles,
+        "email": email,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
@@ -5349,8 +5358,8 @@ async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         ))
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    roles = normalize_roles(user.get("roles") or [])
-    access_token, access_exp = create_access_token(user_id=user["id"], roles=roles)
+    roles = [r.strip().lower() for r in (user.get("roles") or []) if isinstance(r, str) and r.strip()]
+    access_token, access_exp = create_access_token(user_id=user["id"], roles=roles, email=user.get("email"))
     refresh_raw, refresh_hash, refresh_exp = create_refresh_token()
     refresh_exp_iso = refresh_exp.replace(microsecond=0).isoformat()
 
@@ -5420,7 +5429,7 @@ async def refresh_token(request: Request, payload: RefreshRequest):
         raise HTTPException(status_code=401, detail="Invalid user")
 
     roles = user.get("roles") or []
-    access_token, access_exp = create_access_token(user_id=user["id"], roles=roles)
+    access_token, access_exp = create_access_token(user_id=user["id"], roles=roles, email=user.get("email"))
     refresh_raw, refresh_hash, refresh_exp = create_refresh_token()
     refresh_exp_iso = refresh_exp.replace(microsecond=0).isoformat()
     new_token_id = insert_refresh_token(
@@ -5645,7 +5654,7 @@ async def set_user_roles(request: Request, user_id: str, payload: UserRolesUpdat
     """Update the roles assigned to a user (admin only)."""
     require_role(request, "admin")
     current_sub = request.state.user.get("sub")
-    allowed_roles = {"admin","management","doctor","nurse","finance","hr","ops","quality_assurance","qa","lab","pharmacist","radiology"}
+    allowed_roles = set(STAFF_ROLES) | ALLOWED_ROLES
     roles = [r.strip().lower() for r in payload.roles if r.strip().lower() in allowed_roles]
     if not roles:
         raise HTTPException(status_code=422, detail="No valid roles provided")

@@ -5,6 +5,17 @@
 
 services:
 
+  # ── Redis Shared Cache ───────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: royan_redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - royan_net
+
   # ── FastAPI Backend ────────────────────────────────────────────────────────
   backend:
     build:
@@ -19,6 +30,7 @@ services:
       # stale localhost URL that may exist in .env from a previous project.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-royan}:${POSTGRES_PASSWORD:-royan_secure_pass}@db:5432/${POSTGRES_DB:-royan_hospital}
       - POSTGRES_HOST=db
+      - REDIS_URL=redis://redis:6379/0
       # Cache HuggingFace models inside the persisted backend_data volume so
       # they are not re-downloaded on every container restart.
       - HF_HOME=/app/data/hf_cache
@@ -30,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

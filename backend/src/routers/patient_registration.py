@@ -113,6 +113,9 @@ def _generate_mrn() -> str:
 
 
 def _patient_card(patient: dict) -> dict:
+    """Build a single patient card with encounter + insurance detail (2 queries).
+    Use _batch_patient_cards() when building cards for a list of patients.
+    """
     card = dict(patient)
     patient_id = patient.get("id")
     if patient_id is None:
@@ -162,6 +165,52 @@ def _patient_card(patient: dict) -> dict:
     return card
 
 
+def _batch_patient_cards(patients: list[dict]) -> list[dict]:
+    """Build patient cards for a list of patients using 1 batched encounter query
+    instead of N individual queries. Insurance uses legacy hmo_provider/hmo_id
+    fields already present on the patient row — no extra queries needed.
+    """
+    if not patients:
+        return []
+
+    patient_ids = [p["id"] for p in patients if p.get("id") is not None]
+    enc_map: dict = {}
+
+    if patient_ids:
+        try:
+            enc_result = (
+                db.table(TABLE_ENCOUNTERS)
+                .select("id,patient_id,status,department,encounter_type,created_at,triage_level")
+                .in_("patient_id", patient_ids)
+                .neq("status", "discharged")
+                .order("created_at", desc=True)
+                .execute()
+            )
+            for enc in (enc_result.data or []):
+                pid = enc.get("patient_id")
+                if pid is not None and pid not in enc_map:
+                    enc_map[pid] = enc
+        except Exception:
+            pass
+
+    cards = []
+    for patient in patients:
+        card = dict(patient)
+        patient_id = patient.get("id")
+        current = enc_map.get(patient_id)
+        card["current_encounter"] = current
+        card["current_status"] = current.get("status") if current else None
+        card["insurance"] = {
+            "active": bool(patient.get("hmo_provider") or patient.get("hmo_id")),
+            "hmo_name": patient.get("hmo_provider"),
+            "membership_id": patient.get("hmo_id"),
+            "legacy_only": True,
+        }
+        cards.append(card)
+
+    return cards
+
+
 def _search_patients_by_term(term: str, limit: int) -> list[dict]:
     safe = term.strip()
     if not safe:
@@ -199,18 +248,13 @@ def _search_patients_by_term(term: str, limit: int) -> list[dict]:
         )
         rows = result.data or []
     except Exception:
-        seen: set = set()
-        rows = []
-        for field in ("mrn", "first_name", "last_name", "phone", "hmo_id"):
-            try:
-                resp = db.table(TABLE_PATIENTS).select(columns).ilike(field, f"%{safe}%").limit(limit).execute()
-                for row in resp.data or []:
-                    key = row.get("id") or row.get("mrn")
-                    if key not in seen:
-                        seen.add(key)
-                        rows.append(row)
-            except Exception:
-                continue
+        # Fallback: single OR query across all fields (1 query, not 5)
+        try:
+            fallback_or = f"mrn.ilike.%{safe}%,first_name.ilike.%{safe}%,last_name.ilike.%{safe}%,phone.ilike.%{safe}%,hmo_id.ilike.%{safe}%"
+            resp = db.table(TABLE_PATIENTS).select(columns).or_(fallback_or).limit(limit * 2).execute()
+            rows = resp.data or []
+        except Exception:
+            rows = []
 
     # Re-rank multi-word results: patients matching ALL parts in their combined
     # name rank first, so "TOBILOBA OGUNTOSIN" surfaces before incidental hits.
@@ -232,12 +276,18 @@ def _search_patients_by_term(term: str, limit: int) -> list[dict]:
     return deduped[:limit]
 
 
+_ENC_COLS  = "id,patient_id,status,department,encounter_type,created_at,discharge_at,triage_level,consulting_doctor,ward_id,chief_complaint,notes"
+_LAB_COLS  = "id,patient_id,encounter_id,test_name,status,ordered_at,urgency,sample_type,notes,ordered_by"
+_RX_COLS   = "id,patient_id,encounter_id,drug_name,dosage,frequency,duration,route,status,prescribed_at,dispensed_at,prescribed_by"
+_BILL_COLS = "id,patient_id,encounter_id,bill_number,subtotal,patient_balance,status,billed_at,payment_method,notes"
+
+
 def _load_patient_profile(patient: dict) -> dict:
     patient_id = patient["id"]
-    encounters = db.table(TABLE_ENCOUNTERS).select("*").eq("patient_id", patient_id).order("created_at", desc=True).limit(50).execute().data or []
-    labs = db.table(TABLE_LAB_ORDERS).select("*").eq("patient_id", patient_id).order("ordered_at", desc=True).limit(50).execute().data or []
-    prescriptions = db.table(TABLE_PRESCRIPTIONS).select("*").eq("patient_id", patient_id).order("prescribed_at", desc=True).limit(50).execute().data or []
-    bills = db.table(TABLE_BILLING).select("*").eq("patient_id", patient_id).order("billed_at", desc=True).limit(50).execute().data or []
+    encounters = db.table(TABLE_ENCOUNTERS).select(_ENC_COLS).eq("patient_id", patient_id).order("created_at", desc=True).limit(50).execute().data or []
+    labs = db.table(TABLE_LAB_ORDERS).select(_LAB_COLS).eq("patient_id", patient_id).order("ordered_at", desc=True).limit(50).execute().data or []
+    prescriptions = db.table(TABLE_PRESCRIPTIONS).select(_RX_COLS).eq("patient_id", patient_id).order("prescribed_at", desc=True).limit(50).execute().data or []
+    bills = db.table(TABLE_BILLING).select(_BILL_COLS).eq("patient_id", patient_id).order("billed_at", desc=True).limit(50).execute().data or []
 
     timeline: list[dict] = []
     for enc in encounters:
@@ -338,6 +388,13 @@ async def register_patient(
         subject_type="patient",
         subject_id=str(patient.get("id") or mrn),
     )
+    from src.services.event_service import emit_clinical_event
+    emit_clinical_event(
+        event_type="PATIENT_REGISTERED",
+        patient_id=patient.get("id"),
+        performed_by=user.get("sub"),
+        event_data={"mrn": mrn},
+    )
     logger.info("New patient registered: MRN=%s by %s", mrn, user.get("sub"))
     invalidate_cache_tags("hospital", "patient_flow", "encounters", "executive")
     return {"ok": True, "mrn": mrn, "patient": _patient_card(patient)}
@@ -364,7 +421,7 @@ async def search_patients(
         result = db.table(TABLE_PATIENTS).select("*").order("registered_at", desc=True).limit(limit).execute()
         rows = result.data or []
 
-    patients = [_patient_card(row) for row in rows]
+    patients = _batch_patient_cards(rows)
     return {"patients": patients, "count": len(patients)}
 
 

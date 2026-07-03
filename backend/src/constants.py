@@ -34,6 +34,7 @@ TABLE_ORDERS = "royan_orders"
 TABLE_STOCK_CACHE = "royan_stock_cache"
 TABLE_INVENTORY_EVENTS = "royan_inventory_events"
 TABLE_STAFF = "royan_staff"
+TABLE_STAFF_REGISTRATIONS = "royan_staff_registrations"
 TABLE_TIMESHEETS = "royan_timesheets"
 TABLE_ALERTS = "royan_alerts"
 TABLE_BRIEFINGS = "royan_executive_briefings"
@@ -96,8 +97,10 @@ TABLE_VITALS                = "royan_vitals"
 TABLE_NURSING_CARE_PLANS    = "royan_nursing_care_plans"
 TABLE_FLUID_BALANCE         = "royan_fluid_balance"
 TABLE_MAR_ENTRIES           = "royan_mar_entries"
+TABLE_MEDICATION_ADMIN      = "royan_medication_admin"   # canonical MAR table (migration 132)
 
 MAR_STATUS_ALLOWED          = {"scheduled", "administered", "held", "missed", "refused"}
+MEDICATION_ADMIN_STATUS     = {"given", "refused", "held", "not_available", "omitted"}
 
 # --- Hospital Phase 3 — Radiology ---
 TABLE_RADIOLOGY_ORDERS      = "royan_radiology_orders"
@@ -449,17 +452,27 @@ HOPE_MOCK                   = os.getenv(ENV_HOPE_MOCK, "1") not in ("0", "false"
 
 # ---------------------------------------------------------------------------
 # SynHealth auth roles
+#
+# Canonical role vocabulary for hospital clinical/operational staff. This is
+# the single source of truth — the DB CHECK constraint on royan_staff.role
+# (migration 144) uses this exact list, and the frontend fetches it via
+# GET /roles rather than hand-maintaining a copy. Supersedes the never-applied
+# CHECK constraint drafted in migration 130.
 # ---------------------------------------------------------------------------
-ROLES: list[str] = [
+STAFF_ROLES: list[str] = [
     "admin",
+    "management",
     "doctor",
     "nurse",
     "pharmacist",
+    "lab",
+    "radiology",
     "receptionist",
-    "lab_tech",
-    "radiographer",
     "physiotherapist",
     "finance",
+    "hr",
+    "ops",
+    "quality_assurance",
 ]
 
 JWT_ALGORITHM               = "HS256"
@@ -512,6 +525,40 @@ REFRESH_TOKEN_DAYS = int(os.getenv(ENV_REFRESH_TOKEN_DAYS, "7"))
 WEBSOCKET_ENABLED = os.getenv(ENV_WEBSOCKET_ENABLED, "1") not in ("0", "false", "False")
 PROCUREMENT_CLEARANCE_DELAY_DAYS = int(os.getenv(ENV_PROCUREMENT_CLEARANCE_DELAY_DAYS, "5"))
 PROCUREMENT_DAILY_DELAY_COST = float(os.getenv(ENV_PROCUREMENT_DAILY_DELAY_COST, "250000"))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema-namespaced tables — Migration 136 enterprise schemas
+# New canonical, workflow, knowledge, integration, and audit objects live here.
+# Existing public.royan_* tables stay as-is (Silver operational layer).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# MDM reference catalogs (master schema)
+TABLE_DEPARTMENTS      = "royan_departments"       # public — also readable as master entity
+TABLE_LAB_CATALOG      = "royan_lab_catalog"
+TABLE_DRUG_FORMULARY   = "royan_drug_formulary"
+TABLE_DIAGNOSIS_CATALOG= "royan_diagnosis_catalog"
+TABLE_PROCEDURE_CATALOG= "royan_procedure_catalog"
+TABLE_MDM_CHANGE_REQS  = "royan_mdm_change_requests"
+TABLE_MDM_AUDIT        = "royan_mdm_audit"
+
+# Workflow schema (workflow.*)
+TABLE_WORKFLOW_INSTANCES  = "workflow.instances"
+TABLE_WORKFLOW_EVENTS     = "workflow.events"
+
+# Knowledge schema (knowledge.*)
+TABLE_KNOWLEDGE_PATIENT_CTX   = "knowledge.patient_context_cache"
+TABLE_KNOWLEDGE_ENCOUNTER_CTX = "knowledge.encounter_context_cache"
+
+# Integration schema (integration.*)
+TABLE_INTEGRATION_BATCHES = "integration.batches"
+TABLE_INTEGRATION_LINEAGE = "integration.lineage"
+
+# Audit schema (audit.*)
+TABLE_AUDIT_ENTERPRISE = "audit.enterprise_events"
+
+# Configuration schema (configuration.*)
+TABLE_WORKFLOW_DEFINITIONS = "configuration.workflow_definitions"
+
 
 def append_disclaimer(text: str) -> str:
     """Ensure the NDPA 2023 disclaimer is appended exactly once."""

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -346,6 +346,10 @@ const Login = () => {
 
             <p className="mt-6 text-center text-[10px] leading-relaxed text-white/20">
               Authorized personnel only · This system is monitored and all access is logged
+            </p>
+
+            <p className="mt-4 text-center text-xs text-white/40">
+              New staff member? <Link to="/register" className="text-cyan-400 hover:underline">Register here</Link>
             </p>
           </div>
 

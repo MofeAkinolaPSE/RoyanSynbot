@@ -3,8 +3,10 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import hmac
+import re
 import secrets
 import jwt
+from fastapi import HTTPException
 
 try:
     import bcrypt  # type: ignore
@@ -12,6 +14,29 @@ except Exception:  # pragma: no cover - environment-specific dependency fallback
     bcrypt = None
 
 from src.constants import JWT_SECRET, JWT_AUDIENCE, ACCESS_TOKEN_MINUTES, REFRESH_TOKEN_DAYS
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(value: str) -> str:
+    email = (value or "").strip().lower()
+    if not EMAIL_PATTERN.match(email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    return email
+
+
+def validate_password_strength(password: str) -> None:
+    pwd = password or ""
+    if len(pwd) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+    if not any(c.islower() for c in pwd):
+        raise HTTPException(status_code=400, detail="Password must include a lowercase letter")
+    if not any(c.isupper() for c in pwd):
+        raise HTTPException(status_code=400, detail="Password must include an uppercase letter")
+    if not any(c.isdigit() for c in pwd):
+        raise HTTPException(status_code=400, detail="Password must include a number")
+    if not any(c in "!@#$%^&*()-_=+[]{};:,.?/" for c in pwd):
+        raise HTTPException(status_code=400, detail="Password must include a special character")
 
 
 def hash_password(password: str) -> str:
@@ -30,7 +55,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, roles: list[str]) -> tuple[str, dt.datetime]:
+def create_access_token(user_id: str, roles: list[str], email: str | None = None) -> tuple[str, dt.datetime]:
     now = dt.datetime.now(dt.timezone.utc)
     exp = now + dt.timedelta(minutes=ACCESS_TOKEN_MINUTES)
     payload: dict[str, object] = {
@@ -39,6 +64,8 @@ def create_access_token(user_id: str, roles: list[str]) -> tuple[str, dt.datetim
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
+    if email:
+        payload["email"] = email
     if JWT_AUDIENCE:
         payload["aud"] = JWT_AUDIENCE
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")

@@ -12,6 +12,20 @@ class Result:
         self.count = count if count is not None else len(self.data)
 
 
+class JsonbValue:
+    """Wrap a list/scalar value to force JSONB serialization on insert/update.
+
+    Without this, TableQuery guesses array-vs-jsonb from the value's shape
+    (a list of strings looks the same whether the target column is a native
+    Postgres text[] or a jsonb array), which breaks for jsonb-typed columns
+    holding plain scalar lists (e.g. royan_capability_proposals.required_components).
+    """
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+
 class TableQuery:
     def __init__(self, client, table):
         self.client = client
@@ -79,11 +93,11 @@ class TableQuery:
         return self
 
     def is_(self, col, val):
-        """IS NULL / IS NOT NULL check"""
-        if val is None:
+        """IS NULL / IS NOT NULL. Accepts Python None or string 'null' for IS NULL."""
+        if val is None or val == "null":
             self._where.append((col, "IS", None))
         else:
-            self._where.append((col, "IS", val))
+            self._where.append((col, "IS_NOT_NULL", val))
         return self
 
     def ilike(self, col, pattern):
@@ -104,6 +118,15 @@ class TableQuery:
     def not_in(self, col, values):
         """NOT IN (...) filter"""
         self._where.append((col, "NOT_IN", list(values)))
+        return self
+
+    def or_(self, conditions_str: str):
+        """OR filter using PostgREST-style comma-separated condition string.
+        e.g. "first_name.ilike.%MOFE%,last_name.ilike.%MOFE%"
+        → (first_name ILIKE '%MOFE%' OR last_name ILIKE '%MOFE%')
+        """
+        self._or_clauses = getattr(self, '_or_clauses', [])
+        self._or_clauses.append(conditions_str)
         return self
 
     def order(self, col, desc=False):
@@ -135,7 +158,11 @@ class TableQuery:
                 placeholders = []
                 for c in cols:
                     v = row_dict.get(c)
-                    if isinstance(v, (list, tuple)):
+                    if isinstance(v, JsonbValue):
+                        import json as _json
+                        vals.append(_json.dumps(v.value))
+                        placeholders.append('%s::jsonb')
+                    elif isinstance(v, (list, tuple)):
                         if _is_numeric_list(v):
                             # Numeric embedding → store as native DOUBLE PRECISION[] array
                             # (pgvector extension not required; cosine similarity is computed in Python)
@@ -189,10 +216,18 @@ class TableQuery:
                 params = []
                 for c in cols:
                     v = self._payload[c]
-                    if isinstance(v, (list, tuple)):
+                    if isinstance(v, JsonbValue):
+                        import json as _json
+                        set_parts.append(f"{c} = %s::jsonb")
+                        params.append(_json.dumps(v.value))
+                    elif isinstance(v, (list, tuple)):
                         if _is_numeric_list(v):
                             set_parts.append(f"{c} = %s::DOUBLE PRECISION[]")
                             params.append(list(v))
+                        elif v and isinstance(v[0], dict):
+                            import json as _json
+                            set_parts.append(f"{c} = %s::jsonb")
+                            params.append(_json.dumps(v))
                         else:
                             set_parts.append(f"{c} = %s")
                             params.append(list(v))
@@ -291,10 +326,9 @@ class TableQuery:
                 conditions = []
                 for col, op, val in self._where:
                     if op == "IS":
-                        if val is None:
-                            conditions.append(f"{col} IS NULL")
-                        else:
-                            conditions.append(f"{col} IS NOT NULL")
+                        conditions.append(f"{col} IS NULL")
+                    elif op == "IS_NOT_NULL":
+                        conditions.append(f"{col} IS NOT NULL")
                     elif op == "ILIKE":
                         conditions.append(f"{col} ILIKE %s")
                         params.append(val)
@@ -325,7 +359,43 @@ class TableQuery:
                             conditions.append(f"{col} {op} %s")
                             params.append(val)
                 where_clause = ' WHERE ' + ' AND '.join(conditions)
-            
+
+            # OR filter block — PostgREST-style "col.op.value,col2.op2.value2"
+            or_clauses = getattr(self, '_or_clauses', [])
+            if or_clauses:
+                all_or_parts = []
+                for conditions_str in or_clauses:
+                    parts = [p.strip() for p in conditions_str.split(',')]
+                    or_parts = []
+                    for part in parts:
+                        pieces = part.split('.', 2)
+                        if len(pieces) != 3:
+                            continue
+                        col_name, op_str, value = pieces
+                        op_upper = op_str.upper()
+                        if op_upper == 'ILIKE':
+                            or_parts.append(f"{col_name} ILIKE %s")
+                            params.append(value)
+                        elif op_upper == 'EQ':
+                            or_parts.append(f"{col_name} = %s")
+                            params.append(value)
+                        elif op_upper == 'LIKE':
+                            or_parts.append(f"{col_name} LIKE %s")
+                            params.append(value)
+                        elif op_upper == 'NEQ':
+                            or_parts.append(f"{col_name} != %s")
+                            params.append(value)
+                        elif op_upper in ('IS', 'IS_NULL'):
+                            or_parts.append(f"{col_name} IS NULL")
+                    if or_parts:
+                        all_or_parts.append(f"({' OR '.join(or_parts)})")
+                if all_or_parts:
+                    or_expr = ' AND '.join(all_or_parts)
+                    if where_clause:
+                        where_clause += f" AND {or_expr}"
+                    else:
+                        where_clause = f" WHERE {or_expr}"
+
             # If count="exact" requested, get total count before applying limit/offset/order
             total_count = None
             if self._count_mode == "exact":

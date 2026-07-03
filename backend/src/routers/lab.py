@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
+from src.services.event_service import emit_clinical_event
 from src.constants import (
     LAB_INTERPRETATION_ALLOWED,
     LAB_ORDER_STATUS_ALLOWED,
@@ -126,32 +127,36 @@ async def place_lab_order(payload: LabOrderCreate, user=Depends(verify_jwt)):
 @router.get("/stats")
 async def lab_stats(user=Depends(verify_jwt)):
     """Return aggregate counts per status for the KPI dashboard cards."""
-    result = db.table(TABLE_LAB_ORDERS).select("status, urgency, ordered_at").is_("external_source", "null").execute()
+    result = db.table(TABLE_LAB_ORDERS).select("status, urgency, ordered_at").is_("external_source", None).execute()
     rows = result.data or []
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
 
-    pending = sum(1 for r in rows if r.get("status") in ("ordered", "pending"))
-    processing = sum(1 for r in rows if r.get("status") in ("sample_collected", "processing"))
+    pending          = sum(1 for r in rows if r.get("status") in ("ordered", "pending"))
+    sample_collecting= sum(1 for r in rows if r.get("status") == "sample_collected")
+    processing       = sum(1 for r in rows if r.get("status") == "processing")
+
+    def _secs(r: dict) -> float:
+        try:
+            return (now - datetime.fromisoformat(r["ordered_at"].replace("Z", "+00:00"))).total_seconds()
+        except Exception:
+            return 0.0
 
     stat_overdue = sum(
         1 for r in rows
-        if r.get("urgency") == "stat"
-        and r.get("status") in ("ordered", "pending")
-        and r.get("ordered_at")
-        and (now - datetime.fromisoformat(r["ordered_at"].replace("Z", "+00:00"))).total_seconds() > 1800
+        if r.get("urgency") == "stat" and r.get("status") in ("ordered", "pending")
+        and r.get("ordered_at") and _secs(r) > 1800
     )
     urgent_overdue = sum(
         1 for r in rows
-        if r.get("urgency") == "urgent"
-        and r.get("status") in ("ordered", "pending")
-        and r.get("ordered_at")
-        and (now - datetime.fromisoformat(r["ordered_at"].replace("Z", "+00:00"))).total_seconds() > 7200
+        if r.get("urgency") == "urgent" and r.get("status") in ("ordered", "pending")
+        and r.get("ordered_at") and _secs(r) > 7200
     )
 
     return {
         "pending": pending,
+        "sample_collecting": sample_collecting,
         "processing": processing,
         "stat_overdue": stat_overdue,
         "urgent_overdue": urgent_overdue,
@@ -168,7 +173,7 @@ async def list_lab_orders(
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
-    query = db.table(TABLE_LAB_ORDERS).select("*").is_("external_source", "null").order("ordered_at", desc=True).limit(limit)
+    query = db.table(TABLE_LAB_ORDERS).select("*").is_("external_source", None).order("ordered_at", desc=True).limit(limit)
     if status:
         query = query.eq("status", status)
     if patient_id:
@@ -178,7 +183,33 @@ async def list_lab_orders(
     if urgency:
         query = query.eq("urgency", urgency)
     result = query.execute()
-    return {"orders": result.data, "count": len(result.data)}
+    orders: list = list(result.data or [])
+
+    # Batch-enrich each order with basic patient demographics (1 extra query for all)
+    if orders:
+        try:
+            pid_set = list({o["patient_id"] for o in orders if o.get("patient_id") is not None})
+            if pid_set:
+                pt_rows = db.table(TABLE_PATIENTS).select(
+                    "id,mrn,first_name,last_name,gender,date_of_birth,blood_group,hmo_provider,phone"
+                ).in_("id", pid_set).execute()
+                pt_map = {p["id"]: p for p in (pt_rows.data or [])}
+                for order in orders:
+                    p = pt_map.get(order.get("patient_id"))
+                    if p:
+                        fn = (p.get("first_name") or "").strip()
+                        ln = (p.get("last_name") or "").strip()
+                        order["patient_name"]        = f"{fn} {ln}".strip() or None
+                        order["patient_mrn"]         = p.get("mrn")
+                        order["patient_gender"]      = p.get("gender")
+                        order["patient_dob"]         = p.get("date_of_birth")
+                        order["patient_blood_group"] = p.get("blood_group")
+                        order["patient_hmo"]         = p.get("hmo_provider")
+                        order["patient_phone"]       = p.get("phone")
+        except Exception as exc:
+            logger.warning("lab order patient enrichment failed: %s", exc)
+
+    return {"orders": orders, "count": len(orders)}
 
 
 @router.get("/orders/{order_id}")
@@ -204,6 +235,14 @@ async def collect_sample(order_id: int, payload: SampleCollectedRequest, user=De
     }).eq("id", order_id).execute()
 
     audit_event("lab_sample_collected", {}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
+    emit_clinical_event(
+        event_type="LAB_SAMPLE_COLLECTED",
+        encounter_id=order.get("encounter_id"),
+        patient_id=order.get("patient_id"),
+        entity_type="lab_order", entity_id=order_id,
+        performed_by=user.get("sub"),
+        event_data={"test_name": order.get("test_name")},
+    )
     return {"ok": True, "order_id": order_id, "status": "sample_collected"}
 
 
@@ -246,8 +285,28 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
     if payload.is_critical:
         logger.warning("CRITICAL lab result for order %s patient %s", order_id, order["patient_id"])
         audit_event("lab_critical_result", {"test": order.get("test_name")}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
+        emit_clinical_event(
+            event_type="LAB_RESULT_CRITICAL",
+            encounter_id=order.get("encounter_id"),
+            patient_id=order.get("patient_id"),
+            entity_type="lab_order", entity_id=order_id,
+            performed_by=user.get("sub"),
+            event_data={"test_name": order.get("test_name"), "is_critical": True},
+        )
 
     audit_event("lab_result_recorded", {"interpretation": payload.interpretation}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
+    emit_clinical_event(
+        event_type="LAB_RESULT_READY",
+        encounter_id=order.get("encounter_id"),
+        patient_id=order.get("patient_id"),
+        entity_type="lab_order", entity_id=order_id,
+        performed_by=user.get("sub"),
+        event_data={
+            "test_name": order.get("test_name"),
+            "interpretation": payload.interpretation,
+            "is_critical": payload.is_critical,
+        },
+    )
     return {"ok": True, "result": res_row}
 
 

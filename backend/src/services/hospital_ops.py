@@ -74,7 +74,7 @@ def get_patient_flow_kpis(client: DBClient = db) -> Dict[str, Any]:
         cur = conn.cursor()
         cur.execute("""
             SELECT
-                COUNT(*) FILTER (WHERE status IN ('patient_registered', 'triaged')
+                COUNT(*) FILTER (WHERE status NOT IN ('discharged', 'billing_pending')
                                        AND external_source IS NULL),
                 COUNT(*) FILTER (WHERE status = 'consulting'
                                        AND external_source IS NULL),
@@ -85,12 +85,27 @@ def get_patient_flow_kpis(client: DBClient = db) -> Dict[str, Any]:
                                        AND created_at::date = %s::date)
             FROM public.royan_encounters
         """, (today, today))
+        cur2 = conn.cursor()
+        cur2.execute("""
+            SELECT ROUND(
+                EXTRACT(EPOCH FROM AVG(
+                    CASE WHEN triage_at IS NOT NULL AND created_at IS NOT NULL
+                         THEN triage_at - created_at END
+                )) / 60.0, 1
+            )
+            FROM public.royan_encounters
+            WHERE external_source IS NULL
+              AND created_at::date = %s::date
+        """, (today,))
         row = cur.fetchone()
+        row2 = cur2.fetchone()
         if row:
             result["patients_waiting"]       = int(row[0] or 0)
             result["active_consultations"]   = int(row[1] or 0)
             result["patients_seen_today"]    = int(row[2] or 0)
             result["total_encounters_today"] = int(row[3] or 0)
+        if row2:
+            result["avg_wait_minutes"]       = float(row2[0] or 0.0)
     except Exception as exc:
         logger.debug(f"get_patient_flow_kpis: SQL query failed ({exc})")
     finally:

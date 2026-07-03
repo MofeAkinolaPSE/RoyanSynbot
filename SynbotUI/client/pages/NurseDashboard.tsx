@@ -1,23 +1,41 @@
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
   HeartPulse, BedDouble, AlertTriangle, Activity, Droplets,
-  ChevronDown, Loader2, RefreshCw, ArrowRight,
+  ChevronDown, Loader2, RefreshCw, ArrowRight, Syringe, Clock,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
+import { useToast } from "@/hooks/use-toast";
 import { AlertBanner } from "@/components/AlertBanner";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { cn } from "@/lib/utils";
 
 function fmtDate(ts?: string) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function waitMins(ts?: string): string {
+  if (!ts) return "—";
+  const mins = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
 // ── Ward Row (lazy-loads beds on expand) ──────────────────────────────────────
@@ -95,37 +113,113 @@ function WardRow({ ward }: { ward: any }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function NurseDashboard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const today = new Date().toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
+  // Vitals dialog state
+  const [vitalsOpen, setVitalsOpen] = useState(false);
+  const [vitalsEnc, setVitalsEnc] = useState<any>(null);
+  const [vitalsForm, setVitalsForm] = useState({
+    bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "",
+    spo2: "", respiratory_rate: "", weight: "",
+  });
+
+  // ── Queries ────────────────────────────────────────────────────────────────
   const { data: wardsData, isLoading: wardsLoading, refetch: refetchWards } = useQuery({
     queryKey: ["nurse-wards"],
     queryFn: () => api.hospital.wards.list(),
-    refetchInterval: 120_000,
+    refetchInterval: 30_000,
     staleTime: 60_000,
   });
   const wards: any[] = Array.isArray(wardsData?.wards) ? wardsData.wards : Array.isArray(wardsData) ? wardsData : [];
 
+  const { data: waitingData, refetch: refetchWaiting } = useQuery({
+    queryKey: ["nurse-waiting"],
+    queryFn: () => api.hospital.queue.list({ status: "patient_registered" } as any),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const waitingPatients: any[] = Array.isArray(waitingData?.encounters) ? waitingData.encounters : [];
+
+  const { data: triagedData, refetch: refetchTriaged } = useQuery({
+    queryKey: ["nurse-triaged"],
+    queryFn: () => api.hospital.queue.list({ status: "triaged" } as any),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const triagedPatients: any[] = Array.isArray(triagedData?.encounters) ? triagedData.encounters : [];
+
+  const pendingAssessment = useMemo(
+    () => [...waitingPatients, ...triagedPatients].sort((a, b) =>
+      new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()
+    ),
+    [waitingPatients, triagedPatients]
+  );
+
   const { data: inpatientsData, refetch: refetchInpatients } = useQuery({
     queryKey: ["nurse-inpatients"],
     queryFn: () => api.hospital.queue.list({ status: "consulting" }),
-    refetchInterval: 120_000,
-    staleTime: 60_000,
+    refetchInterval: 30_000,
+    staleTime: 30_000,
   });
   const inpatients: any[] = Array.isArray(inpatientsData?.encounters) ? inpatientsData.encounters : [];
 
   const { data: critLabData, isLoading: critLoading, refetch: refetchCrit } = useQuery({
     queryKey: ["nurse-critical-labs"],
     queryFn: () => api.hospital.lab.critical(),
-    refetchInterval: 120_000,
-    staleTime: 60_000,
+    refetchInterval: 30_000,
+    staleTime: 30_000,
   });
   const critFlags: any[] = Array.isArray(critLabData?.critical_results) ? critLabData.critical_results : [];
 
-  const totalBeds = useMemo(() => wards.reduce((s, w) => s + (w.total_beds ?? w.bed_count ?? 0), 0), [wards]);
+  // Real-time: invalidate waiting/triaged instantly on encounter events
+  useRealtimeChannel("encounter_updates", (msg: any) => {
+    const ev = msg?.event ?? "";
+    if (["encounter_opened", "nurse_done", "patient_called"].includes(ev)) {
+      void qc.invalidateQueries({ queryKey: ["nurse-waiting"] });
+      void qc.invalidateQueries({ queryKey: ["nurse-triaged"] });
+      void qc.invalidateQueries({ queryKey: ["nurse-inpatients"] });
+    }
+  });
+
+  const totalBeds    = useMemo(() => wards.reduce((s, w) => s + (w.total_beds ?? w.bed_count ?? 0), 0), [wards]);
   const occupiedBeds = useMemo(() => wards.reduce((s, w) => s + (w.occupied_beds ?? 0), 0), [wards]);
   const availableBeds = totalBeds - occupiedBeds;
 
-  function doRefresh() { void refetchWards(); void refetchInpatients(); void refetchCrit(); }
+  function doRefresh() {
+    void refetchWards(); void refetchWaiting(); void refetchTriaged();
+    void refetchInpatients(); void refetchCrit();
+  }
+
+  // ── Vitals mutation ────────────────────────────────────────────────────────
+  const vitalsMut = useMutation({
+    mutationFn: async () => {
+      if (!vitalsEnc) throw new Error("No encounter selected");
+      await api.hospital.nursing.recordVitals({
+        patient_id: Number(vitalsEnc.patient_id),
+        encounter_id: Number(vitalsEnc.id),
+        bp_systolic:      vitalsForm.bp_systolic      ? Number(vitalsForm.bp_systolic)      : undefined,
+        bp_diastolic:     vitalsForm.bp_diastolic     ? Number(vitalsForm.bp_diastolic)     : undefined,
+        temperature:      vitalsForm.temperature      ? Number(vitalsForm.temperature)      : undefined,
+        pulse:            vitalsForm.pulse            ? Number(vitalsForm.pulse)            : undefined,
+        spo2:             vitalsForm.spo2             ? Number(vitalsForm.spo2)             : undefined,
+        respiratory_rate: vitalsForm.respiratory_rate ? Number(vitalsForm.respiratory_rate) : undefined,
+        weight:           vitalsForm.weight           ? Number(vitalsForm.weight)           : undefined,
+      });
+      return api.hospital.queue.nursingDone(vitalsEnc.id);
+    },
+    onSuccess: () => {
+      toast({ title: "Vitals confirmed — patient ready for doctor" });
+      setVitalsOpen(false);
+      setVitalsEnc(null);
+      setVitalsForm({ bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "", spo2: "", respiratory_rate: "", weight: "" });
+      void qc.invalidateQueries({ queryKey: ["nurse-waiting"] });
+      void qc.invalidateQueries({ queryKey: ["nurse-triaged"] });
+    },
+    onError: (e: any) => toast({ title: "Error recording vitals", description: e.message, variant: "destructive" }),
+  });
 
   return (
     <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
@@ -147,10 +241,10 @@ export default function NurseDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: "Inpatients",    value: inpatients.length, icon: Activity,     color: "text-blue-700",   bg: "bg-blue-50" },
-          { label: "Beds Occupied", value: occupiedBeds,      icon: BedDouble,    color: "text-orange-700", bg: "bg-orange-50" },
-          { label: "Beds Available",value: availableBeds,     icon: BedDouble,    color: "text-green-700",  bg: "bg-green-50" },
-          { label: "Critical Flags",value: critFlags.length,  icon: AlertTriangle,color: critFlags.length > 0 ? "text-red-700" : "text-muted-foreground", bg: critFlags.length > 0 ? "bg-red-50" : "bg-muted/30" },
+          { label: "Waiting for Nurse",  value: pendingAssessment.length, icon: Syringe,      color: "text-teal-700",   bg: pendingAssessment.length > 0 ? "bg-teal-50 border-teal-200" : "" },
+          { label: "Inpatients",         value: inpatients.length,        icon: Activity,     color: "text-blue-700",   bg: "bg-blue-50" },
+          { label: "Beds Available",     value: availableBeds,            icon: BedDouble,    color: "text-green-700",  bg: "bg-green-50" },
+          { label: "Critical Flags",     value: critFlags.length,         icon: AlertTriangle,color: critFlags.length > 0 ? "text-red-700" : "text-muted-foreground", bg: critFlags.length > 0 ? "bg-red-50" : "bg-muted/30" },
         ].map(k => (
           <Card key={k.label} className={cn("border-border/60", k.bg)}>
             <CardContent className="pt-4 pb-3">
@@ -165,6 +259,76 @@ export default function NurseDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* ── Waiting for Assessment ─────────────────────────────────────────── */}
+      <Card className={cn(pendingAssessment.length > 0 && "border-teal-500/30")}>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Syringe className={cn("h-4 w-4", pendingAssessment.length > 0 ? "text-teal-400" : "text-muted-foreground")} />
+            Waiting for Assessment
+            {pendingAssessment.length > 0 && (
+              <span className="rounded-full bg-teal-500/20 text-teal-400 text-[10px] font-semibold px-2 py-0.5">
+                {pendingAssessment.length}
+              </span>
+            )}
+          </CardTitle>
+          <Button variant="ghost" size="sm" asChild className="h-7 text-xs gap-1">
+            <Link to="/hospital/queue"><ArrowRight className="h-3 w-3" /> Full Queue</Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {pendingAssessment.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-center text-muted-foreground">No patients waiting for assessment</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Queue #</TableHead>
+                  <TableHead>Patient</TableHead>
+                  <TableHead className="hidden sm:table-cell">Chief Complaint</TableHead>
+                  <TableHead className="w-16">Wait</TableHead>
+                  <TableHead className="w-28">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingAssessment.map((enc: any) => (
+                  <TableRow key={enc.id} className="hover:bg-muted/30">
+                    <TableCell className="font-mono text-xs font-bold text-primary">
+                      {enc.queue_number ?? String(enc.id).slice(0, 6)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          className="text-sm font-medium text-left hover:text-primary transition-colors"
+                          onClick={() => enc.mrn && navigate(`/hospital/patients/${enc.mrn}`)}
+                        >
+                          {enc.patient_name ?? <span className="text-muted-foreground italic text-xs">Unknown</span>}
+                        </button>
+                        {enc.mrn && <span className="font-mono text-[10px] text-muted-foreground">{enc.mrn}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[180px] truncate">
+                      {enc.chief_complaint ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />{waitMins(enc.created_at)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline"
+                        className="h-7 px-2 text-xs gap-1 border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
+                        onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
+                        <Syringe className="h-3 w-3" /> Vitals
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Ward Bed Status */}
       <Card>
@@ -187,10 +351,8 @@ export default function NurseDashboard() {
         </CardContent>
       </Card>
 
-      {/* Critical Labs + Fluid Alerts */}
+      {/* Critical Labs + Active Inpatients */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
-        {/* Critical Lab Flags */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -229,7 +391,6 @@ export default function NurseDashboard() {
           </CardContent>
         </Card>
 
-        {/* Active Inpatients Quick Links */}
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -249,15 +410,13 @@ export default function NurseDashboard() {
                   <li key={enc.id} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors">
                     <div>
                       <p className="text-xs font-medium">{enc.patient_name ?? enc.mrn ?? `Patient #${enc.patient_id}`}</p>
-                      <p className="text-[10px] text-muted-foreground">{enc.department ?? "—"} · {enc.ward_name ?? enc.bed_number ?? ""}</p>
+                      <p className="text-[10px] text-muted-foreground">{enc.department ?? "—"}</p>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {enc.mrn && (
-                        <Button variant="outline" size="sm" asChild className="h-6 px-2 text-xs border-primary/40 text-primary">
-                          <Link to={`/hospital/patients/${enc.mrn}`}>CPRS</Link>
-                        </Button>
-                      )}
-                    </div>
+                    {enc.mrn && (
+                      <Button variant="outline" size="sm" asChild className="h-6 px-2 text-xs border-primary/40 text-primary shrink-0">
+                        <Link to={`/hospital/patients/${enc.mrn}`}>CPRS</Link>
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -279,6 +438,68 @@ export default function NurseDashboard() {
           </Button>
         ))}
       </div>
+
+      {/* ── Vitals Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={vitalsOpen} onOpenChange={o => { if (!o) { setVitalsOpen(false); setVitalsEnc(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HeartPulse className="h-4 w-4 text-teal-400" /> Record Vitals
+            </DialogTitle>
+            <DialogDescription>
+              {vitalsEnc?.queue_number ?? String(vitalsEnc?.id ?? "").slice(0, 8)} — {vitalsEnc?.patient_name ?? "Patient"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="space-y-1">
+              <Label>BP Systolic (mmHg)</Label>
+              <Input type="number" placeholder="e.g. 120" value={vitalsForm.bp_systolic}
+                onChange={e => setVitalsForm(f => ({ ...f, bp_systolic: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>BP Diastolic (mmHg)</Label>
+              <Input type="number" placeholder="e.g. 80" value={vitalsForm.bp_diastolic}
+                onChange={e => setVitalsForm(f => ({ ...f, bp_diastolic: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Temperature (°C)</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 36.6" value={vitalsForm.temperature}
+                onChange={e => setVitalsForm(f => ({ ...f, temperature: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Pulse (bpm)</Label>
+              <Input type="number" placeholder="e.g. 72" value={vitalsForm.pulse}
+                onChange={e => setVitalsForm(f => ({ ...f, pulse: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>SpO₂ (%)</Label>
+              <Input type="number" placeholder="e.g. 98" value={vitalsForm.spo2}
+                onChange={e => setVitalsForm(f => ({ ...f, spo2: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Respiratory Rate</Label>
+              <Input type="number" placeholder="e.g. 18" value={vitalsForm.respiratory_rate}
+                onChange={e => setVitalsForm(f => ({ ...f, respiratory_rate: e.target.value }))} />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label>Weight (kg)</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 70.5" value={vitalsForm.weight}
+                onChange={e => setVitalsForm(f => ({ ...f, weight: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setVitalsOpen(false); setVitalsEnc(null); }}>Cancel</Button>
+            <Button
+              className="bg-teal-600 hover:bg-teal-700"
+              disabled={vitalsMut.isPending}
+              onClick={() => vitalsMut.mutate()}
+            >
+              {vitalsMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save & Confirm Vitals
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

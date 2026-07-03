@@ -245,7 +245,7 @@ export default function PatientProfile() {
   const [rxOpen, setRxOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"timeline" | "problems" | "meds" | "orders" | "notes" | "labs" | "surgery" | "vitals" | "consent" | "specialist">("timeline");
   const [noteOpen, setNoteOpen] = useState(false);
-  const [noteForm, setNoteForm] = useState({ note_type: "progress", subjective: "", objective: "", assessment: "", plan: "" });
+  const [noteForm, setNoteForm] = useState({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "" });
   const [problemOpen, setProblemOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [problemForm, setProblemForm] = useState({ description: "", icd10_code: "", status: "active", onset_date: "" });
@@ -297,7 +297,7 @@ export default function PatientProfile() {
   // Lab order mutation
   const labMut = useMutation({
     mutationFn: () => api.hospital.lab.placeOrder({
-      patient_id: patient?.id,
+      patient_id: Number(patient?.id),
       encounter_id: data?.active_encounter?.id,
       ...labForm,
     }),
@@ -516,19 +516,22 @@ export default function PatientProfile() {
 
   // ── Note write mutation ──────────────────────────────────────────────────────
   const noteMut = useMutation({
-    mutationFn: () => api.hospital.queue.addNote(String(data?.active_encounter?.id), {
-      note_type: noteForm.note_type,
-      content: JSON.stringify({
-        subjective: noteForm.subjective,
-        objective: noteForm.objective,
-        assessment: noteForm.assessment,
-        plan: noteForm.plan,
-      }),
-    }),
+    mutationFn: () => {
+      if (!data?.active_encounter?.id) throw new Error("No active encounter — open one first");
+      return api.hospital.queue.addNote(String(data.active_encounter.id), {
+        note_type: noteForm.note_type,
+        content: JSON.stringify({
+          subjective: noteForm.subjective,
+          objective: noteForm.objective,
+          assessment: noteForm.assessment,
+          plan: noteForm.plan,
+        }),
+      });
+    },
     onSuccess: () => {
       toast({ title: "Progress note saved" });
       setNoteOpen(false);
-      setNoteForm({ note_type: "progress", subjective: "", objective: "", assessment: "", plan: "" });
+      setNoteForm({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "" });
       void qc.invalidateQueries({ queryKey: ["patient-enc-notes", patientNumId] });
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
@@ -1288,7 +1291,7 @@ export default function PatientProfile() {
             variant="outline"
             className="w-full justify-start gap-2"
             size="sm"
-            onClick={() => navigate("/hospital/billing")}
+            onClick={() => navigate(`/hospital/billing?patient_id=${patient?.id ?? ""}`)}
           >
             <Receipt className="h-3.5 w-3.5" />
             View Billing
@@ -1793,7 +1796,7 @@ export default function PatientProfile() {
               <Select value={noteForm.note_type} onValueChange={v => setNoteForm(f => ({ ...f, note_type: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["progress","discharge","handoff","referral_letter","procedure"].map(t => (
+                  {["soap","general","assessment","plan"].map(t => (
                     <SelectItem key={t} value={t} className="capitalize">{t.replace(/_/g," ")}</SelectItem>
                   ))}
                 </SelectContent>

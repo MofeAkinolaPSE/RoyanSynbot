@@ -187,6 +187,34 @@ async function sendJson<T>(
   return res.json();
 }
 
+async function fetchPublicJson<T>(endpoint: string): Promise<T> {
+  const res = await fetch(apiUrl(endpoint), { cache: "no-store" });
+  if (!res.ok) {
+    const apiError = await toApiError(res, `Request failed for ${endpoint}`);
+    console.error(`API Error ${endpoint}:`, apiError.message);
+    throw apiError;
+  }
+  return res.json().then(d => d.data ?? d);
+}
+
+async function sendPublicJson<T>(
+  endpoint: string,
+  method: "POST" | "PUT" | "PATCH",
+  body: Record<string, any>,
+): Promise<T> {
+  const res = await fetch(apiUrl(endpoint), {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const apiError = await toApiError(res, `Request failed for ${method} ${endpoint}`);
+    console.error(`API Error ${method} ${endpoint}:`, apiError.message);
+    throw apiError;
+  }
+  return res.json();
+}
+
 async function sendFormData<T>(
   endpoint: string,
   method: "POST" | "PUT" | "PATCH",
@@ -269,12 +297,42 @@ export const api = {
     finance: () => fetchJson<any>("/dashboard/finance"),
     hospitalStatus: () => fetchJson<any>("/dashboard/hospital-status"),
   },
+  mdm: {
+    departments: () =>
+      fetchJson<{ entity_type: string; records: Array<{ id: number; code: string; name: string; short_name?: string }>; count: number }>(
+        "/api/v1/mdm/department",
+      ),
+  },
+  roles: {
+    list: () => fetchPublicJson<{ roles: string[] }>("/roles"),
+  },
+  publicDepartments: {
+    list: () => fetchPublicJson<{ records: Array<{ id: number; code: string; name: string; short_name?: string }> }>("/departments"),
+  },
+  registrations: {
+    submit: (payload: {
+      email: string;
+      password: string;
+      full_name: string;
+      role: string;
+      department: string;
+      designation?: string;
+      phone?: string;
+      kyc_details?: Record<string, string>;
+    }) => sendPublicJson<{ status: string; registration_id: string }>("/register", "POST", payload),
+    list: (status: string = "pending") => fetchJson<{ data: any[] }>(`/staff/registrations?status=${status}`),
+    detail: (id: string) => fetchJson<{ data: any }>(`/staff/registrations/${encodeURIComponent(id)}`),
+    approve: (id: string, payload: { department_id_override?: number; approval_reason: string; attestation_text: string }) =>
+      sendJson<{ status: string; staff_id: string; user_id: string }>(`/staff/registrations/${encodeURIComponent(id)}/approve`, "POST", payload),
+    reject: (id: string, payload: { reason: string }) =>
+      sendJson<{ status: string }>(`/staff/registrations/${encodeURIComponent(id)}/reject`, "POST", payload),
+  },
   staff: {
     getMe: () => fetchJson<{ data: any; profile_complete: boolean }>("/staff/me"),
     updateProfile: (payload: Record<string, any>) =>
       sendJson<{ data: any; profile_complete: boolean }>("/staff/me/profile", "PATCH", payload),
-    register: (payload: Record<string, any>) =>
-      sendJson<{ data: any; profile_complete: boolean }>("/staff/me/register", "POST", payload),
+    updateTourState: (payload: Record<string, any>) =>
+      sendJson<{ data: any }>("/staff/me/tour", "PATCH", payload),
     list: (dept?: string) => fetchJson<StaffMember[]>(`/staff${dept ? `?department=${dept}` : ""}`),
     snapshot: () => fetchJson<StaffMember[]>(`/staff/snapshot`),
     timesheets: (department?: string, limit: number = 50) =>
@@ -1435,9 +1493,10 @@ export const api = {
     billing: {
       createBill: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills', 'POST', p),
       createBillFromEncounter: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills/from-encounter', 'POST', p),
-      listBills: (params?: { status?: string }) => {
+      listBills: (params?: { status?: string; patient_id?: number }) => {
         const qs = new URLSearchParams();
-        if (params?.status) qs.set('status', params.status);
+        if (params?.status)     qs.set('status', params.status);
+        if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
         return fetchRaw<any>('/billing_hospital/bills' + (qs.toString() ? '?' + qs : ''));
       },
       getBill: (id: string) => fetchRaw<any>('/billing_hospital/bills/' + id),

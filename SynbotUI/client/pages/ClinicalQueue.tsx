@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ import {
 import {
   Activity, Users, Clock, AlertTriangle, RefreshCw, Loader2,
   ClipboardCheck, Stethoscope, LogOut, ChevronRight, Plus, LayoutGrid, List,
-  FileText, Copy, Syringe, PhoneCall,
+  FileText, Copy, Syringe, PhoneCall, HeartPulse,
 } from "lucide-react";
 import { PatientCprsPanel } from "@/components/PatientCprsPanel";
 import { api } from "@/lib/api-client";
@@ -157,12 +158,23 @@ export default function ClinicalQueue() {
   const [openEncForm, setOpenEncForm] = useState({
     patient_id: "", encounter_type: "outpatient", department: "OPD",
   });
+  const [vitalsOpen, setVitalsOpen] = useState(false);
+  const [vitalsEnc, setVitalsEnc] = useState<Encounter | null>(null);
+  const [vitalsForm, setVitalsForm] = useState({
+    bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "",
+    spo2: "", respiratory_rate: "", weight: "",
+  });
 
   // Queue data
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["clinical-queue", filter],
     queryFn: () => api.hospital.queue.list(filter !== "all" ? { status: filter } : undefined),
     refetchInterval: 30_000,
+  });
+
+  // Real-time: invalidate queue instantly on any encounter event
+  useRealtimeChannel("encounter_updates", () => {
+    void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
   });
 
   const encounters: Encounter[] = Array.isArray(data?.encounters)
@@ -246,6 +258,32 @@ export default function ClinicalQueue() {
     mutationFn: (enc: Encounter) => api.hospital.queue.nursingDone(enc.id),
     onSuccess: () => { toast({ title: "Vitals recorded — patient ready for doctor" }); void qc.invalidateQueries({ queryKey: ["clinical-queue"] }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const vitalsMut = useMutation({
+    mutationFn: async () => {
+      if (!vitalsEnc) throw new Error("No encounter selected");
+      await api.hospital.nursing.recordVitals({
+        patient_id: Number(vitalsEnc.patient_id),
+        encounter_id: Number(vitalsEnc.id),
+        bp_systolic:      vitalsForm.bp_systolic      ? Number(vitalsForm.bp_systolic)      : undefined,
+        bp_diastolic:     vitalsForm.bp_diastolic     ? Number(vitalsForm.bp_diastolic)     : undefined,
+        temperature:      vitalsForm.temperature      ? Number(vitalsForm.temperature)      : undefined,
+        pulse:            vitalsForm.pulse            ? Number(vitalsForm.pulse)            : undefined,
+        spo2:             vitalsForm.spo2             ? Number(vitalsForm.spo2)             : undefined,
+        respiratory_rate: vitalsForm.respiratory_rate ? Number(vitalsForm.respiratory_rate) : undefined,
+        weight:           vitalsForm.weight           ? Number(vitalsForm.weight)           : undefined,
+      });
+      return api.hospital.queue.nursingDone(vitalsEnc.id);
+    },
+    onSuccess: () => {
+      toast({ title: "Vitals confirmed — patient ready for doctor" });
+      setVitalsOpen(false);
+      setVitalsEnc(null);
+      setVitalsForm({ bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "", spo2: "", respiratory_rate: "", weight: "" });
+      void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
+    },
+    onError: (e: any) => toast({ title: "Error recording vitals", description: e.message, variant: "destructive" }),
   });
 
   const callPatientMut = useMutation({
@@ -397,7 +435,7 @@ export default function ClinicalQueue() {
                         {enc.status === "triaged" && (
                           <>
                             <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
-                              onClick={() => nursingDoneMut.mutate(enc)} disabled={nursingDoneMut.isPending}>
+                              onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
                               <Syringe className="h-3 w-3" /> Vitals
                             </Button>
                             <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
@@ -797,6 +835,68 @@ export default function ClinicalQueue() {
             >
               {callPatientMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Call into {selectedRoom}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Vitals Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={vitalsOpen} onOpenChange={o => { if (!o) { setVitalsOpen(false); setVitalsEnc(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HeartPulse className="h-4 w-4 text-teal-400" /> Record Vitals
+            </DialogTitle>
+            <DialogDescription>
+              {vitalsEnc?.queue_number ?? String(vitalsEnc?.id ?? "").slice(0, 8)} — {vitalsEnc?.patient_name ?? "Patient"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="space-y-1">
+              <Label>BP Systolic (mmHg)</Label>
+              <Input type="number" placeholder="e.g. 120" value={vitalsForm.bp_systolic}
+                onChange={e => setVitalsForm(f => ({ ...f, bp_systolic: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>BP Diastolic (mmHg)</Label>
+              <Input type="number" placeholder="e.g. 80" value={vitalsForm.bp_diastolic}
+                onChange={e => setVitalsForm(f => ({ ...f, bp_diastolic: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Temperature (°C)</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 36.6" value={vitalsForm.temperature}
+                onChange={e => setVitalsForm(f => ({ ...f, temperature: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Pulse (bpm)</Label>
+              <Input type="number" placeholder="e.g. 72" value={vitalsForm.pulse}
+                onChange={e => setVitalsForm(f => ({ ...f, pulse: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>SpO₂ (%)</Label>
+              <Input type="number" placeholder="e.g. 98" value={vitalsForm.spo2}
+                onChange={e => setVitalsForm(f => ({ ...f, spo2: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Respiratory Rate</Label>
+              <Input type="number" placeholder="e.g. 18" value={vitalsForm.respiratory_rate}
+                onChange={e => setVitalsForm(f => ({ ...f, respiratory_rate: e.target.value }))} />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label>Weight (kg)</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 70.5" value={vitalsForm.weight}
+                onChange={e => setVitalsForm(f => ({ ...f, weight: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setVitalsOpen(false); setVitalsEnc(null); }}>Cancel</Button>
+            <Button
+              className="bg-teal-600 hover:bg-teal-700"
+              disabled={vitalsMut.isPending}
+              onClick={() => vitalsMut.mutate()}
+            >
+              {vitalsMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save & Confirm Vitals
             </Button>
           </DialogFooter>
         </DialogContent>

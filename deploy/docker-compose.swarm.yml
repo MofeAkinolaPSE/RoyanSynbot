@@ -52,6 +52,7 @@ services:
       HOPE_MOCK: ${HOPE_MOCK:-1}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-https://localhost}
       PORTAL_TOKEN_EXPIRE_HOURS: ${PORTAL_TOKEN_EXPIRE_HOURS:-24}
+      REDIS_URL: "redis://redis:6379/0"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -61,7 +62,7 @@ services:
     networks:
       - royan_net
     deploy:
-      replicas: 1
+      replicas: 4
       <<: *update-start-first
       resources:
         limits:
@@ -74,6 +75,26 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+    logging: *log-config
+
+  # ── Redis Shared Cache ───────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    networks:
+      - royan_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 300M
+        reservations:
+          cpus: "0.05"
+          memory: 256M
     logging: *log-config
 
   # ── PostgreSQL Database ──────────────────────────────────────────────────

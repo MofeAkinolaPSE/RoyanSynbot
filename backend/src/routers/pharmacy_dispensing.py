@@ -12,6 +12,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from typing import Optional
 
@@ -20,11 +21,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
+from src.services.event_service import emit_clinical_event
 from src.constants import (
     PRESCRIPTION_ROUTES_ALLOWED, PRESCRIPTION_STATUS_ALLOWED,
     TABLE_PRESCRIPTIONS, TABLE_DISPENSING,
     TABLE_DRUG_INVENTORY, TABLE_DRUG_INTERACTIONS, TABLE_ALLERGIES,
     TABLE_REPLENISHMENT_REQUESTS, TABLE_MAR_ENTRIES,
+    TABLE_MEDICATION_ADMIN, MEDICATION_ADMIN_STATUS,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,15 +187,17 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     # ── DDI check ────────────────────────────────────────────────────────────
     active_rxs = db.table(TABLE_PRESCRIPTIONS).select("drug_name").eq("patient_id", patient_id).in_("status", ["pending", "partially_dispensed"]).execute()
     concurrent_drugs = [r["drug_name"].lower() for r in (active_rxs.data or []) if r.get("drug_name")]
+    other_drugs = [d for d in concurrent_drugs if d != drug_name_lower]
     ddi_warnings: list[dict] = []
-    for other_drug in concurrent_drugs:
-        if other_drug == drug_name_lower:
-            continue
-        interactions = db.table(TABLE_DRUG_INTERACTIONS).select("severity,description").or_(
+    if other_drugs:
+        # Single query for all interactions involving the dispensed drug (not one per concurrent drug)
+        interactions = db.table(TABLE_DRUG_INTERACTIONS).select("severity,description,drug_a,drug_b").or_(
             f"drug_a.ilike.%{drug_name_lower}%,drug_b.ilike.%{drug_name_lower}%"
         ).execute()
         for ix in (interactions.data or []):
-            ddi_warnings.append({"drug": other_drug, "severity": ix.get("severity"), "description": ix.get("description")})
+            other_side = (ix.get("drug_b") or "").lower() if drug_name_lower in (ix.get("drug_a") or "").lower() else (ix.get("drug_a") or "").lower()
+            matched = next((d for d in other_drugs if d in other_side or other_side in d), other_drugs[0])
+            ddi_warnings.append({"drug": matched, "severity": ix.get("severity"), "description": ix.get("description")})
 
     critical_ddi = [w for w in ddi_warnings if w.get("severity") == "contraindicated"]
     if critical_ddi and not payload.acknowledge_ddi:
@@ -227,7 +232,10 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     dispensed_qty = payload.quantity_dispensed
     ordered_qty   = float(rx.get("quantity") or 1)
     new_status = "dispensed" if dispensed_qty >= ordered_qty else "partially_dispensed"
-    db.table(TABLE_PRESCRIPTIONS).update({"status": new_status}).eq("id", prescription_id).execute()
+    db.table(TABLE_PRESCRIPTIONS).update({
+        "status": new_status,
+        "dispensed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }).eq("id", prescription_id).execute()
 
     # Deduct from inventory if stock record exists
     inv_row = db.table(TABLE_DRUG_INVENTORY).select("id,stock_quantity").ilike("drug_name", f"%{rx['drug_name']}%").limit(1).execute()
@@ -277,6 +285,135 @@ async def cancel_prescription(prescription_id: int, user=Depends(verify_jwt)):
     db.table(TABLE_PRESCRIPTIONS).update({"status": "cancelled"}).eq("id", prescription_id).execute()
     audit_event("prescription_cancelled", {}, actor_id=user.get("sub"), subject_type="prescription", subject_id=str(prescription_id))
     return {"ok": True, "prescription_id": prescription_id, "status": "cancelled"}
+
+
+# ─── Medication Administration Record (MAR) ──────────────────────────────────
+
+class MARAdminRequest(BaseModel):
+    dose_given: Optional[str] = None
+    route: Optional[str] = None
+    site: Optional[str] = None           # injection site, e.g. "left deltoid"
+    admin_time: Optional[str] = None     # ISO datetime; defaults to now()
+    status: str = "given"                # given|refused|held|not_available|omitted
+    omission_reason: Optional[str] = None
+    witnessed_by_id: Optional[int] = None
+    notes: Optional[str] = None
+
+    model_config = {"extra": "ignore"}
+
+
+@router.post("/prescriptions/{prescription_id}/administer", status_code=201,
+             dependencies=[Depends(require_role("nurse", "doctor", "pharmacist", "admin"))])
+async def administer_medication(
+    prescription_id: int,
+    payload: MARAdminRequest,
+    user=Depends(verify_jwt),
+):
+    """Record a medication administration event on the MAR (Blueprint Ch 3.5)."""
+    if payload.status not in MEDICATION_ADMIN_STATUS:
+        raise HTTPException(status_code=422, detail=f"status must be one of {MEDICATION_ADMIN_STATUS}")
+
+    rx = _get_prescription(prescription_id)
+    if rx["status"] not in ("dispensed", "partially_dispensed"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot administer: prescription status is '{rx['status']}' (must be dispensed).",
+        )
+
+    data: dict = {
+        "prescription_id": prescription_id,
+        "patient_id": rx["patient_id"],
+        "encounter_id": rx.get("encounter_id"),
+        "drug_name": rx["drug_name"],
+        "dose_given": payload.dose_given or rx.get("dosage"),
+        "route": payload.route or rx.get("route"),
+        "site": payload.site,
+        "status": payload.status,
+        "omission_reason": payload.omission_reason,
+        "administered_by": user.get("sub") or "system",
+        "notes": payload.notes,
+    }
+    if payload.witnessed_by_id:
+        data["witnessed_by_id"] = payload.witnessed_by_id
+    if payload.admin_time:
+        data["admin_time"] = payload.admin_time
+
+    try:
+        result = db.table(TABLE_MEDICATION_ADMIN).insert(data).execute()
+    except Exception as exc:
+        logger.error("MAR administration insert failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to record administration")
+
+    mar_row = (result.data or [data])[0]
+
+    if payload.status == "given":
+        db.table(TABLE_PRESCRIPTIONS).update({"status": "administered"}).eq("id", prescription_id).execute()
+
+    audit_event(
+        "medication_administered",
+        {"drug": rx["drug_name"], "status": payload.status, "route": data.get("route")},
+        actor_id=user.get("sub"),
+        subject_type="prescription",
+        subject_id=str(prescription_id),
+    )
+    emit_clinical_event(
+        event_type="MEDICATION_ADMINISTERED",
+        encounter_id=rx.get("encounter_id"),
+        patient_id=rx.get("patient_id"),
+        entity_type="prescription",
+        entity_id=prescription_id,
+        performed_by=user.get("sub"),
+        event_data={"drug_name": rx["drug_name"], "status": payload.status, "route": data.get("route")},
+    )
+
+    return {"ok": True, "mar_entry": mar_row}
+
+
+@router.get("/prescriptions/{prescription_id}/mar")
+async def get_prescription_mar(prescription_id: int, user=Depends(verify_jwt)):
+    """Return the full administration history for a single prescription."""
+    _get_prescription(prescription_id)   # 404 guard
+    result = (
+        db.table(TABLE_MEDICATION_ADMIN)
+        .select("*")
+        .eq("prescription_id", prescription_id)
+        .order("admin_time", desc=True)
+        .execute()
+    )
+    return {"prescription_id": prescription_id, "mar_entries": result.data, "count": len(result.data)}
+
+
+@router.get("/encounters/{encounter_id}/mar")
+async def get_encounter_mar(encounter_id: int, user=Depends(verify_jwt)):
+    """Full MAR for all prescriptions in an encounter (nursing ward view)."""
+    rxs = (
+        db.table(TABLE_PRESCRIPTIONS)
+        .select("id,drug_name,dosage,route,frequency,status,prescribed_by,prescribed_at")
+        .eq("encounter_id", encounter_id)
+        .execute()
+    )
+    rx_ids = [r["id"] for r in (rxs.data or [])]
+    mar_rows: list = []
+    if rx_ids:
+        mar_result = (
+            db.table(TABLE_MEDICATION_ADMIN)
+            .select("*")
+            .in_("prescription_id", rx_ids)
+            .order("admin_time", desc=True)
+            .execute()
+        )
+        mar_rows = mar_result.data or []
+
+    mar_by_rx: dict = {}
+    for row in mar_rows:
+        rx_id = row.get("prescription_id")
+        mar_by_rx.setdefault(rx_id, []).append(row)
+
+    mar_sheet = [
+        {**rx, "administrations": mar_by_rx.get(rx["id"], [])}
+        for rx in (rxs.data or [])
+    ]
+    return {"encounter_id": encounter_id, "mar": mar_sheet, "total_prescriptions": len(mar_sheet)}
 
 
 # ─── Patient Allergies ────────────────────────────────────────────────────────

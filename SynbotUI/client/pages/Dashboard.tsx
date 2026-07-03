@@ -58,7 +58,7 @@ const Dashboard = () => {
   });
 
   // â”€â”€ Derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const h = (hospitalData as any)?.data ?? {};
+  const h = (hospitalData as any) ?? {};
   const patientsWaiting:      number = h.patients_waiting       ?? 0;
   const activeConsultations:  number = h.active_consultations   ?? 0;
   const patientsSeen:         number = h.patients_seen_today    ?? 0;

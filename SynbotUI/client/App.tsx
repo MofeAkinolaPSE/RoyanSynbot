@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import ThemeProvider from "./components/theme-provider";
 import AuthProvider from "./components/AuthProvider";
+import { TourProvider } from "./components/tour/TourProvider";
 import SessionPrewarm from "./components/SessionPrewarm";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
@@ -25,6 +26,7 @@ import AgentDetail from "./pages/AgentDetail";
 import Workflow from "./pages/Workflow";
 import Settings from "./pages/Settings";
 import AdminUsers from "./pages/AdminUsers";
+import AdminRegistrations from "./pages/AdminRegistrations";
 import StaffDashboard from "./pages/StaffDashboard";
 import StaffCollaboration from "./pages/StaffCollaboration";
 import StaffTimeTracker from "./pages/StaffTimeTracker";
@@ -34,6 +36,7 @@ import FinanceAR from "./pages/FinanceAR";
 import FinanceVendorPayments from "./pages/FinanceVendorPayments";
 import FinanceBudget from "./pages/FinanceBudget";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
 import HospitalPatients      from "./pages/HospitalPatients";
 import PatientProfile        from "./pages/PatientProfile";
@@ -85,8 +88,10 @@ const App = () => (
         <AuthProvider>
           <SessionPrewarm />
           <HashRouter>
+            <TourProvider>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
               <Route
                 element={
                   <ProtectedRoute>
@@ -116,6 +121,7 @@ const App = () => (
                 <Route path="/staff/collaboration" element={<StaffCollaboration />} />
                 <Route path="/staff/time-tracker" element={<StaffTimeTracker />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/registrations" element={<AdminRegistrations />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/hospital/patients"          element={<HospitalPatients />} />
                 <Route path="/hospital/patients/:mrn"    element={<PatientProfile />} />
@@ -147,6 +153,7 @@ const App = () => (
               <Route path="/hospital/display" element={<QueueDisplay />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </TourProvider>
           </HashRouter>
         </AuthProvider>
       </TooltipProvider>

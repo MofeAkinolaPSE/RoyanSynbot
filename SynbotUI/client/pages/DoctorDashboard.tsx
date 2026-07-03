@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,9 @@ import {
 } from "@/components/ui/table";
 import {
   Stethoscope, CalendarCheck, FlaskConical, Clock, User, ArrowRight, Loader2,
-  CheckCircle2, Video, FileText,
+  CheckCircle2, Video, FileText, PhoneCall, Play,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
@@ -55,6 +57,9 @@ const LAB_STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DoctorDashboard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const today = toISO(new Date());
   const doctorId = getJwtEmail() ?? authClient.getSubject() ?? "";
 
@@ -69,6 +74,43 @@ export default function DoctorDashboard() {
     queryKey: ["doctor-encounters", doctorId],
     queryFn: () => api.hospital.queue.list({ doctor: doctorId } as any),
     enabled: !!doctorId,
+    refetchInterval: 30_000,
+  });
+
+  // All patients ready for doctor (across departments)
+  const { data: readyData } = useQuery({
+    queryKey: ["doctor-ready-queue"],
+    queryFn: () => api.hospital.queue.list({ status: "nurse_assessment" } as any),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+  const readyForDoctor: any[] = Array.isArray(readyData?.encounters) ? readyData.encounters : [];
+
+  // Real-time: re-fetch queue on any encounter event
+  useRealtimeChannel("encounter_updates", () => {
+    void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });
+    void qc.invalidateQueries({ queryKey: ["doctor-encounters", doctorId] });
+  });
+
+  // Call Patient
+  const callMut = useMutation({
+    mutationFn: (enc: any) => api.hospital.queue.callPatient(enc.id),
+    onSuccess: (_, enc) => {
+      toast({ title: `${enc.patient_name ?? "Patient"} called` });
+      void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  // Begin Consultation → consult API then navigate to CPRS
+  const consultMut = useMutation({
+    mutationFn: (enc: any) => api.hospital.queue.consult(enc.id, { consulting_doctor: doctorId || undefined }),
+    onSuccess: (_, enc) => {
+      toast({ title: "Consultation started" });
+      void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });
+      if (enc.mrn) navigate(`/hospital/patients/${enc.mrn}`);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const { data: labData, isLoading: labLoading } = useQuery({
@@ -155,6 +197,92 @@ export default function DoctorDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* ── Ready for Consultation ─────────────────────────────────────── */}
+      {(readyForDoctor.length > 0 || true) && (
+        <Card className={readyForDoctor.length > 0 ? "border-blue-500/30" : undefined}>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Stethoscope className={readyForDoctor.length > 0 ? "h-4 w-4 text-blue-500" : "h-4 w-4 text-muted-foreground"} />
+              Ready for Consultation
+              {readyForDoctor.length > 0 && (
+                <span className="rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-semibold px-2 py-0.5">
+                  {readyForDoctor.length}
+                </span>
+              )}
+            </CardTitle>
+            <Button variant="ghost" size="sm" asChild className="h-7 text-xs gap-1">
+              <Link to="/hospital/queue">Full Queue <ArrowRight className="h-3 w-3" /></Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {readyForDoctor.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-center text-muted-foreground">No patients ready — vitals pending</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-20">Queue #</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead className="hidden md:table-cell">Complaint</TableHead>
+                    <TableHead className="w-14">Wait</TableHead>
+                    <TableHead className="w-44">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {readyForDoctor.map((enc: any) => {
+                    const wait = (() => {
+                      if (!enc.created_at) return "—";
+                      const mins = Math.round((Date.now() - new Date(enc.created_at).getTime()) / 60000);
+                      return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+                    })();
+                    return (
+                      <TableRow key={enc.id} className="hover:bg-muted/30">
+                        <TableCell className="font-mono text-xs font-bold text-primary">
+                          {enc.queue_number ?? String(enc.id).slice(0, 6)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium">
+                              {enc.patient_name ?? <span className="text-muted-foreground italic text-xs">Unknown</span>}
+                            </span>
+                            {enc.mrn && <span className="font-mono text-[10px] text-muted-foreground">{enc.mrn}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[160px] truncate">
+                          {enc.chief_complaint ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          <Clock className="inline h-3 w-3 mr-1" />{wait}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1.5">
+                            <Button size="sm" variant="outline"
+                              className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10"
+                              onClick={() => callMut.mutate(enc)}
+                              disabled={callMut.isPending}>
+                              <PhoneCall className="h-3 w-3" /> Call
+                            </Button>
+                            <Button size="sm"
+                              className="h-7 px-2 text-xs gap-1 bg-blue-600 hover:bg-blue-700"
+                              onClick={() => consultMut.mutate(enc)}
+                              disabled={consultMut.isPending}>
+                              {consultMut.isPending
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Play className="h-3 w-3" />}
+                              Begin
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Today's Appointments */}

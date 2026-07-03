@@ -9,11 +9,13 @@ import { useState, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api-client";
+import { useTour } from "@/components/tour/TourProvider";
 
 const Layout = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { role, apiBaseUrl, wpUserId } = getSynbotConfig();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, roles } = useAuth();
+  const { startTourIfNeeded } = useTour();
   const [showSetup, setShowSetup] = useState(false);
   const [staffData, setStaffData] = useState<any>(null);
 
@@ -23,6 +25,8 @@ const Layout = () => {
       if (!res.profile_complete) {
         setStaffData(res.data);
         setShowSetup(true);
+      } else {
+        startTourIfNeeded(roles[0] ?? "admin", res.data?.tour_state);
       }
     }).catch(() => {
       // Non-fatal — don't block the UI if /staff/me fails
@@ -71,7 +75,10 @@ const Layout = () => {
       {showSetup && (
         <ProfileSetup
           initialData={staffData}
-          onComplete={() => setShowSetup(false)}
+          onComplete={() => {
+            setShowSetup(false);
+            startTourIfNeeded(roles[0] ?? "admin", staffData?.tour_state);
+          }}
         />
       )}
     </div>

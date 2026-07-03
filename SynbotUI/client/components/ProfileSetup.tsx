@@ -1,26 +1,16 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/AuthProvider";
+import { RoleDetailsForm } from "@/components/RoleDetailsForm";
 import {
   Stethoscope, Pill, FlaskConical, ShieldCheck, LayoutDashboard,
   ClipboardList, TestTube, Microscope, Users, ChevronRight, ChevronLeft, Check
 } from "lucide-react";
-
-// ── Role-specific step 2 form config ─────────────────────────────────────────
-const SPECIALTIES = [
-  "Cardiology", "Internal Medicine", "Pediatrics", "General Surgery",
-  "Obstetrics & Gynaecology", "Orthopaedics", "Ophthalmology", "ENT",
-  "Dermatology", "Psychiatry", "Neurology", "Urology", "Radiology",
-  "Anaesthesia", "Family Medicine", "Emergency Medicine", "Pathology", "Other",
-];
-const PHARMACY_SPECIALIZATIONS = ["Clinical Pharmacy", "Hospital Pharmacy", "Community Pharmacy", "Oncology Pharmacy"];
-const NURSING_SPECIALIZATIONS = ["General Nursing", "ICU/Critical Care", "Perioperative", "Paediatric", "Obstetric", "Emergency"];
-const LAB_SECTIONS = ["Haematology", "Biochemistry", "Microbiology", "Histopathology", "Blood Bank", "Radiology", "MRI/CT", "Ultrasound"];
-const ADMIN_TITLES = ["Hospital Director", "Chief Medical Officer", "Chief Nursing Officer", "CFO", "COO", "HR Manager", "Operations Manager", "Quality Manager", "Other"];
 
 // ── Beginner guide cards per role ─────────────────────────────────────────────
 type GuideCard = { icon: JSX.Element; title: string; description: string };
@@ -72,92 +62,6 @@ const GUIDE_CARDS: Record<string, GuideCard[]> = {
   ],
 };
 
-// ── Step 2: role-specific profile details ────────────────────────────────────
-function RoleDetailsForm({ role, value, onChange }: { role: string; value: Record<string, string>; onChange: (v: Record<string, string>) => void }) {
-  const set = (k: string, v: string) => onChange({ ...value, [k]: v });
-
-  if (role === "doctor") return (
-    <div className="space-y-4">
-      <div>
-        <Label>Medical Specialty</Label>
-        <Select value={value.specialty || ""} onValueChange={(v) => set("specialty", v)}>
-          <SelectTrigger><SelectValue placeholder="Select specialty" /></SelectTrigger>
-          <SelectContent>{SPECIALTIES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label>Medical Council Number</Label>
-        <Input placeholder="e.g. MDCN-12345" value={value.medical_council_number || ""} onChange={(e) => set("medical_council_number", e.target.value)} />
-      </div>
-      <div>
-        <Label>Years of Experience</Label>
-        <Input type="number" min={0} max={60} placeholder="e.g. 8" value={value.years_experience || ""} onChange={(e) => set("years_experience", e.target.value)} />
-      </div>
-    </div>
-  );
-
-  if (role === "pharmacist") return (
-    <div className="space-y-4">
-      <div>
-        <Label>Pharmacy Council License No.</Label>
-        <Input placeholder="e.g. PCN-54321" value={value.medical_council_number || ""} onChange={(e) => set("medical_council_number", e.target.value)} />
-      </div>
-      <div>
-        <Label>Specialization</Label>
-        <Select value={value.specialty || ""} onValueChange={(v) => set("specialty", v)}>
-          <SelectTrigger><SelectValue placeholder="Select specialization" /></SelectTrigger>
-          <SelectContent>{PHARMACY_SPECIALIZATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-
-  if (role === "nurse") return (
-    <div className="space-y-4">
-      <div>
-        <Label>Nursing Specialization</Label>
-        <Select value={value.specialty || ""} onValueChange={(v) => set("specialty", v)}>
-          <SelectTrigger><SelectValue placeholder="Select specialization" /></SelectTrigger>
-          <SelectContent>{NURSING_SPECIALIZATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label>Nursing Council Number (optional)</Label>
-        <Input placeholder="e.g. NMCN-00001" value={value.medical_council_number || ""} onChange={(e) => set("medical_council_number", e.target.value)} />
-      </div>
-    </div>
-  );
-
-  if (role === "lab" || role === "radiology") return (
-    <div className="space-y-4">
-      <div>
-        <Label>Lab / Radiology Section</Label>
-        <Select value={value.specialty || ""} onValueChange={(v) => set("specialty", v)}>
-          <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
-          <SelectContent>{LAB_SECTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label>Registration Number (optional)</Label>
-        <Input placeholder="e.g. MLSCN-99999" value={value.medical_council_number || ""} onChange={(e) => set("medical_council_number", e.target.value)} />
-      </div>
-    </div>
-  );
-
-  // Admin / management
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label>Administrative Title</Label>
-        <Select value={value.specialty || ""} onValueChange={(v) => set("specialty", v)}>
-          <SelectTrigger><SelectValue placeholder="Select title" /></SelectTrigger>
-          <SelectContent>{ADMIN_TITLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
-
 // ── Main wizard ───────────────────────────────────────────────────────────────
 interface ProfileSetupProps {
   initialData?: Record<string, any>;
@@ -167,6 +71,13 @@ interface ProfileSetupProps {
 const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
   const { roles } = useAuth();
   const primaryRole = roles.find((r) => GUIDE_CARDS[r]) ?? "admin";
+
+  const { data: departmentsData } = useQuery({
+    queryKey: ["mdm-departments"],
+    queryFn: () => api.mdm.departments(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const departments = departmentsData?.records ?? [];
 
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -192,16 +103,9 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
     setSaving(true);
     setError(null);
     try {
-      // If no staff record exists yet, self-register first
-      const meResp = await api.staff.getMe();
-      if (!meResp.data) {
-        await api.staff.register({
-          full_name: identity.full_name,
-          department: identity.department,
-          designation: identity.designation,
-        });
-      }
-      // Patch full profile + metadata
+      // Every account now gets its royan_staff row created at admin-approval time
+      // (see the public registration + admin approval flow) — this just fills in
+      // any remaining profile fields on that existing record.
       await api.staff.updateProfile({
         full_name: identity.full_name || undefined,
         department: identity.department || undefined,
@@ -243,8 +147,15 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
                 <Input value={identity.full_name} onChange={(e) => setIdentity({ ...identity, full_name: e.target.value })} placeholder="e.g. Sarah Ahmed" />
               </div>
               <div>
-                <Label>Department</Label>
-                <Input value={identity.department} onChange={(e) => setIdentity({ ...identity, department: e.target.value })} placeholder="e.g. Internal Medicine" />
+                <Label>Department *</Label>
+                <Select value={identity.department} onValueChange={(v) => setIdentity({ ...identity, department: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select your department" /></SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Designation / Job Title</Label>
@@ -290,7 +201,7 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
             <ChevronLeft className="mr-1 h-4 w-4" /> Back
           </Button>
           {step < TOTAL_STEPS ? (
-            <Button onClick={handleNext} disabled={step === 1 && !identity.full_name.trim()}>
+            <Button onClick={handleNext} disabled={step === 1 && (!identity.full_name.trim() || !identity.department.trim())}>
               Next <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           ) : (

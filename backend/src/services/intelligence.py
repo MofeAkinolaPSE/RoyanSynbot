@@ -104,7 +104,7 @@ def get_workforce_dashboard(client: DBClient = db) -> Dict[str, Any]:
     # Fallback: If no timesheets logged, count active registered staff from royan_staff.
     if active_count == 0:
         try:
-            staff_resp = client.table("royan_staff").select("id,department").eq("is_active", True).limit(1000).execute()
+            staff_resp = client.table("royan_staff").select("id,department").eq("is_active", True).is_("quarantined_at", "null").limit(1000).execute()
             all_staff = staff_resp.data or []
             active_count = len(all_staff)
             for s in all_staff:

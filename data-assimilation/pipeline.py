@@ -243,11 +243,32 @@ def _process_entity(
     else:
         all_rows = transformed if transformed else []
 
+    # ── 4b. Quality scoring (Bronze → Quality → Silver) ─────────────────────
+    quality_passed = all_rows
+    quality_rejected_count = 0
+    if all_rows:
+        try:
+            from quality.quality_engine import QualityEngine
+            _qe_conn = conn if not dry_run else None
+            qe = QualityEngine(conn=_qe_conn, batch_id=run_ctx.run_id)
+            quality_passed, q_report = qe.run(entity, all_rows, run_id=run_ctx.run_id)
+            quality_rejected_count = q_report.hard_fails
+            if quality_rejected_count:
+                log.warning(
+                    "quality.rejections",
+                    entity=entity,
+                    rejected=quality_rejected_count,
+                    score=f"{q_report.overall_score * 100:.1f}%",
+                )
+        except Exception as qe_exc:
+            log.warning("quality.engine_error", entity=entity, error=str(qe_exc))
+            quality_passed = all_rows
+
     # ── 5. Contract validation ──────────────────────────────────────────────
     contract = _get_contract(entity)
-    valid_rows, dlq_failures = _validate_and_split(entity, all_rows, contract)
+    valid_rows, dlq_failures = _validate_and_split(entity, quality_passed, contract)
     result["rows_seen"] = len(all_rows)
-    result["rows_dlq"] = len(dlq_failures)
+    result["rows_dlq"] = len(dlq_failures) + quality_rejected_count
 
     if dlq_failures and conn and not dry_run:
         from loaders.db_loader import load_to_dlq

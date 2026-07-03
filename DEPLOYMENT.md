@@ -198,7 +198,7 @@ git --version
 In **PowerShell as Administrator**, use the single-command method (works on Windows 10 build 18362+):
 ```powershell
 wsl --install
-```
+```wsl --install
 
 This enables WSL, enables Virtual Machine Platform, and queues Ubuntu 22.04 for install — all in one step. The older `dism.exe` method can fail with Error 1017 on some Windows 10 22H2 machines; use this instead.
 

@@ -1,11 +1,8 @@
-import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -14,79 +11,20 @@ import {
 } from "recharts";
 import {
   LayoutDashboard, Users, Activity, DollarSign, AlertTriangle,
-  RefreshCw, Loader2, ShieldCheck, FlaskConical, Save,
+  RefreshCw, ShieldCheck, FlaskConical,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
 import { AlertBanner } from "@/components/AlertBanner";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-
-const ROLES = ["admin", "doctor", "nurse", "finance", "hr", "ops", "quality_assurance", "lab", "pharmacist", "management"];
 
 function fmtCurrency(n: number) {
   return `₦${Number(n || 0).toLocaleString("en-NG")}`;
 }
 
-// ── Role Assignment Row ───────────────────────────────────────────────────────
-function UserRoleRow({ user, onSaved }: { user: any; onSaved: () => void }) {
-  const { toast } = useToast();
-  const [selectedRole, setSelectedRole] = useState<string>((user.roles ?? [])[0] ?? "");
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!selectedRole) return;
-    setSaving(true);
-    try {
-      await api.users.setRoles(user.id, [selectedRole]);
-      toast({ title: "Role updated", description: `${user.email} → ${selectedRole}` });
-      onSaved();
-    } catch (e: any) {
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const currentRoles: string[] = user.roles ?? [];
-
-  return (
-    <TableRow>
-      <TableCell className="text-sm font-medium">{user.email}</TableCell>
-      <TableCell>
-        <div className="flex flex-wrap gap-1">
-          {currentRoles.map((r: string) => (
-            <Badge key={r} variant="outline" className="text-[10px] capitalize">{r}</Badge>
-          ))}
-          {currentRoles.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={cn("text-[10px]", user.is_active ? "text-green-700 bg-green-50 border-green-300" : "text-slate-500")}>
-          {user.is_active ? "Active" : "Inactive"}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Select value={selectedRole} onValueChange={setSelectedRole}>
-            <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Assign role…" /></SelectTrigger>
-            <SelectContent>
-              {ROLES.map(r => <SelectItem key={r} value={r} className="capitalize text-xs">{r}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" disabled={!selectedRole || saving} onClick={save}>
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
-  const qc = useQueryClient();
   const today = new Date().toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -128,21 +66,22 @@ export default function AdminDashboard() {
     staleTime: 300_000,
   });
 
-  const { data: usersData, refetch: refetchUsers } = useQuery({
-    queryKey: ["admin-users-roles"],
-    queryFn: () => api.users.list(200),
-    staleTime: 120_000,
-  });
-
   // ── Derived values ─────────────────────────────────────────────────────────
   const hs = hospitalStatus ?? {};
+  const clinicalToday    = hs.clinical_today ?? {};
   const patientsWaiting  = hs.patients_waiting ?? hs.queue_count ?? 0;
   const avgWait          = hs.avg_wait_minutes ?? 0;
-  const labPending       = hs.lab_orders_pending ?? 0;
-  const rxPending        = hs.prescriptions_pending ?? 0;
+  const labPending       = clinicalToday.lab_orders_pending ?? hs.lab_orders_pending ?? 0;
+  const rxPending        = clinicalToday.prescriptions_pending ?? hs.prescriptions_pending ?? 0;
 
   const queueChart = useMemo(() => {
-    const raw = hs.queue_by_department ?? {};
+    const raw = hs.queue_by_department ?? [];
+    if (Array.isArray(raw)) {
+      return raw.map((d: any) => ({
+        dept: (d.department ?? "").replace(" & ", "&").slice(0, 14),
+        count: Number(d.waiting ?? 0) + Number(d.consulting ?? 0),
+      }));
+    }
     return Object.entries(raw).map(([dept, count]) => ({ dept: dept.replace(" & ", "&").slice(0, 14), count: Number(count) }));
   }, [hs]);
 
@@ -156,12 +95,9 @@ export default function AdminDashboard() {
   const alerts: any[] = Array.isArray(alertsData) ? alertsData : [];
   const criticalAlerts = alerts.filter((a: any) => ["critical", "high"].includes(a.severity));
 
-  const users: any[] = Array.isArray(usersData) ? usersData : [];
-
   function doRefresh() {
     void refetchStatus();
     void refetchAlerts();
-    void refetchUsers();
   }
 
   return (
@@ -398,33 +334,16 @@ export default function AdminDashboard() {
         </Card>
       )}
 
-      {/* Row 6 — Role Assignment Panel */}
+      {/* Row 6 — Staff Registrations & Role Assignment callout */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-blue-500" /> Staff Role Assignment
-            <span className="ml-auto text-xs text-muted-foreground font-normal">{users.length} users</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {["Email","Current Roles","Status","Assign Role"].map(h => (
-                    <TableHead key={h} className="text-xs">{h}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">No users found</TableCell></TableRow>
-                ) : users.map((u: any) => (
-                  <UserRoleRow key={u.id} user={u} onSaved={() => void qc.invalidateQueries({ queryKey: ["admin-users-roles"] })} />
-                ))}
-              </TableBody>
-            </Table>
+        <CardContent className="flex items-center justify-between gap-4 py-4">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <ShieldCheck className="h-4 w-4 text-blue-500" />
+            Pending staff registrations and role assignment now live under Admin → Staff Registrations.
           </div>
+          <Button asChild size="sm" variant="outline">
+            <a href="#/admin/registrations">Open Staff Registrations</a>
+          </Button>
         </CardContent>
       </Card>
     </motion.div>

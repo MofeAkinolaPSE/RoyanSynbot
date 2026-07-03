@@ -495,10 +495,12 @@ def audit_event(
     subject_type: str | None = None,
     subject_id: str | None = None,
     trace_id: str | None = None,
+    correlation_id: str | None = None,
     approval_reason: str | None = None,
     attestation_text: str | None = None,
     signature_hash_ref: str | None = None,
 ) -> None:
+    trace_id = trace_id or correlation_id
     details = details or {}
     derived = _derive_audit_taxonomy(event_type, details)
     try:

@@ -1,17 +1,116 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
+import os
 import threading
 import time
 from functools import wraps
 from typing import Any, Callable, Dict, Hashable, Iterable, Tuple
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Redis client — lazily initialised, optional
+# ---------------------------------------------------------------------------
+
+_redis_client = None
+_redis_available: bool | None = None   # None = not yet probed
+_redis_init_lock = threading.Lock()
+
+
+def _get_redis():
+    """Return a live Redis client, or None if Redis is unavailable."""
+    global _redis_client, _redis_available
+    if _redis_available is False:
+        return None
+    if _redis_client is not None:
+        return _redis_client
+    with _redis_init_lock:
+        if _redis_client is not None:
+            return _redis_client
+        url = os.getenv("REDIS_URL", "").strip()
+        if not url:
+            _redis_available = False
+            return None
+        try:
+            import redis as _redis_lib  # imported lazily so the package is optional
+            client = _redis_lib.from_url(url, decode_responses=True, socket_connect_timeout=2)
+            client.ping()
+            _redis_client = client
+            _redis_available = True
+            logger.info("Redis cache connected: %s", url)
+        except Exception as exc:
+            _redis_available = False
+            logger.warning("Redis unavailable (%s); falling back to in-process cache", exc)
+            return None
+    return _redis_client
+
+
+def _redis_key(raw: Hashable) -> str:
+    digest = hashlib.sha256(
+        json.dumps(raw, default=str, sort_keys=True).encode()
+    ).hexdigest()
+    return f"ttl:{digest}"
+
+
+def _redis_get(rkey: str) -> Any:
+    r = _get_redis()
+    if r is None:
+        return None
+    try:
+        val = r.get(rkey)
+        return json.loads(val) if val is not None else None
+    except Exception:
+        return None
+
+
+def _redis_set(rkey: str, value: Any, ttl_seconds: int, tags: Iterable[str] | None) -> None:
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        r.setex(rkey, ttl_seconds, json.dumps(value, default=str))
+        if tags:
+            pipe = r.pipeline(transaction=False)
+            for tag in tags:
+                tkey = f"tag:{tag}"
+                pipe.sadd(tkey, rkey)
+                pipe.expire(tkey, ttl_seconds + 120)
+            pipe.execute()
+    except Exception:
+        pass
+
+
+def _redis_invalidate(tags: Iterable[str]) -> int:
+    r = _get_redis()
+    if r is None:
+        return 0
+    removed = 0
+    try:
+        for tag in tags:
+            tkey = f"tag:{tag}"
+            keys = r.smembers(tkey)
+            if keys:
+                r.delete(*keys)
+                removed += len(keys)
+            r.delete(tkey)
+    except Exception:
+        pass
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# In-process fallback cache (used when Redis is unavailable)
+# ---------------------------------------------------------------------------
 
 class _TTLCache:
     """Simple in-process TTL cache for computed aggregates.
 
-    This is intentionally lightweight and process-local. For multiple workers
-    each process keeps its own cache, which is acceptable for our dashboard
-    use-cases.
+    Used as the fallback when Redis is not configured. For multiple workers
+    each process keeps its own cache; use Redis (REDIS_URL env var) for a
+    shared cache that works correctly across Swarm replicas.
     """
 
     def __init__(self) -> None:
@@ -27,7 +126,6 @@ class _TTLCache:
                 return None
             expires_at, value = item
             if expires_at < now:
-                # Expired
                 self._store.pop(key, None)
                 self._remove_key_from_tags(key)
                 return None
@@ -75,8 +173,13 @@ class _TTLCache:
             self._store.clear()
             self._tag_index.clear()
 
+
 _global_cache = _TTLCache()
 
+
+# ---------------------------------------------------------------------------
+# Cache key builder
+# ---------------------------------------------------------------------------
 
 def _make_key(
     func_name: str,
@@ -84,12 +187,7 @@ def _make_key(
     kwargs: Dict[str, Any],
     ignore_kwargs: Iterable[str],
 ) -> Hashable:
-    """Build a hashable cache key.
-
-    We deliberately ignore non-deterministic kwargs (like `client`).
-    """
     filtered_kwargs = {k: v for k, v in kwargs.items() if k not in set(ignore_kwargs)}
-    # Rely on callers to only pass hashable args/kwargs that matter for caching.
     return (
         func_name,
         args,
@@ -97,28 +195,43 @@ def _make_key(
     )
 
 
+# ---------------------------------------------------------------------------
+# Public decorator
+# ---------------------------------------------------------------------------
+
 def ttl_cache(
     ttl_seconds: int,
     ignore_kwargs: Iterable[str] | None = None,
     tags: Iterable[str] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator to cache function results for a fixed TTL.
+    """Cache function results for a fixed TTL.
 
-    Designed for pure/aggregate read operations (no side-effects).
+    Uses Redis when REDIS_URL is set (shared across all Swarm replicas).
+    Falls back to in-process cache otherwise (single-replica safe).
     """
-
     if ignore_kwargs is None:
         ignore_kwargs = []
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            key = _make_key(func.__name__, args, kwargs, ignore_kwargs)
-            cached = _global_cache.get(key)
+            raw_key = _make_key(func.__name__, args, kwargs, ignore_kwargs)
+
+            if _get_redis() is not None:
+                rkey = _redis_key(raw_key)
+                cached = _redis_get(rkey)
+                if cached is not None:
+                    return cached
+                value = func(*args, **kwargs)
+                _redis_set(rkey, value, ttl_seconds, tags)
+                return value
+
+            # In-process fallback
+            cached = _global_cache.get(raw_key)
             if cached is not None:
                 return cached
             value = func(*args, **kwargs)
-            _global_cache.set(key, value, ttl_seconds, tags=tags)
+            _global_cache.set(raw_key, value, ttl_seconds, tags=tags)
             return value
 
         return wrapper
@@ -127,8 +240,19 @@ def ttl_cache(
 
 
 def invalidate_cache_tags(*tags: str) -> int:
-    return _global_cache.invalidate_tags(tags)
+    redis_removed = _redis_invalidate(tags)
+    local_removed = _global_cache.invalidate_tags(tags)
+    return redis_removed + local_removed
 
 
 def clear_cache() -> None:
     _global_cache.clear()
+    r = _get_redis()
+    if r:
+        try:
+            for key in r.scan_iter("ttl:*"):
+                r.delete(key)
+            for key in r.scan_iter("tag:*"):
+                r.delete(key)
+        except Exception:
+            pass
