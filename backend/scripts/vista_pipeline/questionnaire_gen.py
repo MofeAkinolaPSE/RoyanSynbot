@@ -1,0 +1,1699 @@
+"""
+questionnaire_gen.py
+--------------------
+Step 3 of the VistA Pipeline.
+
+Generates a Royan Hospital-specific requirements questionnaire by mapping
+their actual confirmed departments and services to relevant VistA capabilities.
+
+Outputs:
+  A)  03_questionnaire_spec.json   — machine-readable form spec
+  B)  03_questionnaire.html        — self-contained HTML form (send to client)
+  C)  create_google_form.py        — creates the form via Google Forms API
+
+Usage:
+    python -m scripts.vista_pipeline.questionnaire_gen
+"""
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+REPO_ROOT  = Path(__file__).resolve().parents[3]
+OUTPUT_DIR = REPO_ROOT / "backend" / "docs" / "vista_res" / "pipeline_output"
+INPUT_FILE = OUTPUT_DIR / "02_structured_modules.json"
+
+
+# ---------------------------------------------------------------------------
+# Royan Hospital — confirmed services catalogue
+# Source: royanhospital.com + QnA knowledge base (May 2026)
+# ---------------------------------------------------------------------------
+#
+# Each section maps to a Royan department / workflow.
+# Questions are written in the context of what Royan already does so the
+# client can be specific about what they want SynbotHealth to handle.
+#
+# Feature options are drawn from relevant VistA modules (our reference
+# architecture) but labelled in plain operational language.
+# ---------------------------------------------------------------------------
+
+ROYAN_QUESTIONNAIRE: dict = {
+    "title": "SynbotHealth — Royan Hospital System Requirements",
+    "subtitle": "Defining Your Digital Hospital",
+    "description": (
+        "This questionnaire helps the SynbotHealth team understand exactly how "
+        "Royan Hospital operates today — and where you want the system to take "
+        "you. Answers will directly shape the modules we configure, the workflows "
+        "we automate, and the integrations we prioritise. "
+        "Estimated time: 25–35 minutes."
+    ),
+    "intro_questions": [
+        {
+            "id":    "respondent_name",
+            "type":  "text",
+            "label": "Your full name",
+        },
+        {
+            "id":    "respondent_role",
+            "type":  "radio",
+            "label": "Your role at Royan Hospital",
+            "options": [
+                "Hospital Director / CEO",
+                "Chief Medical Officer / Medical Director",
+                "Head of Nursing",
+                "Head of IT / Systems",
+                "Head of Finance / Billing",
+                "Department Head (specify in notes)",
+                "Other",
+            ],
+        },
+        {
+            "id":    "bed_count",
+            "type":  "radio",
+            "label": "Approximately how many inpatient beds does Royan Hospital currently operate?",
+            "options": ["Under 20", "20–50", "51–100", "101–200", "Over 200"],
+        },
+        {
+            "id":    "daily_opd_volume",
+            "type":  "radio",
+            "label": "Average number of OPD (outpatient) visits per day",
+            "options": ["Under 30", "30–80", "81–150", "151–300", "Over 300"],
+        },
+        {
+            "id":    "daily_ae_volume",
+            "type":  "radio",
+            "label": "Average number of A&E (emergency) presentations per day",
+            "options": ["Under 10", "10–25", "26–50", "Over 50"],
+        },
+        {
+            "id":    "current_hms_is_hope",
+            "type":  "radio",
+            "label": "Is DRM Hope currently your Hospital Management System (HMS)?",
+            "options": [
+                "Yes — DRM Hope is our current HMS",
+                "Yes — DRM Hope is installed but not fully in use",
+                "No — we use different software (please specify below)",
+                "No — we do not currently use any HMS",
+            ],
+        },
+        {
+            "id":    "current_hms_other",
+            "type":  "text",
+            "label": "If you use different HMS software, please name it (optional)",
+        },
+        {
+            "id":    "hmo_count",
+            "type":  "radio",
+            "label": "How many HMO / insurance providers does the hospital currently work with?",
+            "options": ["None", "1–3", "4–10", "More than 10"],
+        },
+        {
+            "id":    "go_live_timeline",
+            "type":  "radio",
+            "label": "Target go-live timeline for SynbotHealth",
+            "options": [
+                "ASAP (within 1 month)",
+                "1–3 months",
+                "3–6 months",
+                "6–12 months",
+                "Flexible / not yet decided",
+            ],
+        },
+    ],
+    "sections": [
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "patient_registration",
+            "domain":  "Patient Registration & Identity",
+            "icon":    "🪪",
+            "summary": "Covers how patients are registered, identified, and tracked across all visits.",
+            "questions": [
+                {
+                    "id":    "reg_current",
+                    "type":  "radio",
+                    "label": "How are new patients currently registered at Royan Hospital?",
+                    "options": [
+                        "Paper registration forms only",
+                        "Paper + Excel/spreadsheet",
+                        "Basic computer entry (no formal HMS)",
+                        "Dedicated HMS registration module",
+                    ],
+                },
+                {
+                    "id":    "reg_mrn",
+                    "type":  "radio",
+                    "label": "Are patients issued a unique Medical Record Number (MRN) that tracks them across all visits?",
+                    "options": ["Yes, consistently", "Yes, but inconsistently applied", "No"],
+                },
+                {
+                    "id":    "reg_features",
+                    "type":  "checkbox",
+                    "label": "Which of the following registration capabilities do you want SynbotHealth to handle?",
+                    "options": [
+                        {"feature": "Automated MRN generation", "description": "Unique patient ID assigned at first registration, used across all visits", "impact": "High"},
+                        {"feature": "Digital registration form (no paper)", "description": "Front-desk staff enter patient demographics directly into the system", "impact": "High"},
+                        {"feature": "Returning patient lookup", "description": "Search by name, phone, or MRN to pull up existing records instantly", "impact": "High"},
+                        {"feature": "Duplicate record detection", "description": "Flags potential duplicate patients and prompts for merge", "impact": "Medium"},
+                        {"feature": "Patient photo capture", "description": "Attach a photo to the patient record for positive identification", "impact": "Low"},
+                        {"feature": "Next-of-kin & emergency contact capture", "description": "Store NOK details linked to patient record", "impact": "Medium"},
+                        {"feature": "HMO / insurance details at registration", "description": "Capture and verify HMO card details during check-in", "impact": "High"},
+                        {"feature": "Patient consent form (digital)", "description": "Paperless general consent signed at registration", "impact": "Medium"},
+                        {"feature": "Patient-facing registration kiosk / QR self-check-in", "description": "Patients scan a QR or use a tablet to register without queue", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "reg_priority",
+                    "type":  "scale",
+                    "label": "How high a priority is a streamlined registration process for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "reg_notes",
+                    "type":  "text",
+                    "label": "Any specific registration pain points or requirements? (e.g. walk-in volume, language needs)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "queue_appointment",
+            "domain":  "Queue Management & Appointments",
+            "icon":    "🔢",
+            "summary": "Royan Hospital operates OPD with a queue system plus phone/online booking. This section covers how that flow is managed.",
+            "questions": [
+                {
+                    "id":    "queue_current",
+                    "type":  "radio",
+                    "label": "How is the OPD patient queue managed today?",
+                    "options": [
+                        "Manual (paper tickets / verbal calling)",
+                        "Basic numbering system (printed tickets)",
+                        "Digital queue screen with number calling",
+                        "Fully integrated queue + appointment system",
+                    ],
+                },
+                {
+                    "id":    "appt_booking_channels",
+                    "type":  "checkbox",
+                    "label": "Which appointment booking channels do you currently offer? (select all that apply)",
+                    "options": [
+                        {"feature": "Phone / front desk", "description": "", "impact": "High"},
+                        {"feature": "Walk-in (no appointment)", "description": "", "impact": "High"},
+                        {"feature": "WhatsApp booking", "description": "", "impact": "Medium"},
+                        {"feature": "Website / online form", "description": "", "impact": "Medium"},
+                        {"feature": "SynbotHealth AI chat booking", "description": "", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "queue_features",
+                    "type":  "checkbox",
+                    "label": "Which queue & appointment features do you want SynbotHealth to provide?",
+                    "options": [
+                        {"feature": "Real-time digital queue display", "description": "TV/screen in waiting area showing current number and estimated wait", "impact": "High"},
+                        {"feature": "SMS/WhatsApp queue notifications", "description": "Patient receives alert when their turn is approaching", "impact": "High"},
+                        {"feature": "Online appointment booking portal", "description": "Patients book via website or WhatsApp without calling", "impact": "High"},
+                        {"feature": "Doctor-specific scheduling", "description": "Book with a specific doctor, with slot availability visible", "impact": "High"},
+                        {"feature": "Appointment reminders (SMS/email)", "description": "Automated reminder sent 24h and 1h before appointment", "impact": "Medium"},
+                        {"feature": "Triage-based queue priority", "description": "A&E and urgent cases automatically jump the OPD queue", "impact": "High"},
+                        {"feature": "Multi-department queue routing", "description": "After OPD, patient is auto-routed to Pharmacy, Lab, or Imaging queue", "impact": "High"},
+                        {"feature": "No-show tracking & rescheduling", "description": "Automatically marks and alerts on missed appointments", "impact": "Medium"},
+                        {"feature": "Daily appointment dashboard for staff", "description": "Reception sees all bookings, walk-ins, and queue status in one view", "impact": "High"},
+                        {"feature": "Specialty clinic scheduling (Cardiology, OB/GYN, etc.)", "description": "Separate appointment slots per specialty", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "queue_priority",
+                    "type":  "scale",
+                    "label": "How critical is improving queue and appointment management for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "queue_notes",
+                    "type":  "text",
+                    "label": "Describe your busiest OPD bottleneck — where does the queue typically break down?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "emergency_ae",
+            "domain":  "Accident & Emergency (A&E)",
+            "icon":    "🚨",
+            "summary": "Royan Hospital runs a 24/7 A&E with ambulance services and emergency triage. This section covers the full emergency workflow.",
+            "questions": [
+                {
+                    "id":    "ae_current",
+                    "type":  "radio",
+                    "label": "How is A&E patient flow managed today?",
+                    "options": [
+                        "Manual paper triage and records",
+                        "Paper triage + basic computer logging",
+                        "Semi-digital (some parts on software)",
+                        "Fully digital ED management",
+                    ],
+                },
+                {
+                    "id":    "ae_features",
+                    "type":  "checkbox",
+                    "label": "Which A&E capabilities do you want SynbotHealth to support?",
+                    "options": [
+                        {"feature": "Digital triage assessment form", "description": "Nurse records presenting complaint, vitals, and acuity level digitally on arrival", "impact": "High"},
+                        {"feature": "Emergency queue bypass", "description": "A&E patients are registered and triaged outside the OPD queue automatically", "impact": "High"},
+                        {"feature": "Real-time A&E patient tracking board", "description": "Live dashboard showing all A&E patients, their status, assigned doctor, and disposition", "impact": "High"},
+                        {"feature": "ED-to-ward admission workflow", "description": "Seamless transfer from A&E to an inpatient bed with one-click workflow", "impact": "High"},
+                        {"feature": "Ambulance dispatch and arrival logging", "description": "Pre-alerts from ambulance logged so A&E can prepare on arrival", "impact": "Medium"},
+                        {"feature": "A&E disposition tracking", "description": "Track outcome: admitted, discharged, referred, transferred, or deceased", "impact": "High"},
+                        {"feature": "Resuscitation and code alerts", "description": "Push alert to on-call doctor when critical patient arrives", "impact": "High"},
+                        {"feature": "ED wait time monitoring", "description": "Track and report average A&E door-to-doctor time", "impact": "Medium"},
+                        {"feature": "Emergency medication administration log", "description": "Record drugs given in A&E before formal pharmacy order", "impact": "High"},
+                    ],
+                },
+                {
+                    "id":    "ae_priority",
+                    "type":  "scale",
+                    "label": "How critical is A&E digital management for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "ae_notes",
+                    "type":  "text",
+                    "label": "Any specific A&E workflow challenges you want the system to solve?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "inpatient_wards",
+            "domain":  "Inpatient Wards & Bed Management",
+            "icon":    "🛏️",
+            "summary": "Covers admissions, ward rounds, daily nursing care, bed allocation, and discharge processes.",
+            "questions": [
+                {
+                    "id":    "ward_current",
+                    "type":  "radio",
+                    "label": "How are inpatient admissions and bed management handled today?",
+                    "options": [
+                        "Fully manual (paper admission forms, notebook bed register)",
+                        "Paper-based with some Excel tracking",
+                        "Partial software (one area digital, rest manual)",
+                        "Fully digital admission and bed system",
+                    ],
+                },
+                {
+                    "id":    "ward_features",
+                    "type":  "checkbox",
+                    "label": "Which inpatient / ward management features do you want?",
+                    "options": [
+                        {"feature": "Digital admission form (Admission, Discharge, Transfer — ADT)", "description": "Paperless patient admission linked to MRN; auto-assigns bed", "impact": "High"},
+                        {"feature": "Real-time bed availability dashboard", "description": "Visual map of all wards showing occupied, available, and reserved beds", "impact": "High"},
+                        {"feature": "Ward round documentation", "description": "Doctor records daily ward round notes, impressions, and orders digitally", "impact": "High"},
+                        {"feature": "Vitals recording (nursing)", "description": "Nurses log temperature, BP, pulse, SpO2, weight at bedside or nursing station", "impact": "High"},
+                        {"feature": "Fluid balance / intake & output tracking", "description": "Nursing records oral and IV fluid intake vs urine and drain output", "impact": "High"},
+                        {"feature": "Inpatient medication administration record (MAR)", "description": "Nursing checks off each drug dose given against the prescription", "impact": "High"},
+                        {"feature": "Nursing shift handover notes", "description": "Digital handover checklist and patient status summary between shifts", "impact": "Medium"},
+                        {"feature": "Discharge planning & summary", "description": "Doctor prepares discharge letter, instructions, and follow-up appointment from the system", "impact": "High"},
+                        {"feature": "Inpatient investigation ordering", "description": "Doctor orders lab or imaging tests directly from the ward; results returned to ward", "impact": "High"},
+                        {"feature": "Isolation / infection alert flags", "description": "Flag patients requiring isolation (e.g. TB, MRSA) so all staff are notified", "impact": "High"},
+                        {"feature": "ICU / High-dependency unit tracking", "description": "Separate high-acuity patient dashboard with continuous vitals monitoring log", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "ward_priority",
+                    "type":  "scale",
+                    "label": "How critical is digital inpatient / ward management for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "ward_notes",
+                    "type":  "text",
+                    "label": "Any specific inpatient workflow challenges? (e.g. bed allocation disputes, lost paper files)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "clinical_documentation",
+            "domain":  "Clinical Documentation & Orders",
+            "icon":    "📋",
+            "summary": "Covers how consultations are documented, diagnoses recorded, and orders for investigations or treatments are placed.",
+            "questions": [
+                {
+                    "id":    "clin_doc_current",
+                    "type":  "radio",
+                    "label": "How do doctors currently document consultations and clinical notes?",
+                    "options": [
+                        "Handwritten paper notes only",
+                        "Typed notes in Word / Google Docs",
+                        "EMR / clinical module in existing HMS",
+                        "Mixed (some digital, some paper)",
+                    ],
+                },
+                {
+                    "id":    "clin_doc_features",
+                    "type":  "checkbox",
+                    "label": "Which clinical documentation capabilities do you need?",
+                    "options": [
+                        {"feature": "Structured consultation note (SOAP format)", "description": "Doctor records Subjective, Objective, Assessment, Plan digitally per visit", "impact": "High"},
+                        {"feature": "Patient problem list", "description": "Running list of active and resolved diagnoses linked to the patient's record", "impact": "High"},
+                        {"feature": "Lab investigation ordering", "description": "Doctor places lab requests electronically; lab receives them instantly", "impact": "High"},
+                        {"feature": "Radiology / imaging ordering", "description": "Doctor requests X-ray, Ultrasound, or ECG from the consultation screen", "impact": "High"},
+                        {"feature": "Electronic prescription (Rx generation)", "description": "Doctor types prescription; pharmacy receives it immediately", "impact": "High"},
+                        {"feature": "Referral / consult request tracking", "description": "Formal internal referral from one department to another with status tracking", "impact": "High"},
+                        {"feature": "Clinical reminders & alerts", "description": "System prompts doctor for overdue tests, vaccinations, or review dates", "impact": "Medium"},
+                        {"feature": "Patient health summary view", "description": "One-screen view of patient's recent visits, diagnoses, medications, allergies, and results", "impact": "High"},
+                        {"feature": "Allergy and adverse drug reaction tracking", "description": "Permanent allergy flags on the patient record; alerts when a conflicting drug is ordered", "impact": "High"},
+                        {"feature": "Medical certificate generation", "description": "Doctor generates a formal sick leave or fitness certificate from the system", "impact": "Medium"},
+                        {"feature": "Death certificate / summary generation", "description": "Attending doctor completes cause-of-death documentation in compliance with Nigerian regulations", "impact": "Medium"},
+                        {"feature": "ICD-10 / diagnosis coding", "description": "Doctor selects diagnoses from a standardised code list for billing and reporting", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "clin_doc_priority",
+                    "type":  "scale",
+                    "label": "How critical is digital clinical documentation for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "clin_doc_notes",
+                    "type":  "text",
+                    "label": "Any specific documentation pain points? (e.g. lost files, illegible handwriting, slow referral process)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "laboratory",
+            "domain":  "Laboratory & Diagnostics",
+            "icon":    "🧪",
+            "summary": "Royan Hospital runs in-house laboratory services covering FBC, LFT, KFT, malaria, HIV, urine analysis, cultures, and more.",
+            "questions": [
+                {
+                    "id":    "lab_current",
+                    "type":  "radio",
+                    "label": "How are laboratory test orders and results managed today?",
+                    "options": [
+                        "Manual paper request forms and paper results",
+                        "Paper requests, results typed into Excel",
+                        "Lab software (standalone, not connected to clinical system)",
+                        "Integrated lab module",
+                    ],
+                },
+                {
+                    "id":    "lab_tests",
+                    "type":  "checkbox",
+                    "label": "Which tests does your laboratory currently perform in-house? (select all that apply)",
+                    "options": [
+                        {"feature": "Full Blood Count (FBC)", "description": "", "impact": "High"},
+                        {"feature": "Liver Function Tests (LFT)", "description": "", "impact": "High"},
+                        {"feature": "Kidney Function Tests (KFT / U&E)", "description": "", "impact": "High"},
+                        {"feature": "Blood glucose / HbA1c", "description": "", "impact": "High"},
+                        {"feature": "Lipid profile / cholesterol", "description": "", "impact": "Medium"},
+                        {"feature": "Urine analysis (dipstick + microscopy)", "description": "", "impact": "High"},
+                        {"feature": "Malaria RDT / microscopy", "description": "", "impact": "High"},
+                        {"feature": "HIV screening", "description": "", "impact": "High"},
+                        {"feature": "Pregnancy test (urine / serum)", "description": "", "impact": "High"},
+                        {"feature": "Culture & sensitivity (microbiology)", "description": "", "impact": "High"},
+                        {"feature": "Blood grouping & cross-matching", "description": "", "impact": "High"},
+                        {"feature": "Hepatitis B & C serology", "description": "", "impact": "High"},
+                        {"feature": "Widal test (typhoid)", "description": "", "impact": "Medium"},
+                        {"feature": "Semen analysis", "description": "", "impact": "Low"},
+                        {"feature": "Thyroid function tests (TFT)", "description": "", "impact": "Medium"},
+                        {"feature": "Hormonal assays (FSH, LH, Prolactin, etc.)", "description": "", "impact": "Medium"},
+                        {"feature": "Point-of-care testing (bedside glucometer, etc.)", "description": "", "impact": "Medium"},
+                        {"feature": "Send-out / outsourced tests (reference lab)", "description": "", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "lab_features",
+                    "type":  "checkbox",
+                    "label": "Which laboratory management features do you want SynbotHealth to provide?",
+                    "options": [
+                        {"feature": "Electronic lab order from doctor's workstation", "description": "Doctor's digital request auto-appears at lab reception with patient details", "impact": "High"},
+                        {"feature": "Sample collection & tracking (specimen log)", "description": "Lab logs sample receipt, tracks processing status, records rejection reasons", "impact": "High"},
+                        {"feature": "Digital result entry by lab scientist", "description": "Results entered once; automatically linked to patient record and sent to requesting doctor", "impact": "High"},
+                        {"feature": "Critical result alerts", "description": "System immediately notifies the requesting doctor when a dangerously abnormal result is entered", "impact": "High"},
+                        {"feature": "Patient result notification (SMS)", "description": "Patient receives SMS when their results are ready", "impact": "Medium"},
+                        {"feature": "Reference range display", "description": "Normal ranges shown alongside results for doctor's review", "impact": "High"},
+                        {"feature": "Lab TAT (turnaround time) monitoring", "description": "Track time from order to result for quality management", "impact": "Medium"},
+                        {"feature": "Cumulative result history view", "description": "Doctor can see trend of repeated tests (e.g. serial HbA1c) in table or graph", "impact": "High"},
+                        {"feature": "LOINC / standard test coding", "description": "Results coded using international standards for interoperability", "impact": "Low"},
+                        {"feature": "Send-out specimen tracking", "description": "Track samples sent to external reference laboratories with expected return date", "impact": "Medium"},
+                        {"feature": "Lab workload reporting", "description": "Daily / monthly reports on tests performed, volume by type, TAT statistics", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "lab_priority",
+                    "type":  "scale",
+                    "label": "How critical is an integrated laboratory system for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "lab_notes",
+                    "type":  "text",
+                    "label": "Any lab-specific challenges? (e.g. lost results, delay in notifying doctors, paper result filing)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "radiology_imaging",
+            "domain":  "Radiology, Imaging & Cardiac Diagnostics",
+            "icon":    "🩻",
+            "summary": "Royan Hospital provides X-ray, Ultrasound, ECG, and Echocardiography. This section covers the imaging and diagnostic workflow.",
+            "questions": [
+                {
+                    "id":    "rad_equipment",
+                    "type":  "checkbox",
+                    "label": "Which diagnostic imaging / cardiac equipment does Royan Hospital currently have? (select all that apply)",
+                    "options": [
+                        {"feature": "X-ray (conventional)", "description": "", "impact": "High"},
+                        {"feature": "Ultrasound machine", "description": "", "impact": "High"},
+                        {"feature": "ECG (electrocardiography)", "description": "", "impact": "High"},
+                        {"feature": "Echocardiography (Echo / cardiac ultrasound)", "description": "", "impact": "High"},
+                        {"feature": "Doppler ultrasound", "description": "", "impact": "Medium"},
+                        {"feature": "CT scan", "description": "", "impact": "Medium"},
+                        {"feature": "MRI", "description": "", "impact": "Low"},
+                        {"feature": "Mammography", "description": "", "impact": "Low"},
+                        {"feature": "Digital X-ray (DR/CR)", "description": "Produces digital images rather than film", "impact": "Medium"},
+                        {"feature": "Fluoroscopy", "description": "", "impact": "Low"},
+                        {"feature": "Bone densitometry (DEXA scan)", "description": "", "impact": "Low"},
+                        {"feature": "Endoscopy (upper GI / lower GI)", "description": "", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "rad_current",
+                    "type":  "radio",
+                    "label": "How are radiology / imaging requests and reports currently managed?",
+                    "options": [
+                        "Paper request form; radiographer gives paper result",
+                        "Paper request; radiologist types report in Word",
+                        "Standalone radiology software (not connected to HMS)",
+                        "Integrated radiology module",
+                    ],
+                },
+                {
+                    "id":    "rad_features",
+                    "type":  "checkbox",
+                    "label": "Which radiology & imaging management features do you need?",
+                    "options": [
+                        {"feature": "Electronic imaging request from doctor", "description": "Doctor's digital request auto-notifies the radiology/imaging unit", "impact": "High"},
+                        {"feature": "Digital radiology report entry", "description": "Radiologist / radiographer types report; auto-linked to patient record and requesting doctor", "impact": "High"},
+                        {"feature": "DICOM image storage (PACS)", "description": "Digital X-ray and scan images stored on the system and viewable by doctors", "impact": "Medium"},
+                        {"feature": "ECG report storage and linking", "description": "ECG traces stored digitally and linked to patient's cardiac history", "impact": "High"},
+                        {"feature": "Echo / cardiac imaging report module", "description": "Structured echocardiography report template for cardiologist", "impact": "Medium"},
+                        {"feature": "Imaging TAT monitoring", "description": "Track time from request to report delivery", "impact": "Medium"},
+                        {"feature": "Abnormal finding alerts", "description": "System flags critical imaging findings for immediate doctor attention", "impact": "High"},
+                        {"feature": "Image sharing with referring doctor", "description": "Doctor views the image and report from their consultation workstation", "impact": "High"},
+                        {"feature": "Imaging workload & revenue reporting", "description": "Track number and type of scans performed, revenue generated", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "rad_priority",
+                    "type":  "scale",
+                    "label": "How critical is integrated radiology / imaging management for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "rad_notes",
+                    "type":  "text",
+                    "label": "Any imaging workflow challenges? (e.g. lost films, delayed reports, no digital storage)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "pharmacy",
+            "domain":  "Pharmacy & Medication Management",
+            "icon":    "💊",
+            "summary": "Royan Hospital operates a full-service pharmacy dispensing to both inpatients and outpatients. This section covers all aspects of pharmacy management.",
+            "questions": [
+                {
+                    "id":    "pharm_current",
+                    "type":  "radio",
+                    "label": "How is the pharmacy currently managed?",
+                    "options": [
+                        "Fully manual (paper prescriptions, paper stock book)",
+                        "Paper prescriptions + basic Excel stock tracking",
+                        "Standalone pharmacy software (not connected to clinical system)",
+                        "Integrated pharmacy module",
+                    ],
+                },
+                {
+                    "id":    "pharm_features",
+                    "type":  "checkbox",
+                    "label": "Which pharmacy management features do you need SynbotHealth to provide?",
+                    "options": [
+                        {"feature": "Electronic prescription reception", "description": "Prescription arrives from doctor's workstation; pharmacist reviews and dispenses digitally", "impact": "High"},
+                        {"feature": "Drug inventory & stock management", "description": "Real-time stock levels per drug; low-stock alerts; expiry date tracking", "impact": "High"},
+                        {"feature": "Drug-drug interaction checking", "description": "System alerts pharmacist when a new prescription conflicts with existing medications", "impact": "High"},
+                        {"feature": "Allergy / contraindication checking", "description": "Cross-checks prescription against patient's documented allergies before dispensing", "impact": "High"},
+                        {"feature": "Dispensing confirmation & patient notification", "description": "Pharmacist confirms dispensing; patient or ward nurse is notified when ready", "impact": "High"},
+                        {"feature": "Outpatient prescription tracking", "description": "Track each outpatient prescription from issue to collection", "impact": "High"},
+                        {"feature": "Inpatient medication administration integration", "description": "Links to nursing MAR; nurse confirms each dose given against pharmacy records", "impact": "High"},
+                        {"feature": "Controlled substance register", "description": "Digital register for Schedule 1 / controlled drugs with mandatory accountability trail", "impact": "High"},
+                        {"feature": "Automatic ward stock replenishment", "description": "Ward stock levels monitored; replenishment requests sent to pharmacy automatically", "impact": "Medium"},
+                        {"feature": "Drug return / wastage logging", "description": "Record unused or wasted medications with reason codes", "impact": "Medium"},
+                        {"feature": "Supplier purchase order management", "description": "Generate purchase orders to drug suppliers; track deliveries and invoices", "impact": "Medium"},
+                        {"feature": "Chronic prescription / repeat refill management", "description": "Track patients on long-term medications; facilitate routine refills without repeat doctor visit", "impact": "Medium"},
+                        {"feature": "Pharmacy revenue reporting", "description": "Daily / monthly report on dispensed drugs by value and volume", "impact": "Medium"},
+                        {"feature": "National Drug File / formulary management", "description": "Standardised drug catalogue used across all prescribing and dispensing", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "pharm_priority",
+                    "type":  "scale",
+                    "label": "How critical is integrated pharmacy management for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "pharm_notes",
+                    "type":  "text",
+                    "label": "Any pharmacy-specific challenges? (e.g. stockouts, prescription errors, reconciliation difficulty)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "nursing",
+            "domain":  "Nursing & Patient Care",
+            "icon":    "🩺",
+            "summary": "Covers all nursing documentation — vitals, care plans, medication administration, shift handover, and direct patient care tasks.",
+            "questions": [
+                {
+                    "id":    "nursing_current",
+                    "type":  "radio",
+                    "label": "How are nursing records (vitals, care notes, MAR) documented today?",
+                    "options": [
+                        "All paper (observation charts, nursing notes)",
+                        "Paper nursing notes + some Excel sheets",
+                        "Partial digital (e.g. vitals on a tablet, but MAR on paper)",
+                        "Mostly digital nursing module",
+                    ],
+                },
+                {
+                    "id":    "nursing_features",
+                    "type":  "checkbox",
+                    "label": "Which nursing management features do you need?",
+                    "options": [
+                        {"feature": "Digital vitals recording", "description": "Nurse enters BP, temperature, pulse, SpO2, and RR; automatically graphed over time", "impact": "High"},
+                        {"feature": "Nursing assessment form", "description": "Structured admission nursing assessment (skin integrity, fall risk, nutrition, pain score)", "impact": "High"},
+                        {"feature": "Nursing care plan", "description": "Problem-based care plan with nursing interventions and goals", "impact": "Medium"},
+                        {"feature": "Medication administration record (MAR)", "description": "Nurse checks off each drug dose administered; records time and any omissions", "impact": "High"},
+                        {"feature": "IV fluid / intake-output chart", "description": "Continuous recording of all fluids in (IV, oral) and out (urine, drains, losses)", "impact": "High"},
+                        {"feature": "Pain score tracking", "description": "Nursing pain assessments logged at defined intervals; alerts on escalating pain", "impact": "Medium"},
+                        {"feature": "Wound care documentation", "description": "Record wound assessment, dressing changes, and healing progress", "impact": "Medium"},
+                        {"feature": "Nursing shift handover report", "description": "Digital SBAR handover for each patient at shift change", "impact": "High"},
+                        {"feature": "Fall risk & pressure ulcer assessment", "description": "Braden / Morse scale scores logged; preventive measures triggered automatically", "impact": "Medium"},
+                        {"feature": "Patient call / escalation system", "description": "Nurse can escalate a deteriorating patient to the on-call doctor from their device", "impact": "High"},
+                    ],
+                },
+                {
+                    "id":    "nursing_priority",
+                    "type":  "scale",
+                    "label": "How critical is digital nursing documentation for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "nursing_notes",
+                    "type":  "text",
+                    "label": "Any nursing-specific pain points? (e.g. lost observation charts, MAR errors, handover gaps)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "surgery",
+            "domain":  "Surgical Services",
+            "icon":    "🔬",
+            "summary": "Royan Hospital performs both elective and emergency surgery including breast, thyroid, colorectal, GI, hernia, and orthopaedic procedures.",
+            "questions": [
+                {
+                    "id":    "surg_current",
+                    "type":  "radio",
+                    "label": "How is the surgical theatre managed today?",
+                    "options": [
+                        "Fully manual (paper registers, verbal scheduling)",
+                        "Paper forms + Excel theatre list",
+                        "Standalone surgical software",
+                        "Integrated surgical module in HMS",
+                    ],
+                },
+                {
+                    "id":    "surg_volume",
+                    "type":  "radio",
+                    "label": "Approximate number of surgical cases per week",
+                    "options": ["Under 5", "5–15", "16–30", "Over 30"],
+                },
+                {
+                    "id":    "surg_features",
+                    "type":  "checkbox",
+                    "label": "Which surgical management features do you need?",
+                    "options": [
+                        {"feature": "Surgical scheduling / theatre list", "description": "Electronic daily theatre list with surgeon, procedure, and estimated duration", "impact": "High"},
+                        {"feature": "Pre-operative assessment checklist", "description": "Digital pre-op form covering consent, fasting status, allergies, anaesthetic review", "impact": "High"},
+                        {"feature": "Anaesthetic record", "description": "Intraoperative anaesthetic monitoring record and drug log", "impact": "Medium"},
+                        {"feature": "Intraoperative nursing count (swabs/instruments)", "description": "Digital count sheet for swabs, needles, and instruments before and after closure", "impact": "High"},
+                        {"feature": "Operative notes (surgeon's report)", "description": "Surgeon dictates or types operative findings directly into the patient's record", "impact": "High"},
+                        {"feature": "Post-operative recovery room monitoring", "description": "Recovery vitals and PACU discharge criteria tracked digitally", "impact": "High"},
+                        {"feature": "Surgical site infection tracking", "description": "Post-op wound checks recorded; SSI cases flagged for quality review", "impact": "Medium"},
+                        {"feature": "Surgical consent management", "description": "Digital informed consent with patient signature captured", "impact": "Medium"},
+                        {"feature": "Elective vs emergency theatre prioritisation", "description": "System manages emergency add-ons to theatre list with automated notification", "impact": "High"},
+                        {"feature": "Surgical outcome & complication recording", "description": "Structured data entry for 30-day outcomes used for audit and governance", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "surg_priority",
+                    "type":  "scale",
+                    "label": "How critical is a digital surgical management system for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "surg_notes",
+                    "type":  "text",
+                    "label": "Any surgical workflow challenges? (e.g. theatre scheduling conflicts, consent issues, missing operative notes)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "maternity_child",
+            "domain":  "Maternal & Child Health (MCH / OB-GYN)",
+            "icon":    "🤱",
+            "summary": "Royan Hospital's OB-GYN department manages antenatal care, delivery, postnatal, fertility, gynecological conditions, and pediatrics.",
+            "questions": [
+                {
+                    "id":    "mch_current",
+                    "type":  "radio",
+                    "label": "How is antenatal and maternal care documented today?",
+                    "options": [
+                        "Antenatal card only (paper)",
+                        "Paper cards + ward register",
+                        "Partial digital",
+                        "Integrated MCH module",
+                    ],
+                },
+                {
+                    "id":    "mch_features",
+                    "type":  "checkbox",
+                    "label": "Which Maternal & Child Health features do you need?",
+                    "options": [
+                        {"feature": "Antenatal booking form (ANC registration)", "description": "Digital first visit booking capturing LMP, obstetric history, EDD, risk factors", "impact": "High"},
+                        {"feature": "Antenatal visit schedule & tracking", "description": "System schedules and tracks each ANC visit; alerts for missed appointments", "impact": "High"},
+                        {"feature": "Growth chart / fundal height tracking", "description": "Serial measurements plotted on a digital growth curve", "impact": "Medium"},
+                        {"feature": "Partograph (labour progress monitoring)", "description": "Digital partograph capturing cervical dilation, fetal heart rate, and maternal vitals during labour", "impact": "High"},
+                        {"feature": "Delivery record", "description": "Digital birth record capturing mode of delivery, birth weight, Apgar scores, complications", "impact": "High"},
+                        {"feature": "Postnatal follow-up tracking", "description": "Schedule and track postnatal visits for both mother and neonate", "impact": "High"},
+                        {"feature": "Newborn care record", "description": "Neonate assessment, vitamin K, immunisation at birth, discharge check", "impact": "High"},
+                        {"feature": "Immunisation schedule (child health)", "description": "NPI-compliant vaccination schedule; alerts when a vaccine is due", "impact": "High"},
+                        {"feature": "Gynaecology consultation notes", "description": "Structured notes for infertility, fibroid, uro-gynaecology, and endocrinology clinics", "impact": "High"},
+                        {"feature": "Family planning counselling record", "description": "Document method chosen, counselling provided, follow-up date", "impact": "Medium"},
+                        {"feature": "Physiotherapy referral from OB/GYN", "description": "Antenatal physiotherapy referral and tracking from within the MCH record", "impact": "Medium"},
+                        {"feature": "Feto-maternal surveillance record", "description": "Track CTG, fetal movement charts, biophysical profiles for high-risk pregnancies", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "mch_priority",
+                    "type":  "scale",
+                    "label": "How critical is a dedicated Maternal & Child Health module for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "mch_notes",
+                    "type":  "text",
+                    "label": "Any specific MCH / OB-GYN workflow challenges?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "specialty_clinics",
+            "domain":  "Specialist Clinics",
+            "icon":    "🫀",
+            "summary": "Royan Hospital runs specialist clinics in Cardiology, Gastroenterology, Urology, Orthopaedics, Pediatrics, and Family Medicine.",
+            "questions": [
+                {
+                    "id":    "spec_active",
+                    "type":  "checkbox",
+                    "label": "Which specialist clinics are currently active at Royan Hospital?",
+                    "options": [
+                        {"feature": "Cardiology", "description": "ECG, Echo, arrhythmia management, cardiac monitoring", "impact": "High"},
+                        {"feature": "Gastroenterology", "description": "Hepatitis, Ulcer, liver disease, Jaundice, GI disorders", "impact": "High"},
+                        {"feature": "Urology", "description": "Kidney disease, bladder, prostate, genitourinary cancers", "impact": "High"},
+                        {"feature": "Family Medicine / General Practice", "description": "Chronic disease, family planning, general consultations", "impact": "High"},
+                        {"feature": "Orthopaedics", "description": "Bone, joint, muscle and ligament conditions", "impact": "High"},
+                        {"feature": "Pediatrics", "description": "Child health, immunisations, growth, development", "impact": "High"},
+                        {"feature": "Chronic Disease Clinic (Diabetes, Hypertension)", "description": "Structured management of long-term conditions with regular reviews", "impact": "High"},
+                        {"feature": "Physiotherapy & Rehabilitation", "description": "Post-surgical rehab, musculoskeletal, stroke recovery, antenatal physio", "impact": "High"},
+                        {"feature": "Ophthalmology / Eye Clinic", "description": "", "impact": "Low"},
+                        {"feature": "ENT (Ear, Nose & Throat)", "description": "", "impact": "Low"},
+                        {"feature": "Dermatology", "description": "", "impact": "Low"},
+                        {"feature": "Oncology", "description": "", "impact": "Low"},
+                        {"feature": "Neurology", "description": "", "impact": "Low"},
+                        {"feature": "Psychiatry / Mental Health", "description": "", "impact": "Low"},
+                        {"feature": "Dental", "description": "", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "spec_features",
+                    "type":  "checkbox",
+                    "label": "Which specialist clinic management features do you need?",
+                    "options": [
+                        {"feature": "Specialty-specific consultation note templates", "description": "Pre-built structured note forms per specialty (e.g. cardiac history template, antenatal template)", "impact": "High"},
+                        {"feature": "Specialty clinic appointment scheduling", "description": "Separate appointment slots for each specialist clinic with waitlist management", "impact": "High"},
+                        {"feature": "Chronic disease register / registry", "description": "Centralised list of patients with diabetes, hypertension, asthma, HIV, etc. for population tracking", "impact": "High"},
+                        {"feature": "Recall and review scheduling", "description": "System schedules next review appointment and sends reminders for chronic disease patients", "impact": "High"},
+                        {"feature": "Referral from GP to specialist within hospital", "description": "Family doctor refers patient to specialist; specialist accepts/tracks referral digitally", "impact": "High"},
+                        {"feature": "Physiotherapy session notes & exercise plans", "description": "Physiotherapist documents each session, treatment given, and home exercise programme", "impact": "Medium"},
+                        {"feature": "Cardiology diagnostic report module (ECG / Echo)", "description": "Cardiologist records structured ECG and Echo findings linked to patient record", "impact": "High"},
+                        {"feature": "Paediatric growth chart (weight, height, head circumference)", "description": "WHO-based growth charts plotted automatically from nursing measurements", "impact": "High"},
+                        {"feature": "Vaccination record for paediatric patients", "description": "NPI immunisation schedule tracked; vaccine given recorded with batch number", "impact": "High"},
+                    ],
+                },
+                {
+                    "id":    "spec_priority",
+                    "type":  "scale",
+                    "label": "How critical are specialty clinic management features for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "spec_notes",
+                    "type":  "text",
+                    "label": "Any specific specialist clinic challenges or planned new specialties?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "billing_finance",
+            "domain":  "Billing, Finance & HMO",
+            "icon":    "💳",
+            "summary": "Royan Hospital manages billing in-house and works with multiple HMO / insurance providers. This section covers the full revenue cycle.",
+            "questions": [
+                {
+                    "id":    "billing_current",
+                    "type":  "radio",
+                    "label": "How is patient billing currently handled?",
+                    "options": [
+                        "Manual paper bills / receipts",
+                        "Excel-based invoicing",
+                        "Standalone billing software (not connected to clinical system)",
+                        "Integrated billing module in HMS",
+                    ],
+                },
+                {
+                    "id":    "billing_features",
+                    "type":  "checkbox",
+                    "label": "Which billing and finance features do you need SynbotHealth to provide?",
+                    "options": [
+                        {"feature": "Automatic bill generation from clinical orders", "description": "Every lab test, drug, imaging request, and ward day auto-added to patient's bill", "impact": "High"},
+                        {"feature": "HMO pre-authorisation request", "description": "System generates and tracks pre-auth requests to HMO before procedures", "impact": "High"},
+                        {"feature": "HMO claim submission & tracking", "description": "Create, submit, and track HMO claims with approval/rejection status", "impact": "High"},
+                        {"feature": "Co-payment calculation", "description": "System calculates patient's portion after HMO cover for each service", "impact": "High"},
+                        {"feature": "Multiple payment method receipt (cash, POS, transfer)", "description": "Billing officer logs payment type; digital receipt issued", "impact": "High"},
+                        {"feature": "Inpatient running bill (live balance)", "description": "Ward staff can see current accumulated inpatient bill at any time", "impact": "High"},
+                        {"feature": "Itemised invoice / discharge bill", "description": "Full breakdown of all charges on discharge", "impact": "High"},
+                        {"feature": "Outstanding debt / credit management", "description": "Track patient balances, payment plans, and overdue accounts", "impact": "Medium"},
+                        {"feature": "Petty cash / staff cash drawer reconciliation", "description": "Daily cashier close-out and reconciliation report", "impact": "Medium"},
+                        {"feature": "Financial reporting (daily revenue, monthly P&L summary)", "description": "Management dashboard with income broken down by department and service", "impact": "High"},
+                        {"feature": "Consultation fee schedule management", "description": "Configurable fee list per doctor grade, service type, and HMO tariff", "impact": "High"},
+                        {"feature": "Waiver / discount authorisation workflow", "description": "Billing officer requests waiver; management approves digitally", "impact": "Medium"},
+                        {"feature": "Indigent patient support tracking", "description": "Flag patients receiving subsidised or free care; track against charity budget", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "billing_hmo_names",
+                    "type":  "text",
+                    "label": "Please list the HMO / insurance providers you currently work with (e.g. Hygeia, Reliance, Leadway, NHIS)",
+                },
+                {
+                    "id":    "billing_priority",
+                    "type":  "scale",
+                    "label": "How critical is integrated billing and HMO management for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "billing_notes",
+                    "type":  "text",
+                    "label": "Any billing pain points? (e.g. HMO claim rejections, revenue leakage, billing errors)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "medical_records",
+            "domain":  "Medical Records & Data Management",
+            "icon":    "📁",
+            "summary": "Covers patient records storage, retrieval, privacy, and compliance with the Nigeria Data Protection Act 2023 (NDPA).",
+            "questions": [
+                {
+                    "id":    "records_current",
+                    "type":  "radio",
+                    "label": "How are patient medical records currently stored?",
+                    "options": [
+                        "Entirely paper files in a physical records room",
+                        "Mixed: some paper, some scanned documents",
+                        "Electronic records in an HMS",
+                        "Cloud-based electronic health records",
+                    ],
+                },
+                {
+                    "id":    "records_features",
+                    "type":  "checkbox",
+                    "label": "Which medical records and data management features do you need?",
+                    "options": [
+                        {"feature": "Unified electronic patient record (EPR)", "description": "All clinical information for a patient in one searchable digital record", "impact": "High"},
+                        {"feature": "Document scanning and attachment", "description": "Scan and attach paper documents (referrals, external results) to the patient's digital record", "impact": "High"},
+                        {"feature": "Referral letter generation and tracking", "description": "Doctor generates formal referral letter; track if patient attended external appointment", "impact": "Medium"},
+                        {"feature": "Patient record access audit log", "description": "Log every access to a patient record; required under NDPA 2023", "impact": "High"},
+                        {"feature": "Patient data request workflow", "description": "Patient submits written request; records office processes and tracks within 5 days", "impact": "Medium"},
+                        {"feature": "Records release / ROI authorisation", "description": "Third-party (HMO, lawyer, employer) requests require signed patient consent before release", "impact": "High"},
+                        {"feature": "NDPA 2023 compliance tools", "description": "Consent tracking, data subject rights management, breach logging", "impact": "High"},
+                        {"feature": "Deceased patient record management", "description": "Death date flagged; records archived appropriately; access controlled", "impact": "Medium"},
+                        {"feature": "Cross-department record sharing", "description": "Authorised clinicians in different departments can view the same patient record simultaneously", "impact": "High"},
+                        {"feature": "Record backup and disaster recovery", "description": "Automated daily backups; clear recovery procedure in case of system failure", "impact": "High"},
+                    ],
+                },
+                {
+                    "id":    "records_priority",
+                    "type":  "scale",
+                    "label": "How critical is an integrated electronic medical records system for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "records_notes",
+                    "type":  "text",
+                    "label": "Any records management pain points? (e.g. lost files, unauthorised access concerns, NDPA readiness)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "quality_safety",
+            "domain":  "Quality, Safety & Compliance",
+            "icon":    "✅",
+            "summary": "Covers incident reporting, infection control, audit management, and clinical governance.",
+            "questions": [
+                {
+                    "id":    "quality_current",
+                    "type":  "radio",
+                    "label": "How are clinical incidents and adverse events currently reported and managed?",
+                    "options": [
+                        "Not formally tracked",
+                        "Verbal reporting to manager; paper log",
+                        "Paper incident forms",
+                        "Digital incident reporting system",
+                    ],
+                },
+                {
+                    "id":    "quality_features",
+                    "type":  "checkbox",
+                    "label": "Which quality and safety features do you need?",
+                    "options": [
+                        {"feature": "Digital incident / adverse event report", "description": "Staff report near-misses, medication errors, falls, and adverse events through the system", "impact": "High"},
+                        {"feature": "Root cause analysis tracking", "description": "Investigate incidents with structured RCA and corrective action plans (CAPA)", "impact": "High"},
+                        {"feature": "Infection control surveillance", "description": "Track hospital-acquired infections (HAI); alert on clusters of unusual organisms", "impact": "High"},
+                        {"feature": "Hand hygiene and PPE audit tool", "description": "Infection control team conducts digital compliance audits", "impact": "Medium"},
+                        {"feature": "Surgical site infection (SSI) monitoring", "description": "30-day post-op wound surveillance report", "impact": "Medium"},
+                        {"feature": "Mortality and morbidity meeting records", "description": "Digital M&M meeting log with outcome tracking", "impact": "Medium"},
+                        {"feature": "Clinical audit management", "description": "Define audit topics, collect data, generate reports, track re-audits", "impact": "Medium"},
+                        {"feature": "Patient complaints and feedback tracking", "description": "Log complaints, assign to department, track resolution, respond to patient", "impact": "Medium"},
+                        {"feature": "HEFAMAA / regulatory inspection readiness", "description": "Checklist and document store for Lagos State HEFAMAA and NMA inspections", "impact": "High"},
+                        {"feature": "Equipment maintenance and calibration log", "description": "Scheduled maintenance records for medical equipment; expiry alerts", "impact": "Medium"},
+                        {"feature": "Fumigation and environmental health log", "description": "Track decontamination, fumigation, and waste management activities", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "quality_priority",
+                    "type":  "scale",
+                    "label": "How critical are quality and compliance tools for Royan Hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "quality_notes",
+                    "type":  "text",
+                    "label": "Any quality / regulatory compliance concerns? (e.g. HEFAMAA inspections, recurring incidents)",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "hr_admin",
+            "domain":  "HR, Administration & Staff Management",
+            "icon":    "👥",
+            "summary": "Covers staff scheduling, HR records, payroll integration, and general hospital administration.",
+            "questions": [
+                {
+                    "id":    "hr_features",
+                    "type":  "checkbox",
+                    "label": "Which HR and administration features would be useful for Royan Hospital?",
+                    "options": [
+                        {"feature": "Staff roster and duty scheduling", "description": "Create and manage shift rosters for doctors, nurses, and support staff", "impact": "High"},
+                        {"feature": "Staff attendance / time tracking", "description": "Digital clock-in / clock-out; automated attendance report", "impact": "Medium"},
+                        {"feature": "Leave management", "description": "Staff apply for leave online; manager approves; roster auto-updated", "impact": "Medium"},
+                        {"feature": "On-call scheduling", "description": "Manage on-call rotas for doctors and specialists; automated notifications", "impact": "High"},
+                        {"feature": "Staff performance appraisal module", "description": "Structured periodic appraisal with KPI tracking", "impact": "Low"},
+                        {"feature": "Staff HR record management", "description": "Digital staff file: contracts, certificates, licences, MDCN registration expiry alerts", "impact": "Medium"},
+                        {"feature": "Locum / agency staff management", "description": "Track locum staff hours, departments, and costs", "impact": "Medium"},
+                        {"feature": "Payroll data export", "description": "Export attendance and payroll data to accounting software", "impact": "Medium"},
+                        {"feature": "Nursing competency and training record", "description": "Track CPD hours, mandatory training completions, and skill sign-offs", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "hr_priority",
+                    "type":  "scale",
+                    "label": "How critical is HR and staff management functionality for your hospital?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "hr_notes",
+                    "type":  "text",
+                    "label": "Any HR or staffing challenges to highlight?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "digital_patient",
+            "domain":  "Digital & Patient Engagement",
+            "icon":    "📱",
+            "summary": "Covers online patient-facing features — self-service, telemedicine, notifications, and the SynbotHealth AI assistant.",
+            "questions": [
+                {
+                    "id":    "digital_current",
+                    "type":  "radio",
+                    "label": "Does Royan Hospital currently offer any digital / online patient services?",
+                    "options": [
+                        "No — all interactions are in-person or by phone",
+                        "WhatsApp for enquiries only",
+                        "Website with basic information only",
+                        "Online booking and/or patient portal",
+                    ],
+                },
+                {
+                    "id":    "digital_features",
+                    "type":  "checkbox",
+                    "label": "Which digital patient engagement features interest you?",
+                    "options": [
+                        {"feature": "AI chatbot (SynbotHealth) for patient enquiries", "description": "Answers patient questions about services, hours, how to book, what to expect", "impact": "High"},
+                        {"feature": "WhatsApp appointment booking via SynbotHealth", "description": "Patient sends WhatsApp message; AI books appointment and confirms slot", "impact": "High"},
+                        {"feature": "Online patient registration / pre-registration", "description": "Patient registers via website before coming in; details ready on arrival", "impact": "Medium"},
+                        {"feature": "Patient portal (view results, history, prescriptions)", "description": "Secure web or app portal where patient views their own records and results", "impact": "Medium"},
+                        {"feature": "SMS / WhatsApp appointment reminders", "description": "Automated reminder sent the day before and morning of appointment", "impact": "High"},
+                        {"feature": "Telemedicine / video consultation", "description": "Doctor consults patient remotely via video call through the system", "impact": "Medium"},
+                        {"feature": "Patient satisfaction surveys (post-visit)", "description": "Automated satisfaction questionnaire sent after discharge or OPD visit", "impact": "Medium"},
+                        {"feature": "Health tips and campaign messaging", "description": "Broadcast health education messages to registered patients (e.g. malaria season, flu vaccine)", "impact": "Low"},
+                        {"feature": "Digital queue number on patient's phone", "description": "Patient receives queue number via SMS/WhatsApp and is notified when their turn is close", "impact": "High"},
+                        {"feature": "Bill payment via mobile money / online transfer", "description": "Patient pays bill through Paystack / Flutterwave link; payment auto-reconciled", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "digital_priority",
+                    "type":  "scale",
+                    "label": "How high a priority is digital / patient-facing technology for Royan Hospital's strategy?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "digital_notes",
+                    "type":  "text",
+                    "label": "Any specific digital features your patients or management have requested?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "reporting_analytics",
+            "domain":  "Reporting, Analytics & Management Dashboard",
+            "icon":    "📊",
+            "summary": "Covers what management and department heads need to see to run the hospital effectively.",
+            "questions": [
+                {
+                    "id":    "reporting_features",
+                    "type":  "checkbox",
+                    "label": "Which reporting and analytics capabilities do you need?",
+                    "options": [
+                        {"feature": "Daily OPD and A&E attendance report", "description": "Count of patients by department, doctor, and complaint category", "impact": "High"},
+                        {"feature": "Inpatient census (daily bed occupancy)", "description": "Beds occupied / available / reserved; average length of stay", "impact": "High"},
+                        {"feature": "Revenue report (daily / monthly by department)", "description": "Income breakdown by service type, HMO vs cash, top revenue lines", "impact": "High"},
+                        {"feature": "HMO claims ageing report", "description": "Track outstanding HMO claims by age and value; identify slow payers", "impact": "High"},
+                        {"feature": "Pharmacy stock report (consumption & forecasting)", "description": "Top consumed drugs, reorder recommendations, expiry alerts", "impact": "High"},
+                        {"feature": "Laboratory turnaround time (TAT) report", "description": "Average and distribution of time from test order to result", "impact": "Medium"},
+                        {"feature": "Surgical throughput report", "description": "Number of procedures by surgeon, theatre utilisation rate", "impact": "Medium"},
+                        {"feature": "Top diagnoses / disease burden report", "description": "Ranked list of most common diagnoses for given period — informs planning", "impact": "Medium"},
+                        {"feature": "Chronic disease patient register report", "description": "List of diabetic, hypertensive, and other chronic patients with last review dates", "impact": "High"},
+                        {"feature": "Infection surveillance report", "description": "Organism frequency, ward-level HAI rates, antibiogram summary", "impact": "Medium"},
+                        {"feature": "Staff productivity report", "description": "Patients seen per doctor, prescriptions per pharmacist, tests per scientist", "impact": "Low"},
+                        {"feature": "Real-time hospital operations dashboard", "description": "Live TV display for management: bed count, queue length, revenue target vs actual", "impact": "High"},
+                        {"feature": "NHIA / HMIS regulatory report export", "description": "Generate summary reports in the format required for government submissions", "impact": "Medium"},
+                    ],
+                },
+                {
+                    "id":    "reporting_priority",
+                    "type":  "scale",
+                    "label": "How critical is real-time reporting and analytics for hospital management?",
+                    "scale": {"min": 1, "max": 5, "labels": ["Low priority", "Top priority"]},
+                },
+                {
+                    "id":    "reporting_notes",
+                    "type":  "text",
+                    "label": "What is the single most important report or metric your management looks at today?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "infrastructure_integration",
+            "domain":  "Infrastructure & Technical Requirements",
+            "icon":    "⚙️",
+            "summary": "Covers hardware, connectivity, integration requirements, and deployment preferences.",
+            "questions": [
+                {
+                    "id":    "infra_internet",
+                    "type":  "radio",
+                    "label": "How would you describe your hospital's internet connectivity?",
+                    "options": [
+                        "Unreliable / intermittent (frequent outages)",
+                        "Moderate (mostly reliable, occasional drops)",
+                        "Reliable broadband (rarely drops)",
+                        "Dedicated fibre / enterprise-grade connection",
+                    ],
+                },
+                {
+                    "id":    "infra_devices",
+                    "type":  "checkbox",
+                    "label": "What devices are currently in use or planned for clinical staff?",
+                    "options": [
+                        {"feature": "Desktop computers at fixed workstations", "description": "", "impact": "High"},
+                        {"feature": "Laptops", "description": "", "impact": "High"},
+                        {"feature": "Android tablets (bedside / ward)", "description": "", "impact": "High"},
+                        {"feature": "iPads (iOS tablets)", "description": "", "impact": "Medium"},
+                        {"feature": "Smartphones (Android)", "description": "", "impact": "Medium"},
+                        {"feature": "Dedicated nursing station terminals", "description": "", "impact": "High"},
+                        {"feature": "Barcode / QR scanners at pharmacy / lab", "description": "", "impact": "Medium"},
+                        {"feature": "Patient-facing kiosk / registration screen", "description": "", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "infra_deployment",
+                    "type":  "radio",
+                    "label": "What is your preference for system deployment?",
+                    "options": [
+                        "Cloud-hosted (SynbotHealth manages servers — lower upfront cost)",
+                        "On-premise server in hospital (hospital manages hardware)",
+                        "Hybrid (critical data on-premise, reporting in cloud)",
+                        "No preference / need guidance",
+                    ],
+                },
+                {
+                    "id":    "infra_integrations",
+                    "type":  "checkbox",
+                    "label": "Which external systems or services would you want SynbotHealth to integrate with?",
+                    "options": [
+                        {"feature": "HMO / insurance portals (claim submission API)", "description": "", "impact": "High"},
+                        {"feature": "NHIA (National Health Insurance Authority) portal", "description": "", "impact": "High"},
+                        {"feature": "Paystack / Flutterwave (online payment)", "description": "", "impact": "Medium"},
+                        {"feature": "WhatsApp Business API", "description": "", "impact": "High"},
+                        {"feature": "SMS gateway (bulk SMS for notifications)", "description": "", "impact": "High"},
+                        {"feature": "LIMS (existing lab equipment data export)", "description": "", "impact": "Medium"},
+                        {"feature": "PACS / digital imaging viewer", "description": "", "impact": "Medium"},
+                        {"feature": "Accounting software (QuickBooks, Sage, etc.)", "description": "", "impact": "Medium"},
+                        {"feature": "NHIA / HMIS government reporting portal", "description": "", "impact": "Medium"},
+                        {"feature": "Biometric / fingerprint authentication", "description": "", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "infra_notes",
+                    "type":  "text",
+                    "label": "Any IT infrastructure concerns or constraints we should know about?",
+                },
+            ],
+        },
+        # ──────────────────────────────────────────────────────────────────
+        {
+            "id":      "hope_config",
+            "domain":  "Current HMS \u2014 DRM Hope Configuration",
+            "icon":    "\U0001f4be",
+            "summary": (
+                "DRM Hope is your current Hospital Management System. These answers determine "
+                "exactly how SynbotHealth connects to it \u2014 via REST API, ODBC database bridge, "
+                "or HL7 FHIR \u2014 and which data is already tracked in Hope so we know what to "
+                "read versus what to build fresh."
+            ),
+            "questions": [
+                {
+                    "id":    "hope_edition",
+                    "type":  "radio",
+                    "label": "Which edition of DRM Hope is installed at Royan Hospital?",
+                    "options": [
+                        "Community Edition",
+                        "Professional Edition",
+                        "Enterprise Edition",
+                        "Not sure \u2014 I would need to check",
+                    ],
+                },
+                {
+                    "id":    "hope_version_notes",
+                    "type":  "text",
+                    "label": "Hope version number (e.g. 3.2.1) \u2014 check the About screen inside Hope (optional but very helpful)",
+                },
+                {
+                    "id":    "hope_db_backend",
+                    "type":  "radio",
+                    "label": "What database engine does DRM Hope use on the server? (Your IT team or the Hope installer documentation will confirm this)",
+                    "options": [
+                        "Microsoft SQL Server (MSSQL)",
+                        "MySQL / MariaDB",
+                        "PostgreSQL",
+                        "Not sure \u2014 we would need to check",
+                    ],
+                },
+                {
+                    "id":    "hope_api_access",
+                    "type":  "radio",
+                    "label": "Does your DRM Hope installation expose any API or integration interface?",
+                    "options": [
+                        "Yes \u2014 it has a licensed REST API",
+                        "Yes \u2014 it supports HL7 FHIR (R4)",
+                        "ODBC / direct database access only (no REST API)",
+                        "Not sure \u2014 IT would need to confirm",
+                    ],
+                },
+                {
+                    "id":    "hope_active_modules",
+                    "type":  "checkbox",
+                    "label": "Which modules are currently active and in daily use in your DRM Hope installation? (Select all that apply)",
+                    "options": [
+                        {"feature": "Patient Registration / Demographics",        "description": "Patient records, MRN assignment",              "impact": "High"},
+                        {"feature": "Outpatient / Appointment Scheduling",        "description": "OPD bookings, doctor schedules",               "impact": "High"},
+                        {"feature": "Inpatient / Ward Management",                "description": "Admissions, bed allocation, discharge",        "impact": "High"},
+                        {"feature": "Accident & Emergency (A&E)",                 "description": "Triage, emergency presentations",              "impact": "High"},
+                        {"feature": "Pharmacy / Dispensing",                      "description": "Drug orders, dispensing, stock levels",        "impact": "High"},
+                        {"feature": "Laboratory / LIMS",                          "description": "Test orders, results, specimen tracking",      "impact": "High"},
+                        {"feature": "Radiology / Imaging orders",                 "description": "Imaging requests and reports",                 "impact": "Medium"},
+                        {"feature": "Billing & Finance",                          "description": "Invoicing, payments, receipts",                "impact": "High"},
+                        {"feature": "HMO / Insurance Management",                 "description": "Capitation, pre-authorisation, claims",        "impact": "High"},
+                        {"feature": "Theatre / Surgical Management",              "description": "Operation lists, anaesthesia, surgical notes", "impact": "Medium"},
+                        {"feature": "Maternity / Antenatal Care",                 "description": "ANC visits, delivery records, postnatal",      "impact": "Medium"},
+                        {"feature": "HR / Staff Management",                      "description": "Staff records, roles, scheduling",             "impact": "Medium"},
+                        {"feature": "Reporting / Analytics dashboard",            "description": "Management reports and KPIs",                  "impact": "Medium"},
+                        {"feature": "None \u2014 Hope is installed but not yet in active use", "description": "", "impact": "Low"},
+                    ],
+                },
+                {
+                    "id":    "hope_network",
+                    "type":  "radio",
+                    "label": "Is the computer running DRM Hope on the same Local Area Network (LAN) as other hospital systems?",
+                    "options": [
+                        "Yes \u2014 it is on the hospital LAN and reachable by other machines",
+                        "Yes \u2014 but it is behind a firewall or restricted VLAN",
+                        "No \u2014 it is a standalone machine not connected to the network",
+                        "Not sure",
+                    ],
+                },
+                {
+                    "id":    "hope_notes",
+                    "type":  "text",
+                    "label": "Any additional notes about your DRM Hope setup, IT environment, or integration constraints we should know before the site visit?",
+                },
+            ],
+        },
+    ],
+}
+
+
+# ---------------------------------------------------------------------------
+# Spec builder (converts the above dict to serialisable form)
+# ---------------------------------------------------------------------------
+def build_questionnaire_spec(_modules: list[dict] | None = None) -> dict:
+    """Return the Royan-specific questionnaire spec. `_modules` is unused
+    here — we use the hardcoded spec above. It is kept for API compatibility
+    with the pipeline runner."""
+    return ROYAN_QUESTIONNAIRE
+
+
+def _slug(text: str) -> str:
+    return text.lower().replace(" ", "_").replace("&", "and").replace("/", "_")
+
+
+# ---------------------------------------------------------------------------
+# HTML generator
+# ---------------------------------------------------------------------------
+def generate_html(spec: dict) -> str:
+    intro_html = _render_intro_questions(spec["intro_questions"])
+    sections_html = "".join(_render_section(s) for s in spec["sections"])
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{spec['title']}</title>
+  <style>
+    :root {{
+      --primary: #1a56db;
+      --accent:  #e8f0fe;
+      --border:  #dadce0;
+      --text:    #202124;
+      --muted:   #5f6368;
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      background: #f8f9fa;
+      color: var(--text);
+      padding: 24px 16px 80px;
+    }}
+    .form-wrapper {{
+      max-width: 760px;
+      margin: 0 auto;
+    }}
+    .form-header {{
+      background: var(--primary);
+      color: #fff;
+      padding: 32px 28px;
+      border-radius: 12px 12px 0 0;
+    }}
+    .form-header h1 {{ font-size: 1.6rem; margin-bottom: 12px; }}
+    .form-header p  {{ font-size: 0.95rem; opacity: 0.9; line-height: 1.6; }}
+    .card {{
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-top: 16px;
+    }}
+    .section-title {{
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--primary);
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 8px;
+      margin-bottom: 20px;
+    }}
+    .question {{ margin-bottom: 24px; }}
+    .question label.q-label {{
+      display: block;
+      font-weight: 600;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }}
+    .option-row {{
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      transition: background 0.15s;
+    }}
+    .option-row:hover {{ background: var(--accent); }}
+    .option-row input {{ margin-top: 3px; flex-shrink: 0; }}
+    .option-row .opt-body {{ flex: 1; }}
+    .opt-name  {{ font-size: 0.92rem; font-weight: 500; }}
+    .opt-desc  {{ font-size: 0.82rem; color: var(--muted); margin-top: 2px; }}
+    .impact-badge {{
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+    }}
+    .impact-High   {{ background: #fce8e6; color: #c5221f; }}
+    .impact-Medium {{ background: #fef7e0; color: #b45309; }}
+    .impact-Low    {{ background: #e6f4ea; color: #137333; }}
+    .scale-row {{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }}
+    .scale-row label {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      cursor: pointer;
+    }}
+    .scale-row input {{ width: 20px; height: 20px; }}
+    textarea {{
+      width: 100%;
+      min-height: 80px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 0.92rem;
+      resize: vertical;
+    }}
+    textarea:focus {{ outline: 2px solid var(--primary); border-color: transparent; }}
+    input[type="text"] {{
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 0.92rem;
+    }}
+    .module-tag {{
+      display: inline-block;
+      font-size: 0.72rem;
+      background: #e8f0fe;
+      color: var(--primary);
+      padding: 1px 7px;
+      border-radius: 12px;
+      margin-right: 4px;
+      margin-bottom: 2px;
+    }}
+    .submit-btn {{
+      display: block;
+      margin: 32px auto 0;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 14px 48px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }}
+    .submit-btn:hover {{ background: #1346c9; }}
+    @media print {{
+      body {{ background: white; }}
+      .card {{ break-inside: avoid; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="form-wrapper">
+    <div class="form-header">
+      <h1>{spec['title']}</h1>
+      <p style="font-size:0.8rem;opacity:0.75;margin-bottom:8px;">{spec.get('subtitle', '')}</p>
+      <p>{spec['description']}</p>
+    </div>
+
+    <form id="synbot-form" onsubmit="handleSubmit(event)">
+
+      <!-- Intro section -->
+      <div class="card">
+        <div class="section-title">About Your Hospital</div>
+        {intro_html}
+      </div>
+
+      {sections_html}
+
+      <button type="submit" class="submit-btn">Submit Requirements</button>
+    </form>
+  </div>
+
+  <script>
+    function handleSubmit(e) {{
+      e.preventDefault();
+      const data = {{}};
+      const formData = new FormData(e.target);
+      formData.forEach((val, key) => {{
+        if (data[key]) {{
+          data[key] = Array.isArray(data[key]) ? [...data[key], val] : [data[key], val];
+        }} else {{
+          data[key] = val;
+        }}
+      }});
+      console.log('Form data:', JSON.stringify(data, null, 2));
+      alert('Thank you! Your requirements have been recorded.\\n\\n(In production, this sends to the SynbotHealth team.)');
+    }}
+  </script>
+</body>
+</html>"""
+
+
+def _render_intro_questions(questions: list[dict]) -> str:
+    parts = []
+    for q in questions:
+        parts.append(_render_question(q))
+    return "\n".join(parts)
+
+
+def _render_section(section: dict) -> str:
+    questions_html = "\n".join(_render_question(q) for q in section["questions"])
+    icon    = section.get("icon", "🏥")
+    summary = section.get("summary", "")
+    summary_html = f'<div style="margin-bottom:18px;font-size:0.88rem;color:#3c4043;line-height:1.55;background:#f8f9fa;border-left:3px solid #1a56db;padding:10px 14px;border-radius:0 6px 6px 0;">{summary}</div>' if summary else ""
+    return f"""
+    <div class="card">
+      <div class="section-title">{icon} {section['domain']}</div>
+      {summary_html}
+      {questions_html}
+    </div>"""
+
+
+def _render_question(q: dict) -> str:
+    qtype = q["type"]
+    label = q["label"]
+    qid   = q["id"]
+
+    if qtype == "radio":
+        opts = "".join(
+            f'<label class="option-row">'
+            f'<input type="radio" name="{qid}" value="{o}">'
+            f'<span class="opt-body"><span class="opt-name">{o}</span></span>'
+            f'</label>'
+            for o in q["options"]
+        )
+        return f'<div class="question"><label class="q-label">{label}</label>{opts}</div>'
+
+    if qtype == "checkbox":
+        opts = []
+        for o in q["options"]:
+            if isinstance(o, dict):
+                feat  = o.get("feature", "")
+                desc  = o.get("description", "")
+                mod   = o.get("module", "")
+                impact = o.get("impact", "Medium")
+                badge = f'<span class="impact-badge impact-{impact}">{impact}</span>'
+                opts.append(
+                    f'<label class="option-row">'
+                    f'<input type="checkbox" name="{qid}" value="{feat}">'
+                    f'<span class="opt-body">'
+                    f'  <span class="opt-name">{feat} {badge}</span>'
+                    f'  <span class="opt-desc">{desc}{" <em>(" + mod + ")</em>" if mod else ""}</span>'
+                    f'</span></label>'
+                )
+            else:
+                opts.append(
+                    f'<label class="option-row">'
+                    f'<input type="checkbox" name="{qid}" value="{o}">'
+                    f'<span class="opt-body"><span class="opt-name">{o}</span></span>'
+                    f'</label>'
+                )
+        return f'<div class="question"><label class="q-label">{label}</label>{"".join(opts)}</div>'
+
+    if qtype == "scale":
+        scale_range = range(q["scale"]["min"], q["scale"]["max"] + 1)
+        scale_labels = q["scale"]["labels"]
+        radios = "".join(
+            f'<label>'
+            f'<input type="radio" name="{qid}" value="{v}">'
+            f'{v}'
+            f'</label>'
+            for v in scale_range
+        )
+        return (
+            f'<div class="question"><label class="q-label">{label}</label>'
+            f'<div class="scale-row">'
+            f'<span style="font-size:.82rem;color:#5f6368;">{scale_labels[0]}</span>'
+            f'{radios}'
+            f'<span style="font-size:.82rem;color:#5f6368;">{scale_labels[1]}</span>'
+            f'</div></div>'
+        )
+
+    if qtype == "text":
+        return (
+            f'<div class="question"><label class="q-label" for="{qid}">{label}</label>'
+            f'<textarea id="{qid}" name="{qid}" placeholder="Your answer..."></textarea></div>'
+        )
+
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Google Apps Script generator  (paste into https://script.google.com)
+# ---------------------------------------------------------------------------
+def generate_google_forms_script(spec: dict) -> str:
+    """
+    Returns a self-contained Google Apps Script (.gs) file that creates the
+    questionnaire form inside Google Drive.
+
+    HOW TO USE:
+      1. Go to https://script.google.com → New project
+      2. Delete the placeholder code and paste the entire file content
+      3. Click ▶ Run
+      4. First run: click "Review permissions" → pick your account → Allow
+      5. Wait ~30 s → open "Execution log" → copy the Edit + Responder URLs
+    """
+
+    def js_str(s: str) -> str:
+        """Wrap a Python string as a double-quoted JavaScript string literal."""
+        escaped = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+        return f'"{escaped}"'
+
+    def gs_question(q: dict, pad: str = "    ") -> list[str]:
+        """Return Apps Script source lines for one question item."""
+        qtype = q["type"]
+        label = q["label"]
+        out: list[str] = []
+        if qtype == "radio":
+            choices = ", ".join(js_str(o) for o in q["options"])
+            out.append(f"{pad}form.addMultipleChoiceItem()")
+            out.append(f"{pad}  .setTitle({js_str(label)})")
+            out.append(f"{pad}  .setChoiceValues([{choices}]);")
+        elif qtype == "checkbox":
+            raw = [o["feature"] if isinstance(o, dict) else o for o in q["options"]]
+            choices = ", ".join(js_str(o) for o in raw)
+            out.append(f"{pad}form.addCheckboxItem()")
+            out.append(f"{pad}  .setTitle({js_str(label)})")
+            out.append(f"{pad}  .setChoiceValues([{choices}]);")
+        elif qtype == "scale":
+            mn = q["scale"]["min"]
+            mx = q["scale"]["max"]
+            lo = q["scale"]["labels"][0]
+            hi = q["scale"]["labels"][1]
+            out.append(f"{pad}form.addScaleItem()")
+            out.append(f"{pad}  .setTitle({js_str(label)})")
+            out.append(f"{pad}  .setBounds({mn}, {mx})")
+            out.append(f"{pad}  .setLabels({js_str(lo)}, {js_str(hi)});")
+        elif qtype == "text":
+            out.append(f"{pad}form.addParagraphTextItem()")
+            out.append(f"{pad}  .setTitle({js_str(label)});")
+        return out
+
+    L: list[str] = []
+
+    # ── File header / instructions ──────────────────────────────────────────
+    L.append("function myFunction() {")
+    L.append("  /**")
+    L.append(f"   * {spec['title']}")
+    L.append("   *")
+    L.append("   * HOW TO USE:")
+    L.append("   * 1. Go to https://script.google.com \u2192 New project")
+    L.append("   * 2. Delete the placeholder code and paste this entire script")
+    L.append("   * 3. Click \u25b6 Run")
+    L.append('   * 4. First run: click "Review permissions" \u2192 pick your account \u2192 Allow')
+    L.append('   * 5. Wait ~30 seconds \u2192 open "Execution log" \u2192 copy the form URLs')
+    L.append("   */")
+    L.append("")
+    L.append('  var BOT_NAME    = "SynbotHealth";')
+    L.append('  var CLIENT_NAME = "Royan Hospital";')
+    L.append("")
+
+    # ── buildHospitalForm ───────────────────────────────────────────────────
+    L.append("  function buildHospitalForm() {")
+    L.append(f"    var form = FormApp.create({js_str(spec['title'])});")
+    L.append(f"    form.setDescription({js_str(spec['description'])});")
+    L.append("    form.setCollectEmail(false);")
+    L.append("    form.setIsQuiz(false);")
+    L.append("")
+    L.append("    // \u2500\u2500 Intro questions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    for q in spec["intro_questions"]:
+        L.extend(gs_question(q, pad="    "))
+        L.append("")
+    L.append("    // \u2500\u2500 Department sections \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    for section in spec["sections"]:
+        icon    = section.get("icon", "")
+        domain  = section["domain"]
+        summary = section.get("summary", "")
+        L.append("")
+        L.append(f"    // {icon} {domain}")
+        L.append(f"    form.addPageBreakItem()")
+        L.append(f"      .setTitle({js_str(icon + ' ' + domain)})")
+        L.append(f"      .setHelpText({js_str(summary)});")
+        L.append("")
+        for q in section["questions"]:
+            L.extend(gs_question(q, pad="    "))
+            L.append("")
+    L.append("    return form;")
+    L.append("  }")
+    L.append("")
+
+    # ── Entry point ─────────────────────────────────────────────────────────
+    L.append("  // =============================================================================")
+    L.append("  // Entry point \u2014 click Run to execute")
+    L.append("  // =============================================================================")
+    L.append("")
+    L.append("  function createForm() {")
+    L.append(f"    Logger.log({js_str(spec['title'])});")
+    L.append("    var form = buildHospitalForm();")
+    L.append('    Logger.log("\\n\\u2713 Form created!");')
+    L.append('    Logger.log("  Edit URL:      " + form.getEditUrl());')
+    L.append('    Logger.log("  Responder URL: " + form.getPublishedUrl());')
+    L.append('    Logger.log("");')
+    L.append('    Logger.log("Share the Responder URL with the client.");')
+    L.append("  }")
+    L.append("")
+    L.append("  createForm();")
+    L.append("}")
+    L.append("")
+
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------------------
+# Main  (old OAuth stub removed — kept as named anchor for grep)
+# ---------------------------------------------------------------------------
+def _google_forms_oauth_stub() -> None:  # pragma: no cover
+    """Placeholder \u2014 OAuth approach replaced by Apps Script generator above."""
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def run_questionnaire_gen(input_file: Path = INPUT_FILE) -> None:
+    # The Royan spec is hardcoded — no LLM data file required.
+    # The input_file argument is kept for API compatibility with the pipeline runner.
+    modules: list[dict] = []
+    if input_file.exists():
+        with input_file.open(encoding="utf-8") as f:
+            modules = json.load(f)
+        log.info("Loaded %d structured modules (not used — Royan spec is hardcoded)", len(modules))
+
+    spec = build_questionnaire_spec(modules)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # A — JSON spec
+    spec_path = OUTPUT_DIR / "03_questionnaire_spec.json"
+    with spec_path.open("w", encoding="utf-8") as f:
+        json.dump(spec, f, indent=2, ensure_ascii=False)
+    log.info("Questionnaire spec saved → %s", spec_path)
+
+    # B — HTML form
+    html_path = OUTPUT_DIR / "03_questionnaire.html"
+    html_path.write_text(generate_html(spec), encoding="utf-8")
+    log.info("HTML questionnaire saved → %s", html_path)
+
+    # C — Google Apps Script (paste into script.google.com)
+    gf_path = OUTPUT_DIR / "create_royan_form.gs"
+    gf_path.write_text(generate_google_forms_script(spec), encoding="utf-8")
+    log.info("Google Apps Script saved → %s", gf_path)
+
+    sections = spec["sections"]
+    total_q  = sum(len(s["questions"]) for s in sections)
+    print(f"\n✓  Questionnaire generated")
+    print(f"   Domains covered  : {len(sections)}")
+    print(f"   Total questions  : {total_q + len(spec['intro_questions'])}")
+    print(f"\n   Outputs:")
+    print(f"   JSON spec    → {spec_path}")
+    print(f"   HTML form    → {html_path}")
+    print(f"   Google Apps Script → {gf_path}  (paste into script.google.com)")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+    run_questionnaire_gen()

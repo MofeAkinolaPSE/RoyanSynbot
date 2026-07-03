@@ -23,7 +23,6 @@ ENV PATH=/root/.local/bin:$PATH
 COPY app.py .
 COPY src/ ./src/
 COPY config.yaml .
-COPY config/ ./config/
 COPY migrations/ ./migrations/
 COPY scripts/ ./scripts/
 COPY entrypoint.sh ./entrypoint.sh

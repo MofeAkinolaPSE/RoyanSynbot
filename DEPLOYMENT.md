@@ -328,6 +328,7 @@ sudo ufw enable
 ```bash
 ip addr show | grep "inet " | grep -v "127.0.0.1"
 ```
+r
 
 Pick the line matching your **physical network card** (e.g. `eth0` or `ens3`) — not Docker virtual networks (`172.17.x.x`, `172.19.x.x`).
 
@@ -338,11 +339,11 @@ inet 172.17.0.1/16    ...  docker0    <- ignore — Docker internal
 
 Verify from your dev laptop:
 ```powershell
-ping 192.168.1.50
+ping 
 ```
 Getting replies = correct IP.
 
-> **Write this IP down.** This is your HMS URL: `https://192.168.1.50`
+> **Write this IP down.** This is your HMS URL: `https://172.25.208.1`
 > Go back to GitHub now and update the `CORS_ALLOW_ORIGINS` secret to `https://192.168.1.50`.
 
 ---
@@ -451,38 +452,20 @@ docker compose logs backend --tail 30
 
 ---
 
-### Step 9A — Transfer the Dump File to the Server
+### Step 9A — Copy the Dump File Into the Ubuntu Home Folder
 
-The dump file lives on your **dev laptop** at:
-```
-C:\Users\DELL\Desktop\Moe\RoyanSynbot\synbot_health_ready.dump
-```
+The dump file was copied directly onto **this server's Windows Desktop** already (no laptop transfer needed). It just needs to cross the `/mnt/c/` bridge from Windows into the Ubuntu (WSL) filesystem that Docker reads from.
 
-**Option A — Via RDP mapped drive (Windows server):**
-1. On your dev laptop, open Remote Desktop Connection
-2. Click **Show Options** → **Local Resources** → **More...**
-3. Tick your **C: drive** → Connect
-4. Inside RDP: open File Explorer → This PC → you will see `Local Disk (C: on YOUR-LAPTOP)`
-5. Copy `synbot_health_ready.dump` from there to `C:\Users\USERNAME\` on the server
-6. In the Ubuntu terminal on the server:
+**In the Ubuntu terminal on the server**, locate it and copy it in one step (works regardless of the Windows username):
 ```bash
-cp /mnt/c/Users/YOUR_USERNAME/synbot_health_ready.dump ~/
+DUMP_PATH=$(find /mnt/c/Users -maxdepth 3 -iname "synbot_health_ready.dump" 2>/dev/null | head -n1)
+echo "Found: $DUMP_PATH"
+cp "$DUMP_PATH" ~/
 ```
 
-**Option B — Via SCP (SSH server):**
+If `Found:` prints empty, the file isn't on a Desktop under `C:\Users\*\Desktop\` — double check where it was actually saved and adjust the `find` path (e.g. `/mnt/c/Users/roy/Desktop/` directly).
 
-On your **dev laptop** (PowerShell or bash):
-```bash
-scp "C:\Users\DELL\Desktop\Moe\RoyanSynbot\synbot_health_ready.dump" user@192.168.1.50:~/
-```
-
-**Option C — Via USB drive:**
-Copy the dump to a USB stick, plug into the server, then:
-```bash
-cp /media/USB_DRIVE_NAME/synbot_health_ready.dump ~/
-```
-
-**Verify the file arrived on the server:**
+**Verify the file arrived in the Ubuntu home folder:**
 ```bash
 ls -lh ~/synbot_health_ready.dump
 ```
