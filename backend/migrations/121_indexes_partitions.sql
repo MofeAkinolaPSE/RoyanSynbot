@@ -93,8 +93,16 @@ CREATE TABLE IF NOT EXISTS public.royan_audit_logs_p (
     LIKE public.royan_audit_logs INCLUDING DEFAULTS
 ) PARTITION BY RANGE (created_at);
 
-ALTER TABLE public.royan_audit_logs_p
-    ADD CONSTRAINT royan_audit_logs_p_pkey PRIMARY KEY (id, created_at);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'royan_audit_logs_p_pkey'
+    ) THEN
+        ALTER TABLE public.royan_audit_logs_p
+            ADD CONSTRAINT royan_audit_logs_p_pkey PRIMARY KEY (id, created_at);
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.royan_audit_logs_p_2024
     PARTITION OF public.royan_audit_logs_p
