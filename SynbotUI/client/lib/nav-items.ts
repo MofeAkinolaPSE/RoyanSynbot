@@ -25,6 +25,7 @@ import {
   MessageSquare as MsgSquare,
   CreditCard,
   ConciergeBell,
+  Bug,
 } from "lucide-react";
 
 export type NavChild = { label: string; href: string };
@@ -267,6 +268,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Staff Registrations",
     icon: Users,
     href: "/admin/registrations",
+    roles: ["admin"],
+  },
+  {
+    label: "Reliability Console",
+    icon: Bug,
+    href: "/admin/reliability",
     roles: ["admin"],
   },
   {

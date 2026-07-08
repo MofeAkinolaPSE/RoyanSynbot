@@ -19,18 +19,18 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-function wsUrl(path: string, token: string): string {
+function wsUrl(path: string, ticket: string): string {
   const endpoint = apiUrl(path);
-  const withToken = `${endpoint}?token=${encodeURIComponent(token)}`;
+  const withTicket = `${endpoint}?ticket=${encodeURIComponent(ticket)}`;
 
-  if (withToken.startsWith("http://")) {
-    return withToken.replace("http://", "ws://");
+  if (withTicket.startsWith("http://")) {
+    return withTicket.replace("http://", "ws://");
   }
-  if (withToken.startsWith("https://")) {
-    return withToken.replace("https://", "wss://");
+  if (withTicket.startsWith("https://")) {
+    return withTicket.replace("https://", "wss://");
   }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${withToken}`;
+  return `${protocol}//${window.location.host}${withTicket}`;
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
@@ -93,7 +93,10 @@ export function ProcurementImportDashboard() {
         return;
       }
 
-      socket = new WebSocket(wsUrl("/procurement/import-agent/ws", token));
+      const { ticket } = await api.realtime.getWsTicket();
+      if (isDisposed) return;
+
+      socket = new WebSocket(wsUrl("/procurement/import-agent/ws", ticket));
 
       socket.onmessage = (event) => {
         try {

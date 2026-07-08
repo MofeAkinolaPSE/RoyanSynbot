@@ -415,7 +415,7 @@ def _derive_audit_taxonomy(event_type: str, details: dict) -> dict:
     else:
         event_class = "system"
 
-    outcome = "failed" if "fail" in et or "error" in et else "success"
+    outcome = "failure" if "fail" in et or "error" in et else "success"
     action = event_type
     reason_code = details.get("reason") if isinstance(details, dict) else None
 

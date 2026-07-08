@@ -161,9 +161,14 @@ def create_alert(
 
 @ttl_cache(ttl_seconds=30, ignore_kwargs=("client",), tags=("alerts", "executive"))
 def get_active_alerts(client: DBClient = db) -> List[Dict[str, Any]]:
+    # capability_discovery alerts are engineering/reliability findings (log-watcher,
+    # digital twin, maintenance signals) — they belong on the dedicated Reliability
+    # Console (Admin -> Reliability), not in the hospital-facing alert banner/bell
+    # that clinical and ops staff see.
     return client.table(TABLE_ALERTS)\
         .select("*")\
         .eq("status", "unread")\
+        .neq("category", "capability_discovery")\
         .order("created_at", desc=True)\
         .limit(20)\
         .execute().data or []

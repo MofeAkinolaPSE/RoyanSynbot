@@ -447,16 +447,24 @@ def _resolve_ws_token(websocket: WebSocket) -> str | None:
 
 
 async def _authorize_ws(websocket: WebSocket) -> dict[str, Any]:
-    token = _resolve_ws_token(websocket)
-    if not token:
-        await websocket.close(code=4401)
-        raise RuntimeError("Missing token")
-
-    try:
-        payload = decode_jwt_token(token)
-    except Exception as exc:
-        await websocket.close(code=4401)
-        raise RuntimeError("Invalid token") from exc
+    ticket = websocket.query_params.get("ticket")
+    if ticket:
+        from src.services.ws_ticket import redeem_ticket
+        payload = redeem_ticket(ticket.strip())
+        if not payload:
+            await websocket.close(code=4401)
+            raise RuntimeError("Invalid or expired ticket")
+    else:
+        # Legacy path — kept for any caller not yet migrated to tickets.
+        token = _resolve_ws_token(websocket)
+        if not token:
+            await websocket.close(code=4401)
+            raise RuntimeError("Missing token")
+        try:
+            payload = decode_jwt_token(token)
+        except Exception as exc:
+            await websocket.close(code=4401)
+            raise RuntimeError("Invalid token") from exc
 
     roles = set(payload.get("roles") or [])
     if not roles.intersection({"admin", "management", "ops", "procurement", "regulatory"}):

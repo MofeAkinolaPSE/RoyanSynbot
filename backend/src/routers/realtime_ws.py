@@ -5,11 +5,12 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from src.constants import WEBSOCKET_ENABLED
-from src.middleware import decode_jwt_token
+from src.middleware import decode_jwt_token, verify_jwt
 from src.services.realtime import realtime_hub
+from src.services.ws_ticket import TICKET_TTL_SECONDS, issue_ticket, redeem_ticket
 
 logger = logging.getLogger("realtime_ws")
 router = APIRouter(prefix="/realtime", tags=["realtime"])
@@ -43,16 +44,25 @@ async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, An
         await websocket.close(code=4404)
         raise RuntimeError("Unknown channel")
 
-    token = _resolve_ws_token(websocket)
-    if not token:
-        await websocket.close(code=4401)
-        raise RuntimeError("Missing token")
-
-    try:
-        payload = decode_jwt_token(token)
-    except Exception as exc:
-        await websocket.close(code=4401)
-        raise RuntimeError("Invalid token") from exc
+    ticket = websocket.query_params.get("ticket")
+    if ticket:
+        payload = redeem_ticket(ticket.strip())
+        if not payload:
+            await websocket.close(code=4401)
+            raise RuntimeError("Invalid or expired ticket")
+    else:
+        # Legacy path — kept for any caller not yet migrated to tickets.
+        # Puts the raw JWT in the URL (and therefore in proxy logs), so new
+        # code should always go through POST /realtime/ws-ticket instead.
+        token = _resolve_ws_token(websocket)
+        if not token:
+            await websocket.close(code=4401)
+            raise RuntimeError("Missing token")
+        try:
+            payload = decode_jwt_token(token)
+        except Exception as exc:
+            await websocket.close(code=4401)
+            raise RuntimeError("Invalid token") from exc
 
     roles = set(payload.get("roles") or [])
     allowed = _ALLOWED_CHANNELS[channel]
@@ -61,6 +71,19 @@ async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, An
         raise RuntimeError("Insufficient role")
 
     return payload
+
+
+@router.post("/ws-ticket")
+async def get_ws_ticket(user: dict = Depends(verify_jwt)):
+    """Exchange the caller's JWT (sent properly, in a header) for a
+    short-lived, single-use ticket to open a WebSocket with — keeps the raw
+    access token out of proxy/access logs."""
+    ticket = issue_ticket({
+        "sub": user.get("sub"),
+        "roles": user.get("roles", []),
+        "email": user.get("email"),
+    })
+    return {"ticket": ticket, "expires_in": TICKET_TTL_SECONDS}
 
 
 @router.websocket("/ws/{channel}")

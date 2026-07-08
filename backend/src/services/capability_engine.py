@@ -218,6 +218,20 @@ def _build_blueprint(signal_cluster: List[Dict[str, Any]]) -> Optional[Dict[str,
         required_components = ["state_monitor", "pipeline_healer", "drift_corrector"]
         integration_points = [f"{component}_node", "digital_twin_engine", "anomaly_event_log"]
         estimated_impact = f"Reduce anomaly detection-to-resolution time for {component}."
+    elif signal_type == "log_error":
+        capability_name = f"Log-Detected Fix: {component}"
+        problem = f"Recurring application error logged in {component}: {description}"
+        opportunity = (
+            f"Investigate and fix the root cause in {component}; the same error has been "
+            f"logged {total_frequency} times via automated log monitoring rather than "
+            f"surfacing as a user-facing incident."
+        )
+        required_components = ["log_monitor", "developer_review", "regression_test"]
+        integration_points = [f"{component}_service", "log_tail_watcher", "incident_log"]
+        estimated_impact = (
+            f"Prevents {total_frequency} recurring silent failures; converts a repeated "
+            f"firefight into a one-time code fix."
+        )
     else:
         capability_name = f"Process Optimisation: {component}"
         problem = f"Repeated pattern detected in {component}: {description}"
@@ -313,6 +327,29 @@ def run_discovery_cycle() -> Dict[str, Any]:
                 subject_type="capability_proposal",
                 subject_id=proposal_id,
             )
+            try:
+                # Local import — avoids pulling intelligence.py's import chain
+                # (sage_adapter/inventory/ops/hr/crm/staff_ops/hospital_ops)
+                # into this module's load time, matching the convention used
+                # by every @app.on_event("startup") handler in app.py.
+                from src.services.intelligence import create_alert
+
+                confidence = blueprint["confidence_score"]
+                # royan_alerts.severity CHECK only allows info/warning/critical
+                severity = "critical" if confidence >= 0.8 else "warning" if confidence >= 0.6 else "info"
+                create_alert(
+                    title=f"New capability proposal: {blueprint['capability_name']}",
+                    message=blueprint["problem"],
+                    severity=severity,
+                    category="capability_discovery",
+                    metadata={
+                        "proposal_id": proposal_id,
+                        "confidence": confidence,
+                        "signal_type": cluster[0].get("signal_type") if cluster else None,
+                    },
+                )
+            except Exception as exc:
+                logger.error("capability: failed to create alert for proposal %s: %s", proposal_id, exc)
         except Exception as exc:
             logger.error("capability: failed to insert proposal: %s", exc)
 

@@ -27,6 +27,7 @@ import Workflow from "./pages/Workflow";
 import Settings from "./pages/Settings";
 import AdminUsers from "./pages/AdminUsers";
 import AdminRegistrations from "./pages/AdminRegistrations";
+import AdminReliability from "./pages/AdminReliability";
 import StaffDashboard from "./pages/StaffDashboard";
 import StaffCollaboration from "./pages/StaffCollaboration";
 import StaffTimeTracker from "./pages/StaffTimeTracker";
@@ -122,6 +123,7 @@ const App = () => (
                 <Route path="/staff/time-tracker" element={<StaffTimeTracker />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/registrations" element={<AdminRegistrations />} />
+                <Route path="/admin/reliability" element={<AdminReliability />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/hospital/patients"          element={<HospitalPatients />} />
                 <Route path="/hospital/patients/:mrn"    element={<PatientProfile />} />

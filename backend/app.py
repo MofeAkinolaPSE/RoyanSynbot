@@ -1,3 +1,34 @@
+# --- Error tracking (GlitchTip via sentry-sdk) ------------------------------
+# Initialized first, before any heavy imports, so import-time crashes (e.g.
+# config guards that raise at module load) still get captured. No-ops cleanly
+# when GLITCHTIP_DSN is unset. This is the SECONDARY detection layer — the
+# log-tail watcher sidecar is primary, because local_db.py swallows
+# select-path DB errors and they never surface as exceptions here.
+import os as _os
+
+if _os.environ.get("GLITCHTIP_DSN"):
+    import sentry_sdk as _sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration as _FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration as _StarletteIntegration
+
+    def _scrub_event(event, hint):
+        # Defense-in-depth PHI scrubbing for a hospital app: strip request
+        # bodies/cookies entirely; send_default_pii=False already withholds
+        # user context and auth headers.
+        request = event.get("request") or {}
+        request.pop("data", None)
+        request.pop("cookies", None)
+        return event
+
+    _sentry_sdk.init(
+        dsn=_os.environ["GLITCHTIP_DSN"],
+        environment=_os.environ.get("ENVIRONMENT", "development"),
+        integrations=[_StarletteIntegration(), _FastApiIntegration()],
+        traces_sample_rate=float(_os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+        send_default_pii=False,
+        before_send=_scrub_event,
+    )
+
 # --- Tracking Webhook Models (registered after app is created below) ---
 from pydantic import BaseModel as _BaseModel
 
@@ -445,6 +476,7 @@ from src.routers.knowledge_router import router as knowledge_router
 from src.routers.maintenance_tracking import router as maintenance_tracking_router
 from src.routers.digital_twin import router as digital_twin_router
 from src.routers.capability_discovery import router as capability_discovery_router
+from src.routers.internal_reliability import router as internal_reliability_router
 from src.routers.crm_sales import router as crm_sales_router
 from src.routers.frontdesk import router as frontdesk_router
 from src.routers.finance import router as finance_router
@@ -529,6 +561,7 @@ app.include_router(knowledge_router)
 app.include_router(maintenance_tracking_router)
 app.include_router(digital_twin_router)
 app.include_router(capability_discovery_router)
+app.include_router(internal_reliability_router)
 from src.routers.diagnostics import router as diagnostics_router
 app.include_router(diagnostics_router)
 from src.routers.canonical import router as canonical_router
@@ -709,11 +742,28 @@ async def _seed_superadmin():
             return
 
         hashed = hash_password(admin_password)
-        db.table("royan_users").insert({
+        user_resp = db.table("royan_users").insert({
             "email": admin_email.lower(),
             "hashed_password": hashed,
             "roles": ["admin"],
             "is_active": True,
+        }).execute()
+        new_user = user_resp.data[0] if user_resp.data else None
+
+        # Also seed the matching royan_staff profile row, pre-marked complete —
+        # the superadmin is an operator account, not a new hire, so it should
+        # never see the ProfileSetup onboarding wizard the way newly-approved
+        # staff registrations do.
+        from src.constants import TABLE_STAFF
+        db.table(TABLE_STAFF).insert({
+            "staff_number": "ADMIN-0001",
+            "full_name": "System Administrator",
+            "department": "Administration",
+            "designation": "System Administrator",
+            "role": "admin",
+            "email": admin_email.lower(),
+            "metadata": {"profile_complete": True},
+            "user_id": new_user["id"] if new_user else None,
         }).execute()
         logging.info(f"Superadmin {admin_email} seeded successfully.")
     except Exception as e:

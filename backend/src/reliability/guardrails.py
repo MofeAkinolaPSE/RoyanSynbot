@@ -58,6 +58,13 @@ class ReliabilityGuardrails:
     max_proposals_per_run: int = 5
     """How many new proposals may be generated in a single discovery cycle."""
 
+    max_new_log_signals_per_hour: int = 30
+    """Safety net against under-normalized log signals flooding royan_capability_signals
+    with near-duplicate rows. Signals are still recorded past this limit (no data is
+    dropped) — exceeding it just logs a warning that the log-watcher's normalization
+    may need tightening, since it means too many *distinct* fingerprints are being
+    generated for what's likely the same underlying error."""
+
     def escalation_threshold_for(self, severity: str) -> int:
         """Return the escalation threshold for a given severity string."""
         mapping = {

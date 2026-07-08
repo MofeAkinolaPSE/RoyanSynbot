@@ -48,6 +48,12 @@ def _get_redis():
     return _redis_client
 
 
+def get_redis_client():
+    """Public accessor for other modules that need a raw shared Redis client
+    (e.g. one-time WS tickets) rather than the ttl_cache decorator."""
+    return _get_redis()
+
+
 def _redis_key(raw: Hashable) -> str:
     digest = hashlib.sha256(
         json.dumps(raw, default=str, sort_keys=True).encode()

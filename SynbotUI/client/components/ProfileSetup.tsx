@@ -9,7 +9,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { RoleDetailsForm } from "@/components/RoleDetailsForm";
 import {
   Stethoscope, Pill, FlaskConical, ShieldCheck, LayoutDashboard,
-  ClipboardList, TestTube, Microscope, Users, ChevronRight, ChevronLeft, Check
+  ClipboardList, TestTube, Microscope, Users, ChevronRight, ChevronLeft, Check, X
 } from "lucide-react";
 
 // ── Beginner guide cards per role ─────────────────────────────────────────────
@@ -62,6 +62,18 @@ const GUIDE_CARDS: Record<string, GuideCard[]> = {
   ],
 };
 
+// ── Designation options per role (Select, with "Other" for anything unlisted) ─
+const DESIGNATION_OPTIONS: Record<string, string[]> = {
+  doctor: ["Consultant Physician", "Senior Registrar", "Registrar", "Resident Doctor", "House Officer", "Medical Officer", "General Practitioner"],
+  nurse: ["Staff Nurse", "Senior Nurse", "Nurse Manager", "Ward Sister", "Nurse Practitioner"],
+  pharmacist: ["Pharmacist", "Chief Pharmacist", "Pharmacy Technician"],
+  lab: ["Lab Technician", "Medical Laboratory Scientist", "Chief Lab Scientist"],
+  radiology: ["Radiographer", "Chief Radiographer", "Sonographer"],
+  admin: ["System Administrator", "Administrative Officer", "Front Desk Officer", "HR Officer", "Operations Manager"],
+  management: ["Hospital Administrator", "Medical Director", "Operations Director", "Chief Executive Officer"],
+};
+const OTHER_DESIGNATION = "__other__";
+
 // ── Main wizard ───────────────────────────────────────────────────────────────
 interface ProfileSetupProps {
   initialData?: Record<string, any>;
@@ -83,12 +95,19 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const designationOptions = DESIGNATION_OPTIONS[primaryRole] ?? [];
+
   // Step 1: identity
   const [identity, setIdentity] = useState({
     full_name: initialData?.full_name || "",
     department: initialData?.department || "",
     designation: initialData?.designation || "",
   });
+  // If the existing designation isn't one of this role's preset options,
+  // start in "type your own" mode so we don't silently blank out saved data.
+  const [useCustomDesignation, setUseCustomDesignation] = useState(
+    () => !!identity.designation && !designationOptions.includes(identity.designation),
+  );
 
   // Step 2: role-specific metadata
   const [roleDetails, setRoleDetails] = useState<Record<string, string>>({});
@@ -99,13 +118,25 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
   const handleNext = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS));
   const handleBack = () => setStep((s) => Math.max(s - 1, 1));
 
+  // Most accounts get their royan_staff row created at admin-approval time (see
+  // the public registration + admin approval flow) — but a few legacy paths
+  // (the seed admin, or accounts an admin creates directly) can reach here with
+  // no staff row yet. Create it first in that case, then always patch in
+  // whatever's been filled on this screen.
+  const ensureStaffRowExists = async () => {
+    if (initialData) return;
+    await api.staff.ensureProfile({
+      full_name: identity.full_name || undefined,
+      department: identity.department || undefined,
+      designation: identity.designation || undefined,
+    });
+  };
+
   const handleFinish = async () => {
     setSaving(true);
     setError(null);
     try {
-      // Every account now gets its royan_staff row created at admin-approval time
-      // (see the public registration + admin approval flow) — this just fills in
-      // any remaining profile fields on that existing record.
+      await ensureStaffRowExists();
       await api.staff.updateProfile({
         full_name: identity.full_name || undefined,
         department: identity.department || undefined,
@@ -123,9 +154,34 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
     }
   };
 
+  const handleDismiss = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await ensureStaffRowExists();
+      await api.staff.updateProfile({ metadata: { profile_complete: true } });
+      onComplete();
+    } catch (e: any) {
+      setError(e?.message || "Could not dismiss this — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="relative w-full max-w-lg rounded-2xl bg-background p-8 shadow-2xl">
+        <button
+          type="button"
+          onClick={handleDismiss}
+          disabled={saving}
+          aria-label="Don't show this again"
+          title="Don't show this again"
+          className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
         {/* Progress dots */}
         <div className="mb-6 flex justify-center gap-2">
           {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
@@ -159,7 +215,41 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
               </div>
               <div>
                 <Label>Designation / Job Title</Label>
-                <Input value={identity.designation} onChange={(e) => setIdentity({ ...identity, designation: e.target.value })} placeholder="e.g. Consultant Physician" />
+                {useCustomDesignation ? (
+                  <div className="flex gap-2">
+                    <Input
+                      autoFocus
+                      value={identity.designation}
+                      onChange={(e) => setIdentity({ ...identity, designation: e.target.value })}
+                      placeholder="e.g. Consultant Physician"
+                    />
+                    {designationOptions.length > 0 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setUseCustomDesignation(false)}>
+                        Choose from list
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Select
+                    value={identity.designation}
+                    onValueChange={(v) => {
+                      if (v === OTHER_DESIGNATION) {
+                        setUseCustomDesignation(true);
+                        setIdentity({ ...identity, designation: "" });
+                      } else {
+                        setIdentity({ ...identity, designation: v });
+                      }
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select your designation" /></SelectTrigger>
+                    <SelectContent>
+                      {designationOptions.map((d) => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                      <SelectItem value={OTHER_DESIGNATION}>Other (type my own)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </div>

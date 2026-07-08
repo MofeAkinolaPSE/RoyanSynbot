@@ -306,6 +306,22 @@ export const api = {
   roles: {
     list: () => fetchPublicJson<{ roles: string[] }>("/roles"),
   },
+  realtime: {
+    // Exchanges the caller's JWT (sent properly, in a header) for a
+    // short-lived, single-use ticket so the raw access token never has to
+    // travel in a WebSocket URL (and therefore never lands in proxy logs).
+    getWsTicket: () => sendJson<{ ticket: string; expires_in: number }>("/realtime/ws-ticket", "POST", {}),
+  },
+  capability: {
+    proposals: (limit = 50) =>
+      fetchJson<{ proposals: any[]; count: number }>(`/capability/proposals?limit=${limit}`),
+    signals: (limit = 100) =>
+      fetchJson<{ signals: any[]; count: number }>(`/capability/signals?limit=${limit}`),
+    discover: () =>
+      sendJson<{ signals_ingested: number; proposals_created: number; proposals: string[] }>("/capability/discover", "POST", {}),
+    updateProposalStatus: (id: string, payload: { status: string; notes?: string }) =>
+      sendJson<{ updated: boolean; proposal_id: string; old_status: string; new_status: string }>(`/capability/proposals/${id}/status`, "PATCH", payload),
+  },
   publicDepartments: {
     list: () => fetchPublicJson<{ records: Array<{ id: number; code: string; name: string; short_name?: string }> }>("/departments"),
   },
@@ -329,6 +345,8 @@ export const api = {
   },
   staff: {
     getMe: () => fetchJson<{ data: any; profile_complete: boolean }>("/staff/me"),
+    ensureProfile: (payload: Record<string, any>) =>
+      sendJson<{ data: any; profile_complete: boolean }>("/staff/me/ensure-profile", "POST", payload),
     updateProfile: (payload: Record<string, any>) =>
       sendJson<{ data: any; profile_complete: boolean }>("/staff/me/profile", "PATCH", payload),
     updateTourState: (payload: Record<string, any>) =>

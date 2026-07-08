@@ -1,21 +1,22 @@
 import { useEffect, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { API_BASE_URL } from "@/lib/api-base";
+import { api } from "@/lib/api-client";
 
 type MessageHandler = (message: any) => void;
 
-function buildWsUrl(path: string, token: string): string {
+function buildWsUrl(path: string, ticket: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   if (API_BASE_URL) {
-    const withToken = `${API_BASE_URL}${normalized}?token=${encodeURIComponent(token)}`;
-    if (withToken.startsWith("https://")) return withToken.replace("https://", "wss://");
-    if (withToken.startsWith("http://")) return withToken.replace("http://", "ws://");
-    return withToken;
+    const withTicket = `${API_BASE_URL}${normalized}?ticket=${encodeURIComponent(ticket)}`;
+    if (withTicket.startsWith("https://")) return withTicket.replace("https://", "wss://");
+    if (withTicket.startsWith("http://")) return withTicket.replace("http://", "ws://");
+    return withTicket;
   }
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const withToken = `${origin}${normalized}?token=${encodeURIComponent(token)}`;
-  if (withToken.startsWith("https://")) return withToken.replace("https://", "wss://");
-  return withToken.replace("http://", "ws://");
+  const withTicket = `${origin}${normalized}?ticket=${encodeURIComponent(ticket)}`;
+  if (withTicket.startsWith("https://")) return withTicket.replace("https://", "wss://");
+  return withTicket.replace("http://", "ws://");
 }
 
 export function useRealtimeChannel(channel: string, onMessage: MessageHandler, enabled: boolean = true) {
@@ -36,7 +37,9 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
       if (!token) return;
 
       try {
-        const ws = new WebSocket(buildWsUrl(`/realtime/ws/${channel}`, token));
+        const { ticket } = await api.realtime.getWsTicket();
+        if (stopped) return;
+        const ws = new WebSocket(buildWsUrl(`/realtime/ws/${channel}`, ticket));
         socketRef.current = ws;
 
         ws.onopen = () => {
