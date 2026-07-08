@@ -278,7 +278,7 @@ def _sync_lab(rows: list[dict[str, Any]]) -> int:
         patient_id = _patient_id_by_external(_safe_str(row.get("patient_id")))
         if not external_id or not patient_id:
             continue
-        encounter_id = _ensure_external_encounter(patient_id, f"{external_id}:encounter", department="Laboratory & Diagnostics")
+        encounter_id = _ensure_external_encounter(patient_id, f"lab:{external_id}", department="Laboratory & Diagnostics")
         if not encounter_id:
             continue
         test_name = _safe_str(
@@ -312,7 +312,7 @@ def _sync_pharmacy(rows: list[dict[str, Any]]) -> int:
         patient_id = _patient_id_by_external(_safe_str(row.get("patient_id")))
         if not external_id or not patient_id:
             continue
-        encounter_id = _ensure_external_encounter(patient_id, f"{external_id}:encounter", department="Pharmacy")
+        encounter_id = _ensure_external_encounter(patient_id, f"pharmacy:{external_id}", department="Pharmacy")
         if not encounter_id:
             continue
         normalized.append({
@@ -339,7 +339,7 @@ def _sync_billing(rows: list[dict[str, Any]]) -> int:
         patient_id = _patient_id_by_external(_safe_str(row.get("patient_id")))
         if not external_id or not patient_id:
             continue
-        encounter_id = _ensure_external_encounter(patient_id, f"{external_id}:encounter", department="Billing & Finance")
+        encounter_id = _ensure_external_encounter(patient_id, f"billing:{external_id}", department="Billing & Finance")
         if not encounter_id:
             continue
         normalized.append({

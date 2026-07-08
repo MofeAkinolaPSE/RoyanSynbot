@@ -34,7 +34,7 @@ def transform(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         out.append({
             "_hope_patient_id":     hope_patient_id,
-            "_encounter_key":       f"{external_id}:encounter",
+            "_encounter_key":       f"pharmacy:{external_id}",
             "drug_name":            safe_str(mapped.get("drug_name")) or "Imported prescription",
             "drug_code":            safe_str(mapped.get("drug_code")),
             "dosage":               safe_str(mapped.get("dosage")) or "as directed",

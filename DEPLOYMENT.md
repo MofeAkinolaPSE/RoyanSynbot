@@ -383,7 +383,21 @@ DEEPSEEK_API_KEY=          <- your DeepSeek key
 DEEPSEEK_MODEL=deepseek-chat
 DEV_TOKEN_ENABLED=0        <- 0 for production
 CORS_ALLOW_ORIGINS=https://192.168.1.50   <- your actual server IP
+INTERNAL_SIGNAL_KEY=       <- log-watcher shared secret; generate with:
+                              python -c "import secrets; print(secrets.token_hex(32))"
+GLITCHTIP_SECRET_KEY=      <- GlitchTip Django secret; generate a SEPARATE one
+                              the same way (do NOT reuse JWT_SECRET)
+GLITCHTIP_DSN=             <- leave EMPTY on first deploy. After the stack is up,
+                              open http://localhost:8090 in a browser ON THE SERVER,
+                              register the first account (becomes superuser), create
+                              an Organization + Project, copy the project key, and
+                              set: http://<key>@glitchtip:8080/1 — then:
+                              docker compose up -d backend
 ```
+
+> **Note:** the `glitchtip` database is created automatically by the
+> `glitchtip-db-init` one-shot container on first `docker compose up` — no
+> manual database step is needed.
 
 **Save:** Ctrl+O → Enter → Ctrl+X
 

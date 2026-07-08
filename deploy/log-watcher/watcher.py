@@ -206,12 +206,16 @@ class ContainerFollower(threading.Thread):
 
 
 def main() -> None:
-    if not INTERNAL_SIGNAL_KEY:
+    # Fail closed, but idle rather than exit: with restart: unless-stopped an
+    # exit would just churn the container forever. Warn periodically so the
+    # missing env var is visible in `docker logs` without restart spam.
+    while not INTERNAL_SIGNAL_KEY:
         logger.error(
-            "INTERNAL_SIGNAL_KEY is not set — refusing to start "
-            "(would post unauthenticated signals that the backend will always reject)."
+            "INTERNAL_SIGNAL_KEY is not set — watcher idle. Add it to deploy/.env "
+            "(python -c \"import secrets; print(secrets.token_hex(32))\") and "
+            "recreate this container."
         )
-        return
+        time.sleep(600)
 
     client = docker.DockerClient(base_url=DOCKER_PROXY_URL)
     followers: dict[str, ContainerFollower] = {}

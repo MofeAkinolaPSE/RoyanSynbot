@@ -218,6 +218,30 @@ services:
         condition: service_healthy
       glitchtip-redis:
         condition: service_started
+      glitchtip-db-init:
+        condition: service_completed_successfully
+
+  # One-shot: creates the "glitchtip" database on the shared Postgres if it
+  # doesn't exist yet. Postgres's docker-entrypoint-initdb.d only runs on a
+  # brand-new volume, so an already-initialized server (like the client's)
+  # never gets the database any other way — this makes deploys self-contained.
+  glitchtip-db-init:
+    image: postgres:18-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-royan_secure_pass}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        psql -h db -U ${POSTGRES_USER:-postgres} -d postgres -tc
+        "SELECT 1 FROM pg_database WHERE datname='glitchtip'" | grep -q 1 &&
+        echo "glitchtip db exists, skipping" ||
+        psql -h db -U ${POSTGRES_USER:-postgres} -d postgres -c "CREATE DATABASE glitchtip"
+    networks:
+      - royan_net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   # Dedicated broker for GlitchTip's Celery queue. Deliberately NOT the shared
   # royan_redis: that one runs allkeys-lru (cache semantics — evicts anything

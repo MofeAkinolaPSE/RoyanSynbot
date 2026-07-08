@@ -107,7 +107,7 @@ def transform(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         out.append({
             "_hope_patient_id":     hope_patient_id,
-            "_encounter_key":       f"{external_id}:encounter",
+            "_encounter_key":       f"billing:{external_id}",
             "bill_number":          f"HOPE-{external_id}",
             "consultation_fee":     float(fee_cols["consultation_fee"]),
             "lab_charges":          float(fee_cols["lab_charges"]),
