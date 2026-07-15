@@ -65,6 +65,11 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ../backend/migrations:/docker-entrypoint-initdb.d:ro
+      # Drop a pg_dump .dump file into ../data-dump on the host (e.g. via
+      # Windows Explorer over the WSL bridge) and it's already visible here —
+      # no `docker compose cp` step needed. See DEPLOYMENT.md's data-dump
+      # restore section.
+      - ../data-dump:/dump-inbox
     networks:
       - royan_net
     healthcheck:

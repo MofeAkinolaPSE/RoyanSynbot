@@ -36,7 +36,7 @@ Once deployed:
 - **GitHub Actions** — Automates build and deploy on every `git push`.
 - **Self-hosted runner** — Background service on the server that picks up CI/CD jobs.
 - **PESE** — Patient Encounter Simulation Engine — our end-to-end validation script. 68 checks.
-- **Data dump** — `synbot_health_ready.dump` — PostgreSQL binary export of all 259k patient records from the Hope ETL migration. This is the production dataset for the client.
+- **Data dump** — a dated `.dump` file (e.g. `synbot_health_ready_20260715.dump`) — PostgreSQL binary export of all 259k patient records from the Hope ETL migration. This is the production dataset for the client. Dropped into the repo's `data-dump/` folder, which is bind-mounted straight into the `db` container.
 
 ---
 
@@ -460,50 +460,37 @@ docker compose logs backend --tail 30
 
 ## DATA DUMP — Restore the Patient Database
 
-> **What this is:** `synbot_health_ready.dump` contains the full Hope ETL data — 259,000+ patients, encounters, billing records, and clinical history imported from the client's existing DRM Hope system. Without this step, the HMS launches empty.
+> **What this is:** a `.dump` file (PostgreSQL binary export) containing the full Hope ETL data — 259,000+ patients, encounters, billing records, and clinical history imported from the client's existing DRM Hope system. Without this step, the HMS launches empty. The exact filename changes per release (it's dated, e.g. `synbot_health_ready_20260715.dump`) — always confirm you have the **latest** one, not an old copy left over from a previous attempt.
 >
 > **Do this AFTER the stack is healthy** from Step 8. The stack must be running before you restore.
+>
+> **One-time setup, already done for you:** `deploy/docker-compose.yml` bind-mounts `../data-dump` (a folder at the repo root) straight into the `db` container at `/dump-inbox`. Anything you place in that host folder is immediately visible inside the container at that path — no `docker compose cp` step needed.
 
 ---
 
-### Step 9A — Copy the Dump File Into the Ubuntu Home Folder
+### Step 9A — Place the Dump File in `data-dump/`
 
-The dump file was copied directly onto **this server's Windows Desktop** already (no laptop transfer needed). It just needs to cross the `/mnt/c/` bridge from Windows into the Ubuntu (WSL) filesystem that Docker reads from.
+The dump file is already sitting on **this server's Windows Desktop**. Bring it into the repo's `data-dump/` folder using Windows Explorer over the WSL bridge — no command-line file hunting required.
 
-**In the Ubuntu terminal on the server**, locate it and copy it in one step (works regardless of the Windows username):
+**In the Ubuntu terminal on the server:**
 ```bash
-DUMP_PATH=$(find /mnt/c/Users -maxdepth 3 -iname "synbot_health_ready.dump" 2>/dev/null | head -n1)
-echo "Found: $DUMP_PATH"
-cp "$DUMP_PATH" ~/
+mkdir -p /opt/royan/data-dump
+explorer.exe /opt/royan/data-dump
 ```
+This opens a **native Windows Explorer window** pointed straight at that Linux folder (via `\\wsl.localhost\...` under the hood). Leave it open, then in a **second** Explorer window open the Desktop and drag the `.dump` file across into the window `explorer.exe` just opened.
 
-If `Found:` prints empty, the file isn't on a Desktop under `C:\Users\*\Desktop\` — double check where it was actually saved and adjust the `find` path (e.g. `/mnt/c/Users/roy/Desktop/` directly).
-
-**Verify the file arrived in the Ubuntu home folder:**
+**Back in the terminal, confirm it arrived and note the exact filename:**
 ```bash
-ls -lh ~/synbot_health_ready.dump
+ls -lh /opt/royan/data-dump/
 ```
-Should show the file size (expect 50MB–500MB depending on compression).
 
 ---
 
-### Step 9B — Copy the Dump Into the Database Container
+### Step 9B — Restore the Patient Data
 
+Substitute the real filename from Step 9A for `<filename>` below:
 ```bash
 cd /opt/royan/deploy
-docker compose cp ~/synbot_health_ready.dump db:/tmp/synbot_health_ready.dump
-```
-
-Verify it is inside the container:
-```bash
-docker compose exec db ls -lh /tmp/synbot_health_ready.dump
-```
-
----
-
-### Step 9C — Restore the Patient Data
-
-```bash
 docker compose exec db pg_restore \
   --username postgres \
   --dbname synbot_health \
@@ -512,7 +499,7 @@ docker compose exec db pg_restore \
   --data-only \
   --disable-triggers \
   --verbose \
-  /tmp/synbot_health_ready.dump
+  /dump-inbox/<filename>.dump
 ```
 
 - `--data-only` — skips schema creation (tables already exist from migrations)
@@ -525,12 +512,12 @@ If you see errors like `relation "X" does not exist` — the migrations did not 
 ```bash
 docker compose restart backend
 sleep 30
-docker compose exec db pg_restore --username postgres --dbname synbot_health --no-owner --no-acl --data-only --disable-triggers /tmp/synbot_health_ready.dump
+docker compose exec db pg_restore --username postgres --dbname synbot_health --no-owner --no-acl --data-only --disable-triggers /dump-inbox/<filename>.dump
 ```
 
 ---
 
-### Step 9D — Reset PostgreSQL Sequences (CRITICAL — do not skip)
+### Step 9C — Reset PostgreSQL Sequences (CRITICAL — do not skip)
 
 > **Why:** The Hope ETL inserted rows with explicit IDs (e.g. patient ID 66810 from a 259k import). PostgreSQL sequences still sit at their post-migration defaults (around 3). Without this reset, the very next new patient or bill you create will collide on the primary key and the system throws a 500 error.
 
@@ -742,10 +729,10 @@ Also update `CORS_ALLOW_ORIGINS` in `deploy/.env` to the real domain at this poi
 | GitHub runner shows Offline | Ubuntu: `cd ~/actions-runner && sudo ./svc.sh start` |
 | `docker ps` gives permission denied | `sudo usermod -aG docker $USER` — reopen terminal |
 | Stack starts but backend shows `Restarting` | `docker compose logs backend --tail 40` — usually a missing env var |
-| `duplicate key value violates unique constraint` | Re-run Step 9D (sequence reset) |
+| `duplicate key value violates unique constraint` | Re-run Step 9C (sequence reset) |
 | Portal login fails (MRN + phone) | Phone in DB must match exactly. Check: `docker compose exec db psql -U postgres -d synbot_health -c "SELECT mrn, phone FROM royan_patients WHERE mrn='MRN_HERE';"` |
-| PESE fails on `register_patient 500` | Sequences not reset — run Step 9D again |
-| PESE fails on `create_bill 500` | Billing sequence not reset — run Step 9D again |
+| PESE fails on `register_patient 500` | Sequences not reset — run Step 9C again |
+| PESE fails on `create_bill 500` | Billing sequence not reset — run Step 9C again |
 | App unreachable from other machines | Re-run the firewall commands from Step 5 |
 | Containers healthy but app shows 502 | nginx not started: `docker compose restart nginx` |
 | Dump restore fails with "already exists" | Add `--clean --if-exists` flags to the pg_restore command |
