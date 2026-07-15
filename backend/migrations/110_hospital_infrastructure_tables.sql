@@ -1,4 +1,4 @@
--- Migration 110: Create missing SynbotHealth infrastructure tables
+-- Migration 110: Create missing RoyanHealth infrastructure tables
 -- Auth, alerts, KPI promotions, maintenance stack, twin stack, capability registry
 -- This is the canonical "hospital clean install" migration — safe to re-run.
 

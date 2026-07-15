@@ -1,6 +1,6 @@
 """NDPA 2023 Privacy & PHI Masking Utilities — Chapter 18 of the blueprint.
 
-Implements Nigeria Data Protection Act 2023 compliance for SynbotHealth:
+Implements Nigeria Data Protection Act 2023 compliance for RoyanHealth:
   - Role-based PHI field masking (least-privilege data exposure)
   - Consent validation helpers
   - PHI field registry (which fields count as personally identifiable)

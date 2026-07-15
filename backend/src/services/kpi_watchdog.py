@@ -273,7 +273,7 @@ class KPIWatchdog:
         )
         while True:
             try:
-                fired = self.run_all_checks()
+                fired = await asyncio.to_thread(self.run_all_checks)
                 if fired:
                     logger.info(f"KPIWatchdog: {len(fired)} alert(s) fired this cycle")
             except Exception as exc:

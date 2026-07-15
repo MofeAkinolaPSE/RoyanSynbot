@@ -1,7 +1,7 @@
 {
-  "title": "SynbotHealth — Royan Hospital System Requirements",
+  "title": "RoyanHealth — Royan Hospital System Requirements",
   "subtitle": "Defining Your Digital Hospital",
-  "description": "This questionnaire helps the SynbotHealth team understand exactly how Royan Hospital operates today — and where you want the system to take you. Answers will directly shape the modules we configure, the workflows we automate, and the integrations we prioritise. Estimated time: 25–35 minutes.",
+  "description": "This questionnaire helps the RoyanHealth team understand exactly how Royan Hospital operates today — and where you want the system to take you. Answers will directly shape the modules we configure, the workflows we automate, and the integrations we prioritise. Estimated time: 25–35 minutes.",
   "intro_questions": [
     {
       "id": "respondent_name",
@@ -87,7 +87,7 @@
     {
       "id": "go_live_timeline",
       "type": "radio",
-      "label": "Target go-live timeline for SynbotHealth",
+      "label": "Target go-live timeline for RoyanHealth",
       "options": [
         "ASAP (within 1 month)",
         "1–3 months",
@@ -128,7 +128,7 @@
         {
           "id": "reg_features",
           "type": "checkbox",
-          "label": "Which of the following registration capabilities do you want SynbotHealth to handle?",
+          "label": "Which of the following registration capabilities do you want RoyanHealth to handle?",
           "options": [
             {
               "feature": "Automated MRN generation",
@@ -240,7 +240,7 @@
               "impact": "Medium"
             },
             {
-              "feature": "SynbotHealth AI chat booking",
+              "feature": "RoyanHealth AI chat booking",
               "description": "",
               "impact": "Medium"
             }
@@ -249,7 +249,7 @@
         {
           "id": "queue_features",
           "type": "checkbox",
-          "label": "Which queue & appointment features do you want SynbotHealth to provide?",
+          "label": "Which queue & appointment features do you want RoyanHealth to provide?",
           "options": [
             {
               "feature": "Real-time digital queue display",
@@ -343,7 +343,7 @@
         {
           "id": "ae_features",
           "type": "checkbox",
-          "label": "Which A&E capabilities do you want SynbotHealth to support?",
+          "label": "Which A&E capabilities do you want RoyanHealth to support?",
           "options": [
             {
               "feature": "Digital triage assessment form",
@@ -732,7 +732,7 @@
         {
           "id": "lab_features",
           "type": "checkbox",
-          "label": "Which laboratory management features do you want SynbotHealth to provide?",
+          "label": "Which laboratory management features do you want RoyanHealth to provide?",
           "options": [
             {
               "feature": "Electronic lab order from doctor's workstation",
@@ -987,7 +987,7 @@
         {
           "id": "pharm_features",
           "type": "checkbox",
-          "label": "Which pharmacy management features do you need SynbotHealth to provide?",
+          "label": "Which pharmacy management features do you need RoyanHealth to provide?",
           "options": [
             {
               "feature": "Electronic prescription reception",
@@ -1564,7 +1564,7 @@
         {
           "id": "billing_features",
           "type": "checkbox",
-          "label": "Which billing and finance features do you need SynbotHealth to provide?",
+          "label": "Which billing and finance features do you need RoyanHealth to provide?",
           "options": [
             {
               "feature": "Automatic bill generation from clinical orders",
@@ -1933,7 +1933,7 @@
       "id": "digital_patient",
       "domain": "Digital & Patient Engagement",
       "icon": "📱",
-      "summary": "Covers online patient-facing features — self-service, telemedicine, notifications, and the SynbotHealth AI assistant.",
+      "summary": "Covers online patient-facing features — self-service, telemedicine, notifications, and the RoyanHealth AI assistant.",
       "questions": [
         {
           "id": "digital_current",
@@ -1952,12 +1952,12 @@
           "label": "Which digital patient engagement features interest you?",
           "options": [
             {
-              "feature": "AI chatbot (SynbotHealth) for patient enquiries",
+              "feature": "AI chatbot (RoyanHealth) for patient enquiries",
               "description": "Answers patient questions about services, hours, how to book, what to expect",
               "impact": "High"
             },
             {
-              "feature": "WhatsApp appointment booking via SynbotHealth",
+              "feature": "WhatsApp appointment booking via RoyanHealth",
               "description": "Patient sends WhatsApp message; AI books appointment and confirms slot",
               "impact": "High"
             },
@@ -2190,7 +2190,7 @@
           "type": "radio",
           "label": "What is your preference for system deployment?",
           "options": [
-            "Cloud-hosted (SynbotHealth manages servers — lower upfront cost)",
+            "Cloud-hosted (RoyanHealth manages servers — lower upfront cost)",
             "On-premise server in hospital (hospital manages hardware)",
             "Hybrid (critical data on-premise, reporting in cloud)",
             "No preference / need guidance"
@@ -2199,7 +2199,7 @@
         {
           "id": "infra_integrations",
           "type": "checkbox",
-          "label": "Which external systems or services would you want SynbotHealth to integrate with?",
+          "label": "Which external systems or services would you want RoyanHealth to integrate with?",
           "options": [
             {
               "feature": "HMO / insurance portals (claim submission API)",
@@ -2264,7 +2264,7 @@
       "id": "hope_config",
       "domain": "Current HMS — DRM Hope Configuration",
       "icon": "💾",
-      "summary": "DRM Hope is your current Hospital Management System. These answers determine exactly how SynbotHealth connects to it — via REST API, ODBC database bridge, or HL7 FHIR — and which data is already tracked in Hope so we know what to read versus what to build fresh.",
+      "summary": "DRM Hope is your current Hospital Management System. These answers determine exactly how RoyanHealth connects to it — via REST API, ODBC database bridge, or HL7 FHIR — and which data is already tracked in Hope so we know what to read versus what to build fresh.",
       "questions": [
         {
           "id": "hope_edition",

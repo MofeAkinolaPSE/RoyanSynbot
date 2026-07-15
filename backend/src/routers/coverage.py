@@ -1,4 +1,4 @@
-"""HMO / insurance coverage router for Synbot Health."""
+"""HMO / insurance coverage router for RoyanHealth."""
 from __future__ import annotations
 
 import logging

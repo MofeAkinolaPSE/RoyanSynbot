@@ -2,6 +2,13 @@
 # Provisions a Let's Encrypt certificate via certbot.
 # Requires: DOMAIN and ADMIN_EMAIL env vars; nginx running on port 80.
 # Only run after DNS is pointed at this server.
+#
+# NOTE: this script is for the Docker SWARM deployment path (start-stack.sh,
+# `docker service update`, host-level nginx + certbot via apt). If you're
+# running the plain `docker compose up -d` deployment (the one DEPLOYMENT.md's
+# main walkthrough uses, with a containerized nginx), use
+# deploy/scripts/issue-cert.sh and deploy/scripts/renew-cert.sh instead — this
+# script's `docker service update` call will fail outside a Swarm.
 set -euo pipefail
 
 : "${DOMAIN:?DOMAIN env var required (e.g. hospital.example.ng)}"

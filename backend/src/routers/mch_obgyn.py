@@ -1,5 +1,5 @@
 """
-MCH / OB-GYN Router — SynbotHealth / Royan Hospital
+MCH / OB-GYN Router — RoyanHealth / Royan Hospital
 =====================================================
 Antenatal care registration, visit records, partograph, delivery,
 newborn assessment, and immunisation scheduling.

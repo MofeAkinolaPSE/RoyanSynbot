@@ -31,6 +31,8 @@ import { cn } from "@/lib/utils";
 interface Bill {
   id: number;
   patient_id?: number;
+  patient_name?: string;
+  patient_mrn?: string;
   encounter_id?: number;
   bill_number?: string;
   subtotal?: number;
@@ -175,7 +177,16 @@ export default function HospitalBilling() {
         <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5">
           <User className="h-4 w-4 text-blue-400 shrink-0" />
           <span className="text-sm text-blue-300 flex-1">
-            Showing bills for Patient ID <span className="font-mono font-semibold">{patientIdFilter}</span>
+            {billsLoading ? (
+              "Loading patient billing…"
+            ) : bills[0]?.patient_name ? (
+              <>
+                Showing bills for <span className="font-semibold">{bills[0].patient_name}</span>
+                {bills[0].patient_mrn && <span className="font-mono ml-1.5 opacity-80">({bills[0].patient_mrn})</span>}
+              </>
+            ) : (
+              <>Showing bills for Patient ID <span className="font-mono font-semibold">{patientIdFilter}</span> — no bills on file yet</>
+            )}
           </span>
           <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => navigate("/hospital/billing")}>
@@ -267,7 +278,16 @@ export default function HospitalBilling() {
                     ) : bills.map(b => (
                       <TableRow key={b.id}>
                         <TableCell className="font-mono text-xs">{b.bill_number ?? String(b.id).slice(0, 8)}</TableCell>
-                        <TableCell className="font-mono text-xs">{b.patient_id != null ? String(b.patient_id).slice(0, 8) : "—"}</TableCell>
+                        <TableCell className="text-xs">
+                          {b.patient_name ? (
+                            <div className="flex flex-col">
+                              <span className="font-medium">{b.patient_name}</span>
+                              {b.patient_mrn && <span className="font-mono text-[10px] text-muted-foreground">{b.patient_mrn}</span>}
+                            </div>
+                          ) : (
+                            <span className="font-mono">{b.patient_id != null ? String(b.patient_id) : "—"}</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right text-sm">{naira(b.subtotal)}</TableCell>
                         <TableCell className="text-right text-xs">
                           {(b.hmo_covered ?? 0) > 0 ? (

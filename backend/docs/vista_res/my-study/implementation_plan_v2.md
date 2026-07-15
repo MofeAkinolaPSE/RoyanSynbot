@@ -1,4 +1,4 @@
-# SynbotHealth — Royan Hospital Implementation Plan v2
+# RoyanHealth — Royan Hospital Implementation Plan v2
 **Client:** Royan Hospital | **IT Lead:** Seun Akinkla, Head of IT/Systems
 **Date:** 2026-05-28 | **Go-Live Target:** Within 1 month (ASAP)
 **Reference Architecture:** VistA (WorldVistA) — Hospital Operating System blueprint

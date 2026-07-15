@@ -1,5 +1,5 @@
 """
-Patient Flow Agent — SynbotHealth / Royan Hospital
+Patient Flow Agent — RoyanHealth / Royan Hospital
 ====================================================
 Monitors the real-time patient queue across the clinical workflow:
   patient_registered → triaged → consulting → lab_ordered → pharmacy_dispensing → billing_pending → discharged

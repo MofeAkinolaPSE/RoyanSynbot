@@ -1,5 +1,5 @@
 """
-Specialist Clinic Templates Router — SynbotHealth / Royan Hospital
+Specialist Clinic Templates Router — RoyanHealth / Royan Hospital
 ====================================================================
 14-specialty structured note templates with order sets.
 VistA reference: TIU (Text Integration Utilities) document definitions.

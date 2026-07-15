@@ -132,7 +132,7 @@ export function OperationsSettings() {
           <div>
             <CardTitle className="text-sm">Operational Safety Note</CardTitle>
             <CardDescription>
-              Ops settings control how SynbotHealth interprets data exports and live movements.
+              Ops settings control how RoyanHealth interprets data exports and live movements.
             </CardDescription>
           </div>
         </CardHeader>

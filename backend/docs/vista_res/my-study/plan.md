@@ -12,7 +12,7 @@ Here is the full plan.
 
 ---
 
-## SynbotHealth — Implementation Plan
+## RoyanHealth — Implementation Plan
 
 ### What I found
 

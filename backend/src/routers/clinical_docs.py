@@ -2,14 +2,25 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.constants import TABLE_ICD10_CODES, TABLE_PATIENTS, TABLE_PROBLEM_LIST
+from src.constants import (
+    POSTING_SEVERITY_ALLOWED,
+    POSTING_TYPE_ALLOWED,
+    TABLE_CLINICAL_REMINDERS,
+    TABLE_ICD10_CODES,
+    TABLE_PATIENT_POSTINGS,
+    TABLE_PATIENTS,
+    TABLE_PROBLEM_LIST,
+)
 from src.db import audit_event, db
 from src.middleware import verify_jwt
+from src.services.patient_context import invalidate_patient_context
+from src.services.clinical_reminders import evaluate_reminders
 
 logger = logging.getLogger(__name__)
 
@@ -177,3 +188,141 @@ async def delete_problem(problem_id: int, user=Depends(verify_jwt)):
         subject_id=str(patient_id),
     )
     return {"ok": True, "problem_id": problem_id}
+
+
+# ─── Patient Postings (CPRS "Postings" cover-sheet card) ──────────────────────
+# Patient-specific clinical flags/notices a clinician should see immediately —
+# e.g. "Fall risk", "NPO after midnight", "DNR — see advance directive".
+# Deliberately not the same thing as VistA's sysadmin broadcast messages
+# (which have no per-patient equivalent here); this mirrors the Problem List
+# shape above almost verbatim since it's the same kind of small patient-list
+# adjunct.
+
+class PostingCreate(BaseModel):
+    posting_type: str = "alert"
+    message: str = Field(..., min_length=1)
+    severity: str = "info"
+
+    model_config = {"extra": "ignore"}
+
+
+@router.post("/patients/{patient_id}/postings", status_code=201)
+async def add_posting(patient_id: int, payload: PostingCreate, user=Depends(verify_jwt)):
+    """Add a clinical posting/flag to a patient's chart."""
+    _get_patient(patient_id)
+    if payload.posting_type not in POSTING_TYPE_ALLOWED:
+        raise HTTPException(status_code=422, detail=f"posting_type must be one of {sorted(POSTING_TYPE_ALLOWED)}")
+    if payload.severity not in POSTING_SEVERITY_ALLOWED:
+        raise HTTPException(status_code=422, detail=f"severity must be one of {sorted(POSTING_SEVERITY_ALLOWED)}")
+
+    data = {
+        "patient_id": patient_id,
+        "posting_type": payload.posting_type,
+        "message": payload.message,
+        "severity": payload.severity,
+        "created_by": user.get("sub") or user.get("email"),
+    }
+    try:
+        result = db.table(TABLE_PATIENT_POSTINGS).insert(data).execute()
+    except Exception as exc:
+        logger.error("Posting insert failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to add posting")
+
+    posting = (result.data or [data])[0]
+    invalidate_patient_context(patient_id)
+    audit_event(
+        "posting_added",
+        {"posting_type": payload.posting_type, "message": payload.message},
+        actor_id=user.get("sub"),
+        subject_type="patient",
+        subject_id=str(patient_id),
+    )
+    return {"ok": True, "posting": posting}
+
+
+@router.get("/patients/{patient_id}/postings")
+async def list_postings(
+    patient_id: int,
+    active_only: bool = Query(True),
+    user=Depends(verify_jwt),
+):
+    """List clinical postings for a patient — unresolved only by default."""
+    _get_patient(patient_id)
+    query = (
+        db.table(TABLE_PATIENT_POSTINGS)
+        .select("*")
+        .eq("patient_id", patient_id)
+        .order("created_at", desc=True)
+    )
+    if active_only:
+        query = query.is_("resolved_at", None)
+    result = query.execute()
+    return {"postings": result.data or [], "count": len(result.data or [])}
+
+
+@router.patch("/postings/{posting_id}/resolve")
+async def resolve_posting(posting_id: int, user=Depends(verify_jwt)):
+    """Mark a posting as resolved/acknowledged."""
+    r = db.table(TABLE_PATIENT_POSTINGS).select("id,patient_id").eq("id", posting_id).execute()
+    if not r.data:
+        raise HTTPException(status_code=404, detail=f"Posting {posting_id} not found")
+    patient_id = r.data[0]["patient_id"]
+
+    try:
+        db.table(TABLE_PATIENT_POSTINGS).update({
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "resolved_by": user.get("sub") or user.get("email"),
+        }).eq("id", posting_id).execute()
+    except Exception as exc:
+        logger.error("Posting resolve failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to resolve posting")
+
+    invalidate_patient_context(patient_id)
+    audit_event(
+        "posting_resolved",
+        {"posting_id": posting_id},
+        actor_id=user.get("sub"),
+        subject_type="patient",
+        subject_id=str(patient_id),
+    )
+    return {"ok": True, "posting_id": posting_id}
+
+
+# ─── Clinical Reminders (CPRS "Clinical Reminders" cover-sheet card) ──────────
+# Evaluated fresh on every GET rather than cached — small, cheap queries, and
+# staff dismissing one should be reflected immediately, not after a TTL.
+
+@router.get("/patients/{patient_id}/reminders")
+async def list_reminders(patient_id: int, user=Depends(verify_jwt)):
+    """Evaluate and return active (non-dismissed) clinical reminders for a patient."""
+    _get_patient(patient_id)
+    reminders = evaluate_reminders(patient_id)
+    return {"reminders": reminders, "count": len(reminders)}
+
+
+@router.patch("/reminders/{reminder_id}/dismiss")
+async def dismiss_reminder(reminder_id: int, user=Depends(verify_jwt)):
+    """Dismiss/acknowledge a clinical reminder."""
+    r = db.table(TABLE_CLINICAL_REMINDERS).select("id,patient_id").eq("id", reminder_id).execute()
+    if not r.data:
+        raise HTTPException(status_code=404, detail=f"Reminder {reminder_id} not found")
+    patient_id = r.data[0]["patient_id"]
+
+    try:
+        db.table(TABLE_CLINICAL_REMINDERS).update({
+            "dismissed_at": datetime.now(timezone.utc).isoformat(),
+            "dismissed_by": user.get("sub") or user.get("email"),
+        }).eq("id", reminder_id).execute()
+    except Exception as exc:
+        logger.error("Reminder dismiss failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to dismiss reminder")
+
+    invalidate_patient_context(patient_id)
+    audit_event(
+        "reminder_dismissed",
+        {"reminder_id": reminder_id},
+        actor_id=user.get("sub"),
+        subject_type="patient",
+        subject_id=str(patient_id),
+    )
+    return {"ok": True, "reminder_id": reminder_id}

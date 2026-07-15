@@ -1,5 +1,5 @@
 """
-Hospital Reports Router — SynbotHealth / Royan Hospital
+Hospital Reports Router — RoyanHealth / Royan Hospital
 =========================================================
 Aggregate clinical and financial reporting for NHIA/HMIS submission,
 disease burden analysis, financial summaries, and patient demographics.

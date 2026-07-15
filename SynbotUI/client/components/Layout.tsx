@@ -25,9 +25,11 @@ const Layout = () => {
       if (!res.profile_complete) {
         setStaffData(res.data);
         setShowSetup(true);
-      } else {
-        startTourIfNeeded(roles[0] ?? "admin", res.data?.tour_state);
       }
+      // The role tour is only ever started from ProfileSetup's onComplete
+      // below — i.e. once, right when a new user finishes registering.
+      // It intentionally does NOT re-check on every sign-in here: an
+      // already-onboarded user should never see it again.
     }).catch(() => {
       // Non-fatal — don't block the UI if /staff/me fails
     });
@@ -52,7 +54,7 @@ const Layout = () => {
               <Menu className="mr-2 h-4 w-4" />
               Menu
             </Button>
-            <span className="font-semibold text-foreground">Royan Hospital · Synbot Health</span>
+            <span className="font-semibold text-foreground">Royan Hospital · RoyanHealth</span>
             <span className="opacity-40">·</span>
             <span>Role: {hasRole ? role : <span className="text-destructive">unavailable</span>}</span>
             {typeof wpUserId === "number" && (

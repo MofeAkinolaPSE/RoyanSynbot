@@ -1,6 +1,6 @@
 company:
   name: "Royan Hospital"
-  bot_name: "SynbotHealth"
+  bot_name: "RoyanHealth"
   tagline: "Intelligent Hospital Operating System"
   # Contact details sourced from royanhospital.com/contact/
   phone:

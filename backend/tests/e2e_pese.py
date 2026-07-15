@@ -2,7 +2,7 @@
 """
 Patient Encounter Simulation Engine (PESE)
 ==========================================
-Full end-to-end clinical lifecycle test for SynbotHealth demo validation.
+Full end-to-end clinical lifecycle test for RoyanHealth demo validation.
 
 Runs two scenarios against the live server:
   A) Existing patient  — validates Hope ETL data is live and traversable
@@ -175,7 +175,7 @@ class PESERunner:
 
     def login(self, email: str, password: str) -> bool:
         print(f"\n{BOLD}{'='*62}{RESET}")
-        print(f"{BOLD}  PESE — SynbotHealth Demo Validation{RESET}")
+        print(f"{BOLD}  PESE — RoyanHealth Demo Validation{RESET}")
         print(f"{BOLD}  Target: {self.base}{RESET}")
         print(f"{BOLD}{'='*62}{RESET}\n")
 
@@ -1260,7 +1260,7 @@ class PESERunner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="PESE — SynbotHealth Patient Encounter Simulation Engine",
+        description="PESE — RoyanHealth Patient Encounter Simulation Engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

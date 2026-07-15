@@ -373,7 +373,7 @@ const AskSynbot = () => {
         </ScrollArea>
 
         <div className="border-t border-border/70 p-4 text-xs text-muted-foreground">
-          <p>SynbotHealth v1.0</p>
+          <p>RoyanHealth v1.0</p>
           <p>Powered by Royan Hospital AI</p>
         </div>
       </div>
@@ -476,7 +476,7 @@ const AskSynbot = () => {
             <AlertCircle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
             <p className="text-xs text-warning">
               {mode === "clinical" ? (
-                <><strong>Clinical Notice:</strong> SynbotHealth AI is a decision-support tool only. All clinical decisions must be validated by a licensed healthcare professional. Patient data is handled under NDPA 2023.</>
+                <><strong>Clinical Notice:</strong> RoyanHealth AI is a decision-support tool only. All clinical decisions must be validated by a licensed healthcare professional. Patient data is handled under NDPA 2023.</>
               ) : (
                 <><strong>Notice:</strong> Roy analysis is for business intelligence only. For regulated decisions, consult subject matter experts and your compliance team.</>
               )}

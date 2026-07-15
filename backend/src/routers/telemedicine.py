@@ -1,5 +1,5 @@
 """
-Telemedicine Router — SynbotHealth / Royan Hospital
+Telemedicine Router — RoyanHealth / Royan Hospital
 ====================================================
 Virtual consultation session management with Jitsi Meet integration stub.
 In production, replace _generate_meeting_link() with your video provider SDK.

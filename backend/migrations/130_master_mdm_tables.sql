@@ -1,5 +1,5 @@
 -- 130_master_mdm_tables.sql
--- Master Data Management (MDM) Layer — Chapter 4 of Synbot Health Blueprint
+-- Master Data Management (MDM) Layer — Chapter 4 of RoyanHealth Blueprint
 -- Creates authoritative reference tables for departments, staff, lab catalog,
 -- drug formulary, diagnosis catalog, and procedure catalog.
 -- Note: royan_hmos, royan_service_catalog, royan_wards, royan_beds already exist

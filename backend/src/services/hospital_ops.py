@@ -165,10 +165,16 @@ def get_daily_clinical_stats(client: DBClient = db) -> Dict[str, Any]:
     """
     Appointments, lab orders, and prescriptions for today.
 
+    Only counts native system records (external_source IS NULL) for the pending
+    counters — Hope-imported historical lab orders/prescriptions were bulk
+    loaded still sitting in 'ordered'/'pending' status (their real historical
+    outcome was never migrated), so without this filter these counters showed
+    six-figure all-time totals instead of the live operational backlog.
+
     Returns:
         appointments_today  — confirmed or arrived appointments
-        lab_orders_pending  — lab orders in 'ordered' or 'sample_collected' state
-        prescriptions_pending — prescriptions awaiting dispensing
+        lab_orders_pending  — native lab orders in 'ordered' or 'sample_collected' state
+        prescriptions_pending — native prescriptions awaiting dispensing
     """
     today = _today_iso()
     result = {
@@ -195,6 +201,7 @@ def get_daily_clinical_stats(client: DBClient = db) -> Dict[str, Any]:
             client.table("royan_lab_orders")
             .select("id", count="exact")
             .in_("status", ["ordered", "sample_collected", "processing"])
+            .is_("external_source", None)
             .execute()
         )
         result["lab_orders_pending"] = lab_resp.count or 0
@@ -206,6 +213,7 @@ def get_daily_clinical_stats(client: DBClient = db) -> Dict[str, Any]:
             client.table("royan_prescriptions")
             .select("id", count="exact")
             .eq("status", "pending")
+            .is_("external_source", None)
             .execute()
         )
         result["prescriptions_pending"] = rx_resp.count or 0

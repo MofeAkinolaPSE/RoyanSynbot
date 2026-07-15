@@ -1,6 +1,6 @@
-Absolutely. Looking at the direction Synbot Health is heading, I actually don't see these as four separate tools—I see them as **four layers of a Data Intelligence Platform** that sits on top of the database.
+Absolutely. Looking at the direction RoyanHealth is heading, I actually don't see these as four separate tools—I see them as **four layers of a Data Intelligence Platform** that sits on top of the database.
 
-This becomes the backend "brain" of Synbot Health.
+This becomes the backend "brain" of RoyanHealth.
 
 ```
 Hope Database
@@ -9,7 +9,7 @@ Hope Database
 Data Assimilation Pipeline
         │
         ▼
-Synbot Health PostgreSQL
+RoyanHealth PostgreSQL
         │
 ───────────────────────────────────────
  DATA INTELLIGENCE PLATFORM
@@ -1031,7 +1031,7 @@ A clinician or developer immediately understands the quality of that patient's m
 
 # The Bigger Vision: Synbot Data Intelligence Layer (SDIL)
 
-I think these four engines should not live as isolated utilities. They should be packaged as a single subsystem that every part of Synbot Health depends on.
+I think these four engines should not live as isolated utilities. They should be packaged as a single subsystem that every part of RoyanHealth depends on.
 
 ```
                     Synbot Data Intelligence Layer
@@ -1070,11 +1070,11 @@ I think these four engines should not live as isolated utilities. They should be
 
 ## Why I think this is strategically important
 
-This layer moves Synbot Health beyond being just another Hospital Management System. It becomes a **clinically explainable platform** where every value displayed on the screen can answer four questions:
+This layer moves RoyanHealth beyond being just another Hospital Management System. It becomes a **clinically explainable platform** where every value displayed on the screen can answer four questions:
 
 1. **Where did this data originate?** *(Data Lineage Engine)*
 2. **Is it correctly connected to the rest of the clinical record?** *(Relationship Auditor)*
 3. **How does it fit into the patient's complete healthcare journey?** *(Patient Context Engine)*
 4. **Can a clinician or developer inspect and verify it end-to-end?** *(Clinical Data Explorer)*
 
-That capability will make migrations, troubleshooting, AI reasoning, audits, regulatory compliance, and future integrations dramatically easier because the system is designed to explain its own data rather than simply store it. I think this becomes one of Synbot Health's strongest architectural differentiators.
+That capability will make migrations, troubleshooting, AI reasoning, audits, regulatory compliance, and future integrations dramatically easier because the system is designed to explain its own data rather than simply store it. I think this becomes one of RoyanHealth's strongest architectural differentiators.

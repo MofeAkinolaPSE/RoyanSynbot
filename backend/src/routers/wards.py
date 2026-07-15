@@ -1,5 +1,5 @@
 """
-Wards & Beds Router — SynbotHealth / Royan Hospital
+Wards & Beds Router — RoyanHealth / Royan Hospital
 =====================================================
 Manages ward configuration and real-time bed occupancy.
 

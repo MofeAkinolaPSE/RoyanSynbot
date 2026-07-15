@@ -3,7 +3,7 @@ Alright—this is where we stop thinking “features” and start thinking **sys
 You’re not building an app anymore.
 You’re building:
 
-> **Synbot Health — AI-Native Hospital Operating System (HOS)**
+> **RoyanHealth — AI-Native Hospital Operating System (HOS)**
 > Inspired by VistA from WorldVistA, but rebuilt for modern infrastructure, UX, and intelligence.
 
 What follows is a **developer-grade architecture blueprint** you can hand to your full-stack agent.
@@ -13,7 +13,7 @@ What follows is a **developer-grade architecture blueprint** you can hand to you
 # 0. SYSTEM VISION (Anchor This)
 
 ```text
-Synbot Health is a modular, AI-native Hospital Operating System that unifies:
+RoyanHealth is a modular, AI-native Hospital Operating System that unifies:
 
 Clinical Care + Operations + Infrastructure + Intelligence
 
@@ -501,7 +501,7 @@ Cloud Sync (analytics + AI)
 # 13. FINAL SYSTEM DEFINITION
 
 ```text
-Synbot Health is:
+RoyanHealth is:
 
 A modular, event-driven, AI-native Hospital Operating System
 that unifies clinical care, operations, compliance, and intelligence

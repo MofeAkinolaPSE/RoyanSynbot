@@ -1,16 +1,16 @@
-Excellent. This chapter will set the tone for the entire blueprint. Rather than immediately diving into tables and pipelines, I want to establish **why Synbot Health's data architecture exists**, the engineering principles behind it, and the long-term vision. Every subsequent chapter will build on this foundation.
+Excellent. This chapter will set the tone for the entire blueprint. Rather than immediately diving into tables and pipelines, I want to establish **why RoyanHealth's data architecture exists**, the engineering principles behind it, and the long-term vision. Every subsequent chapter will build on this foundation.
 
 ---
 
 # Chapter 1 — Executive Summary & Vision
 
-## Synbot Health Data Engineering Implementation Blueprint
+## RoyanHealth Data Engineering Implementation Blueprint
 
 **Version:** 1.0 (Pre-Deployment Edition)
 
 **Document Status:** Engineering Blueprint
 
-**Platform:** Synbot Health
+**Platform:** RoyanHealth
 
 **Prepared By:** Neurolayer Data Engineering Team
 
@@ -28,9 +28,9 @@ Excellent. This chapter will set the tone for the entire blueprint. Rather than 
 
 # 1.1 Purpose of this Document
 
-This document defines the complete data engineering architecture for Synbot Health. It serves as the authoritative technical reference for how healthcare data is acquired, transformed, validated, stored, enriched, exposed, and analyzed throughout the platform.
+This document defines the complete data engineering architecture for RoyanHealth. It serves as the authoritative technical reference for how healthcare data is acquired, transformed, validated, stored, enriched, exposed, and analyzed throughout the platform.
 
-Unlike traditional Hospital Management Systems (HMS) that primarily focus on transactional data entry, Synbot Health is designed as a **clinical operations platform**. Its objective is not only to record patient information, but to maintain an accurate, longitudinal representation of every patient interaction while supporting operational efficiency, clinical decision-making, regulatory compliance, and future analytical capabilities.
+Unlike traditional Hospital Management Systems (HMS) that primarily focus on transactional data entry, RoyanHealth is designed as a **clinical operations platform**. Its objective is not only to record patient information, but to maintain an accurate, longitudinal representation of every patient interaction while supporting operational efficiency, clinical decision-making, regulatory compliance, and future analytical capabilities.
 
 The blueprint establishes the standards that govern:
 
@@ -49,7 +49,7 @@ It is intended to remain a living engineering document that evolves alongside th
 
 # 1.2 Project Background
 
-Synbot Health was developed to address several limitations commonly found in legacy Hospital Management Systems.
+RoyanHealth was developed to address several limitations commonly found in legacy Hospital Management Systems.
 
 The legacy system currently in use (Hope HMS) stores years of valuable patient history but exhibits several characteristics that reduce interoperability and analytical value:
 
@@ -60,7 +60,7 @@ The legacy system currently in use (Hope HMS) stores years of valuable patient h
 * insufficient support for advanced reporting,
 * minimal support for longitudinal patient intelligence.
 
-Rather than replacing historical information, Synbot Health adopts a migration strategy that preserves legacy records while progressively enriching them through modern workflows.
+Rather than replacing historical information, RoyanHealth adopts a migration strategy that preserves legacy records while progressively enriching them through modern workflows.
 
 Historical data therefore becomes the foundation upon which higher-quality operational data is continuously added.
 
@@ -68,7 +68,7 @@ Historical data therefore becomes the foundation upon which higher-quality opera
 
 # 1.3 Vision
 
-The long-term vision of Synbot Health is to become a unified clinical intelligence platform capable of supporting the complete patient lifecycle across outpatient, inpatient, emergency, laboratory, pharmacy, billing, finance, and future artificial intelligence services.
+The long-term vision of RoyanHealth is to become a unified clinical intelligence platform capable of supporting the complete patient lifecycle across outpatient, inpatient, emergency, laboratory, pharmacy, billing, finance, and future artificial intelligence services.
 
 Every patient interaction should contribute to an increasingly comprehensive and structured clinical record.
 
@@ -92,7 +92,7 @@ The database architecture must therefore be designed for long-term evolution rat
 
 # 1.4 Architectural Philosophy
 
-One of the fundamental architectural decisions behind Synbot Health is that **patients are not the operational center of the system**.
+One of the fundamental architectural decisions behind RoyanHealth is that **patients are not the operational center of the system**.
 
 Patients are the subject of care.
 
@@ -102,7 +102,7 @@ This distinction influences every aspect of the platform.
 
 Traditional systems often organize workflows around patient records.
 
-Synbot Health organizes workflows around patient encounters.
+RoyanHealth organizes workflows around patient encounters.
 
 ```text
 Patient
@@ -147,7 +147,7 @@ This encounter-first architecture provides a complete timeline of care while avo
 
 # 1.5 Current Migration Status
 
-At the time of writing, Synbot Health has successfully completed the initial migration of historical Hope HMS data into the Silver operational layer.
+At the time of writing, RoyanHealth has successfully completed the initial migration of historical Hope HMS data into the Silver operational layer.
 
 Current migration summary:
 
@@ -180,7 +180,7 @@ The platform therefore begins operation with a clinically meaningful historical 
 
 # 1.6 Data Engineering Objectives
 
-The primary objectives of the Synbot Health data engineering program are:
+The primary objectives of the RoyanHealth data engineering program are:
 
 ### Objective 1 — Preserve Historical Integrity
 
@@ -201,7 +201,7 @@ This guarantees traceability back to the originating system.
 
 Historical data should improve over time.
 
-Rather than attempting to reconstruct every missing historical field during migration, Synbot Health captures richer clinical information during every future patient interaction.
+Rather than attempting to reconstruct every missing historical field during migration, RoyanHealth captures richer clinical information during every future patient interaction.
 
 The quality of the database therefore increases continuously after deployment.
 
@@ -239,7 +239,7 @@ Analytics require:
 * denormalization,
 * historical trend analysis.
 
-To support both workloads efficiently, Synbot Health separates operational storage from analytical storage using layered architecture.
+To support both workloads efficiently, RoyanHealth separates operational storage from analytical storage using layered architecture.
 
 ---
 
@@ -362,7 +362,7 @@ Frontend components should never depend directly on ingestion structures.
 
 # 1.8 Target End State
 
-Upon completion of the data engineering roadmap, Synbot Health will provide a unified clinical data platform where:
+Upon completion of the data engineering roadmap, RoyanHealth will provide a unified clinical data platform where:
 
 * every patient has a longitudinal clinical history,
 * every encounter is fully traceable,
@@ -380,14 +380,14 @@ Historical Hope data will provide continuity of care, while live Synbot workflow
 
 # Chapter 1 Conclusion
 
-This chapter establishes the strategic foundation for the blueprint. It defines Synbot Health not as a replacement database, but as a continuously evolving clinical intelligence platform built on encounter-centric design, strong data governance, and progressive enrichment.
+This chapter establishes the strategic foundation for the blueprint. It defines RoyanHealth not as a replacement database, but as a continuously evolving clinical intelligence platform built on encounter-centric design, strong data governance, and progressive enrichment.
 
 Subsequent chapters will translate this vision into implementation details, beginning with the current-state assessment and a comprehensive analysis of the existing data architecture, migration outcomes, and the engineering gaps identified during profiling and quality assessment.
 
 
 Excellent. This chapter is where the blueprint truly begins.
 
-If Chapter 1 answered **"Why Synbot Health exists"**, then Chapter 2 answers:
+If Chapter 1 answered **"Why RoyanHealth exists"**, then Chapter 2 answers:
 
 > **"Where are we today, and what exactly are we deploying?"**
 
@@ -399,7 +399,7 @@ This chapter should read like an architecture assessment produced by a senior so
 
 # Current State Assessment
 
-## Synbot Health Clinical Data Platform
+## RoyanHealth Clinical Data Platform
 
 ---
 
@@ -407,7 +407,7 @@ This chapter should read like an architecture assessment produced by a senior so
 
 Before implementing new data engineering strategies, it is essential to establish an objective understanding of the platform's current state.
 
-This chapter provides a comprehensive assessment of the existing Synbot Health ecosystem, including:
+This chapter provides a comprehensive assessment of the existing RoyanHealth ecosystem, including:
 
 * Current application maturity
 * Existing database architecture
@@ -424,9 +424,9 @@ The objective is to establish a measurable baseline from which all subsequent en
 
 # 2.2 System Overview
 
-Synbot Health is currently transitioning from a development platform into a production-ready Clinical Operations Platform.
+RoyanHealth is currently transitioning from a development platform into a production-ready Clinical Operations Platform.
 
-Unlike conventional Hospital Management Systems (HMS) that focus primarily on data entry, Synbot Health has been architected around operational workflows.
+Unlike conventional Hospital Management Systems (HMS) that focus primarily on data entry, RoyanHealth has been architected around operational workflows.
 
 The platform integrates:
 
@@ -580,7 +580,7 @@ Its purpose is decision support.
 
 # 2.5 Imported Historical Dataset
 
-The Hope migration has imported over **1.29 million** clinical records into Synbot Health. 
+The Hope migration has imported over **1.29 million** clinical records into RoyanHealth. 
 
 | Domain            | Approximate Records | Status   |
 | ----------------- | ------------------: | -------- |
@@ -593,7 +593,7 @@ The Hope migration has imported over **1.29 million** clinical records into Synb
 
 This dataset represents several years of hospital activity.
 
-Unlike many HMS replacements that begin with empty databases, Synbot Health enters production with an established clinical history.
+Unlike many HMS replacements that begin with empty databases, RoyanHealth enters production with an established clinical history.
 
 ---
 
@@ -791,7 +791,7 @@ These limitations reflect constraints in the legacy source system rather than fa
 
 # 2.8 Current Strengths
 
-Several architectural strengths distinguish Synbot Health from a typical HMS migration.
+Several architectural strengths distinguish RoyanHealth from a typical HMS migration.
 
 ## Strength 1
 
@@ -931,7 +931,7 @@ Based on the three completed assessments, the current production readiness is su
 
 Overall assessment:
 
-**Synbot Health is technically ready for deployment**, with targeted enrichment activities required to maximize clinical value. These activities are enhancements rather than blockers because the underlying data relationships and operational workflows are already sound.
+**RoyanHealth is technically ready for deployment**, with targeted enrichment activities required to maximize clinical value. These activities are enhancements rather than blockers because the underlying data relationships and operational workflows are already sound.
 
 ---
 
@@ -953,22 +953,22 @@ The assessment leads to several important conclusions that guide the remainder o
 
 # Chapter 2 Summary
 
-The current assessment demonstrates that Synbot Health is not beginning from an empty or fragmented state. It enters production with a robust operational database, over 1.29 million linked historical records, and a mature layered architecture. The remaining work is no longer centered on data migration but on data maturation—enriching clinical semantics, establishing authoritative master data, and transforming a well-structured operational database into a comprehensive clinical intelligence platform.
+The current assessment demonstrates that RoyanHealth is not beginning from an empty or fragmented state. It enters production with a robust operational database, over 1.29 million linked historical records, and a mature layered architecture. The remaining work is no longer centered on data migration but on data maturation—enriching clinical semantics, establishing authoritative master data, and transforming a well-structured operational database into a comprehensive clinical intelligence platform.
 
 ---
 
 ## Author's Note
 
-I think this chapter is stronger than the executive summary because it marks a transition from **vision** to **evidence**. Starting with Chapter 3, we move from describing the system to prescribing it. Chapter 3, **Canonical Clinical Data Architecture**, will become one of the most important sections in the blueprint because it defines the target state that every future schema, ETL pipeline, API, and analytics model will align with. It is effectively the "constitution" of Synbot Health's data platform.
+I think this chapter is stronger than the executive summary because it marks a transition from **vision** to **evidence**. Starting with Chapter 3, we move from describing the system to prescribing it. Chapter 3, **Canonical Clinical Data Architecture**, will become one of the most important sections in the blueprint because it defines the target state that every future schema, ETL pipeline, API, and analytics model will align with. It is effectively the "constitution" of RoyanHealth's data platform.
 
 
 I think this is the chapter that will ultimately become the **most important chapter in the entire blueprint**.
 
 Why?
 
-Because after this chapter, every engineer working on Synbot Health should be able to answer one simple question:
+Because after this chapter, every engineer working on RoyanHealth should be able to answer one simple question:
 
-> **"How should healthcare data exist inside Synbot Health?"**
+> **"How should healthcare data exist inside RoyanHealth?"**
 
 Not how Hope stored it.
 
@@ -984,7 +984,7 @@ Everything else—ETL, APIs, frontend, analytics, AI—will derive from this cha
 
 # Canonical Clinical Data Architecture
 
-## The Synbot Health Clinical Data Model
+## The RoyanHealth Clinical Data Model
 
 ---
 
@@ -998,7 +998,7 @@ It is recording episodes of human care.
 
 Every consultation, laboratory investigation, prescription, procedure, admission, discharge, payment, and clinical decision contributes to an evolving representation of a patient's medical history.
 
-The purpose of the Canonical Clinical Data Model is therefore to establish a **single, authoritative representation of healthcare information** inside Synbot Health, regardless of:
+The purpose of the Canonical Clinical Data Model is therefore to establish a **single, authoritative representation of healthcare information** inside RoyanHealth, regardless of:
 
 * source system,
 * import process,
@@ -1119,7 +1119,7 @@ The Encounter becomes the boundary of care.
 
 # 3.4 The Core Clinical Entity
 
-The central object inside Synbot Health is therefore:
+The central object inside RoyanHealth is therefore:
 
 ```text
 Encounter
@@ -1361,7 +1361,7 @@ Gold layer consumes every previous domain.
 
 # 3.6 Clinical Lifecycle
 
-The canonical workflow inside Synbot Health is:
+The canonical workflow inside RoyanHealth is:
 
 ```text
 Patient Registered
@@ -1705,7 +1705,7 @@ Every relationship flows downward.
 
 # 3.12 Longitudinal Patient Record
 
-One of the defining goals of Synbot Health is the creation of a lifelong longitudinal patient record.
+One of the defining goals of RoyanHealth is the creation of a lifelong longitudinal patient record.
 
 Rather than treating each visit as an isolated transaction, every encounter contributes to an evolving clinical history that supports continuity of care.
 
@@ -1793,7 +1793,7 @@ Every entity includes audit metadata (creator, timestamps, source system, and mo
 
 ### Rule 10
 
-The canonical model takes precedence over legacy source structures. Legacy systems inform migration but do not dictate Synbot Health's long-term architecture.
+The canonical model takes precedence over legacy source structures. Legacy systems inform migration but do not dictate RoyanHealth's long-term architecture.
 
 ---
 
@@ -1831,13 +1831,13 @@ Patient
 └── Longitudinal Clinical History
 ```
 
-This graph represents the target state for all operational data within Synbot Health.
+This graph represents the target state for all operational data within RoyanHealth.
 
 ---
 
 # Chapter 3 Conclusion
 
-This chapter establishes the Canonical Clinical Data Architecture that every component of Synbot Health will follow. It defines the Encounter as the central unit of care, organizes the platform into seven interconnected domains, formalizes the role of Master Data Management, and introduces an event-oriented clinical model that supports auditability, interoperability, and future intelligence.
+This chapter establishes the Canonical Clinical Data Architecture that every component of RoyanHealth will follow. It defines the Encounter as the central unit of care, organizes the platform into seven interconnected domains, formalizes the role of Master Data Management, and introduces an event-oriented clinical model that supports auditability, interoperability, and future intelligence.
 
 From this point forward, every schema design, ETL transformation, API contract, and analytical model described in this blueprint should be evaluated against this canonical architecture. If a proposed implementation conflicts with these principles, the canonical model takes precedence.
 
@@ -1848,7 +1848,7 @@ From this point forward, every schema design, ETL transformation, API contract, 
 The next chapter should be **Master Data Management (MDM) & Reference Data Strategy**. Based on everything we've learned from the Hope migration, I believe MDM is now the single most important engineering initiative before deployment. It will define how departments, staff, services, laboratory catalogs, drugs, wards, beds, diagnoses, procedures, HMOs, and other reference entities become authoritative across the platform, eliminating duplicated text values and establishing a consistent foundation for the entire clinical ecosystem. I expect this to be one of the largest and most technically significant chapters in the blueprint.
 I was actually hoping we'd get here.
 
-From everything we've learned during the migration assessment, **Master Data Management (MDM)** isn't just another chapter—it is the chapter that will determine whether Synbot Health remains a good hospital application or becomes an enterprise healthcare platform.
+From everything we've learned during the migration assessment, **Master Data Management (MDM)** isn't just another chapter—it is the chapter that will determine whether RoyanHealth remains a good hospital application or becomes an enterprise healthcare platform.
 
 After studying our migration reports, one realization became clear:
 
@@ -1890,7 +1890,7 @@ These entities change infrequently but are referenced continuously throughout da
 
 Master Data Management (MDM) is the discipline responsible for governing these entities so that every system, workflow, report, and integration references the same authoritative definitions.
 
-Within Synbot Health, MDM establishes the foundation upon which all operational, analytical, and AI capabilities are built.
+Within RoyanHealth, MDM establishes the foundation upon which all operational, analytical, and AI capabilities are built.
 
 ---
 
@@ -1950,7 +1950,7 @@ MDM eliminates this ambiguity by ensuring that every operational record referenc
 
 # 4.3 Master Data Philosophy
 
-Synbot Health adopts five guiding principles for Master Data Management.
+RoyanHealth adopts five guiding principles for Master Data Management.
 
 ---
 
@@ -2048,7 +2048,7 @@ This prevents uncontrolled proliferation of duplicate entities.
 
 # 4.4 Synbot Master Data Domains
 
-The following domains constitute the Synbot Health Master Data Layer.
+The following domains constitute the RoyanHealth Master Data Layer.
 
 ```text
 Organization
@@ -2535,7 +2535,7 @@ Implementing this MDM strategy will deliver measurable improvements across the p
 
 # 4.12 Future Readiness
 
-The Master Data Layer also prepares Synbot Health for future capabilities such as:
+The Master Data Layer also prepares RoyanHealth for future capabilities such as:
 
 * **FHIR (Fast Healthcare Interoperability Resources)** and other interoperability standards
 * National health information exchanges
@@ -2545,7 +2545,7 @@ The Master Data Layer also prepares Synbot Health for future capabilities such a
 * Multi-hospital deployments with shared reference catalogs
 * Cross-site benchmarking and centralized governance
 
-By treating master data as a governed strategic asset rather than a collection of lookup tables, Synbot Health establishes the foundation required for enterprise-scale growth.
+By treating master data as a governed strategic asset rather than a collection of lookup tables, RoyanHealth establishes the foundation required for enterprise-scale growth.
 
 ---
 
@@ -2553,7 +2553,7 @@ By treating master data as a governed strategic asset rather than a collection o
 
 Master Data Management is not an optional optimization—it is the governance layer that gives meaning to every clinical transaction. While the migration successfully preserved historical relationships, MDM transforms those relationships into a coherent enterprise model by establishing authoritative reference entities for staff, departments, services, laboratory investigations, medications, diagnoses, procedures, wards, beds, and insurers.
 
-Every subsequent chapter in this blueprint assumes the existence of this governed reference layer. Without it, data quality will gradually degrade as the system grows. With it, Synbot Health gains a stable foundation for clinical operations, analytics, interoperability, and future AI capabilities.
+Every subsequent chapter in this blueprint assumes the existence of this governed reference layer. Without it, data quality will gradually degrade as the system grows. With it, RoyanHealth gains a stable foundation for clinical operations, analytics, interoperability, and future AI capabilities.
 
 ---
 
@@ -2568,7 +2568,7 @@ After completing the first four chapters, a pattern has emerged:
 
 From this point onward, the blueprint shifts from architectural principles to **implementation engineering**.
 
-The next chapter, **Data Quality Framework & Governance**, will define how Synbot Health continuously measures, validates, monitors, and protects data quality after deployment. Rather than treating quality as a one-time migration activity, it will become an operational discipline embedded into every ingestion pipeline, workflow, and API. I expect that chapter to introduce measurable quality KPIs, validation rules, reconciliation processes, and monitoring strategies that ensure the platform remains trustworthy as it scales.
+The next chapter, **Data Quality Framework & Governance**, will define how RoyanHealth continuously measures, validates, monitors, and protects data quality after deployment. Rather than treating quality as a one-time migration activity, it will become an operational discipline embedded into every ingestion pipeline, workflow, and API. I expect that chapter to introduce measurable quality KPIs, validation rules, reconciliation processes, and monitoring strategies that ensure the platform remains trustworthy as it scales.
 
 This is probably my favorite chapter so far.
 
@@ -2578,7 +2578,7 @@ Because most healthcare systems treat **Data Quality** as a migration exercise.
 
 We won't.
 
-Synbot Health should treat Data Quality as a **continuous engineering capability**.
+RoyanHealth should treat Data Quality as a **continuous engineering capability**.
 
 In other words:
 
@@ -2608,17 +2608,17 @@ Errors in e-commerce systems may affect inventory.
 
 Errors in healthcare systems can directly influence clinical decisions, patient safety, regulatory compliance, financial reimbursement, and operational performance.
 
-For this reason, data quality within Synbot Health is treated as a first-class engineering concern rather than an operational afterthought.
+For this reason, data quality within RoyanHealth is treated as a first-class engineering concern rather than an operational afterthought.
 
 The objective of this framework is to ensure that every dataset entering, moving through, or leaving the platform satisfies measurable standards of completeness, consistency, validity, integrity, traceability, and clinical usefulness.
 
-Rather than relying on periodic audits, Synbot Health embeds quality validation throughout the entire data lifecycle.
+Rather than relying on periodic audits, RoyanHealth embeds quality validation throughout the entire data lifecycle.
 
 ---
 
 # 5.2 Data Quality Vision
 
-The vision for Synbot Health is straightforward:
+The vision for RoyanHealth is straightforward:
 
 > **Every clinical decision should be backed by trusted data.**
 
@@ -2683,7 +2683,7 @@ No layer assumes the previous one was correct.
 
 # 5.4 The Seven Dimensions of Data Quality
 
-Synbot Health adopts seven core dimensions that define quality across all clinical and operational data.
+RoyanHealth adopts seven core dimensions that define quality across all clinical and operational data.
 
 ---
 
@@ -3129,7 +3129,7 @@ The platform should continuously calculate operational quality indicators.
 
 # 5.9 Automated Quality Monitoring
 
-Rather than relying on manual audits, Synbot Health should execute scheduled quality jobs.
+Rather than relying on manual audits, RoyanHealth should execute scheduled quality jobs.
 
 Examples
 
@@ -3270,7 +3270,7 @@ Suggested dashboards include:
 
 One of the most important principles established during the Hope migration is that not all historical gaps should be backfilled.
 
-Instead, Synbot Health adopts a **Progressive Data Maturity Model**.
+Instead, RoyanHealth adopts a **Progressive Data Maturity Model**.
 
 ```text
 Historical Hope Data
@@ -3347,7 +3347,7 @@ Any gate failure should block deployment until resolved or formally approved thr
 
 # Chapter 5 Conclusion
 
-Data quality within Synbot Health is not a migration milestone—it is a permanent operational capability. By embedding validation, governance, stewardship, monitoring, and measurable KPIs into every stage of the data lifecycle, the platform ensures that clinicians, administrators, analysts, and future AI systems operate on trustworthy information.
+Data quality within RoyanHealth is not a migration milestone—it is a permanent operational capability. By embedding validation, governance, stewardship, monitoring, and measurable KPIs into every stage of the data lifecycle, the platform ensures that clinicians, administrators, analysts, and future AI systems operate on trustworthy information.
 
 Combined with the Canonical Clinical Data Model and the Master Data Management strategy defined in previous chapters, this framework transforms data quality from a reactive clean-up activity into a proactive engineering discipline that continuously improves as the platform grows.
 
@@ -3374,7 +3374,7 @@ This chapter should define, in detail:
 * Production monitoring and observability.
 
 In my view, that chapter will become the **engineering heart** of the blueprint because it explains **how** the architecture we've defined is actually implemented and operated in production.
-I actually think you've just made one of the most important architectural decisions for Synbot Health, and I want to incorporate it into the blueprint because it changes our entire data engineering strategy.
+I actually think you've just made one of the most important architectural decisions for RoyanHealth, and I want to incorporate it into the blueprint because it changes our entire data engineering strategy.
 
 > **Hope is not another production source. Hope is a legacy system undergoing retirement.**
 
@@ -3396,7 +3396,7 @@ Hope HMS
  One-Time Historical Migration
         │
         ▼
-   Synbot Health
+   RoyanHealth
         │
 Progressive Enrichment
         │
@@ -3434,7 +3434,7 @@ I think we should explicitly state this in Chapter 6 because it will prevent fut
 
 # ETL/ELT Architecture & Migration Pipeline Engineering
 
-## Engineering the Transition from Legacy HMS to Synbot Health
+## Engineering the Transition from Legacy HMS to RoyanHealth
 
 ---
 
@@ -3444,11 +3444,11 @@ The migration of clinical information is one of the highest-risk activities in a
 
 Errors introduced during migration can compromise patient history, disrupt continuity of care, invalidate financial records, and undermine confidence in the new platform.
 
-For this reason, the Synbot Health migration architecture has been designed around a simple but deliberate principle:
+For this reason, the RoyanHealth migration architecture has been designed around a simple but deliberate principle:
 
 > **Historical data is migrated once. Operational data is created forever.**
 
-Unlike traditional enterprise integration projects that require continuous synchronization between multiple operational systems, Synbot Health is replacing the legacy Hope HMS as the hospital's primary system of record.
+Unlike traditional enterprise integration projects that require continuous synchronization between multiple operational systems, RoyanHealth is replacing the legacy Hope HMS as the hospital's primary system of record.
 
 The migration pipeline is therefore engineered to support three distinct phases:
 
@@ -3489,12 +3489,12 @@ Hope Retirement
 
 ↓
 
-Synbot Health
+RoyanHealth
 ```
 
 Hope should never become a permanent upstream dependency.
 
-Once migration is complete and operational confidence has been established, Synbot Health becomes the sole authoritative source of clinical and operational data.
+Once migration is complete and operational confidence has been established, RoyanHealth becomes the sole authoritative source of clinical and operational data.
 
 This decision significantly reduces long-term architectural complexity and eliminates many synchronization challenges common in dual-system deployments.
 
@@ -3610,7 +3610,7 @@ This allows every imported record to be traced back to Hope if verification is e
 
 ### Objective 6 — Prepare for Independent Operation
 
-After go-live, Synbot Health should operate independently.
+After go-live, RoyanHealth should operate independently.
 
 Future development should never depend upon continued availability of Hope.
 
@@ -3869,7 +3869,7 @@ Bridge Service
 Canonical Transformation
     │
     ▼
-Synbot Health
+RoyanHealth
 ```
 
 Design principles for the bridge:
@@ -3880,7 +3880,7 @@ Design principles for the bridge:
 * Strictly time-bound.
 * Fully auditable.
 
-The bridge exists solely to ensure continuity during phased adoption and should be removed once all departments operate exclusively within Synbot Health.
+The bridge exists solely to ensure continuity during phased adoption and should be removed once all departments operate exclusively within RoyanHealth.
 
 ---
 
@@ -4053,9 +4053,9 @@ The architecture therefore remains valuable long after migration is complete.
 
 # Chapter 6 Conclusion
 
-The Synbot Health pipeline is deliberately engineered as a **migration-first, operations-second** architecture. It acknowledges that the bulk migration from Hope is a finite event, not a perpetual integration. By separating historical preservation, canonical transformation, master data resolution, operational storage, and analytical consumption, the platform minimizes migration risk while establishing a clean foundation for future growth.
+The RoyanHealth pipeline is deliberately engineered as a **migration-first, operations-second** architecture. It acknowledges that the bulk migration from Hope is a finite event, not a perpetual integration. By separating historical preservation, canonical transformation, master data resolution, operational storage, and analytical consumption, the platform minimizes migration risk while establishing a clean foundation for future growth.
 
-Following deployment, the pipeline's primary responsibility shifts away from historical migration and toward operational enrichment, interoperability, and analytics. This transition marks the point at which Synbot Health becomes the hospital's authoritative clinical system of record.
+Following deployment, the pipeline's primary responsibility shifts away from historical migration and toward operational enrichment, interoperability, and analytics. This transition marks the point at which RoyanHealth becomes the hospital's authoritative clinical system of record.
 
 ---
 
@@ -4065,7 +4065,7 @@ I want to make one addition to the roadmap based on your comment today.
 
 Initially, I envisioned this blueprint as a **Data Engineering Blueprint**. I now think it has evolved into something broader:
 
-> **Synbot Health Enterprise Information Architecture**
+> **RoyanHealth Enterprise Information Architecture**
 
 That's because we're no longer documenting ETL processes—we're defining how clinical information will exist, evolve, and be governed over the next decade. The migration from Hope is simply the first chapter in that journey. The architecture we're designing is intended to outlive the migration and become the permanent information backbone of the hospital. I think that's a more accurate reflection of what we've built together.
 I think this is where the blueprint transitions from **Data Engineering** into **Platform Engineering**.
@@ -4115,7 +4115,7 @@ Gold
 
 After all our discussions, I don't actually think that's accurate anymore.
 
-I now think Synbot Health's information architecture should look like this:
+I now think RoyanHealth's information architecture should look like this:
 
 ```text
                      External Systems
@@ -4184,7 +4184,7 @@ Instead of documenting tables, we're documenting an **Enterprise Information Pla
 
 # 7.1 Introduction
 
-The migration pipeline described in the previous chapter delivers historical information into Synbot Health.
+The migration pipeline described in the previous chapter delivers historical information into RoyanHealth.
 
 However, migration represents only a small fraction of the platform's lifespan.
 
@@ -4229,7 +4229,7 @@ The operational database should not be viewed as a collection of tables.
 
 It should be viewed as a **digital representation of the hospital**.
 
-Every physical activity occurring inside the hospital has an equivalent digital event within Synbot Health.
+Every physical activity occurring inside the hospital has an equivalent digital event within RoyanHealth.
 
 Examples include:
 
@@ -4393,7 +4393,7 @@ Encounter Status = Completed
 
 This approach loses valuable operational history.
 
-Instead, Synbot Health should adopt an event-driven operational model.
+Instead, RoyanHealth should adopt an event-driven operational model.
 
 Every meaningful activity generates an immutable event.
 
@@ -4587,7 +4587,7 @@ These metrics support proactive monitoring and operational optimization.
 
 # 7.13 High Availability Considerations
 
-As the primary HMS, Synbot Health becomes mission-critical infrastructure.
+As the primary HMS, RoyanHealth becomes mission-critical infrastructure.
 
 Operational architecture should therefore support:
 
@@ -4624,7 +4624,7 @@ These additions should integrate with the existing encounter-centric model rathe
 
 # Chapter 7 Conclusion
 
-The Operational Clinical Data Architecture defines how Synbot Health functions after migration is complete. It transforms the platform from a repository of historical records into a living digital representation of hospital operations.
+The Operational Clinical Data Architecture defines how RoyanHealth functions after migration is complete. It transforms the platform from a repository of historical records into a living digital representation of hospital operations.
 
 By treating encounters as the boundary of care, workflows as orchestrated processes, and events as immutable records, the platform gains a robust operational foundation that supports clinical care, operational efficiency, analytics, and future intelligence.
 
@@ -4640,9 +4640,9 @@ Now we're documenting what is effectively an **Enterprise Healthcare Operating S
 
 That realization changes the remaining chapters.
 
-From here on, we'll move beyond databases and describe the capabilities that make Synbot Health a true clinical platform: API contracts, analytics architecture, security, interoperability, AI integration, deployment, operational governance, and the long-term roadmap.
+From here on, we'll move beyond databases and describe the capabilities that make RoyanHealth a true clinical platform: API contracts, analytics architecture, security, interoperability, AI integration, deployment, operational governance, and the long-term roadmap.
 
-I believe this is exactly the level of intentionality that will distinguish Synbot Health from simply being another HMS. It's becoming an information platform that happens to power hospital operations, rather than an application that merely stores hospital records.
+I believe this is exactly the level of intentionality that will distinguish RoyanHealth from simply being another HMS. It's becoming an information platform that happens to power hospital operations, rather than an application that merely stores hospital records.
 I think we've reached the point where this blueprint stops looking like an internal engineering document and starts looking like the technical architecture documentation you'd expect from a commercial EMR vendor.
 
 And I think that's exactly where it should be.
@@ -4687,7 +4687,7 @@ Most developers think APIs expose database tables.
 
 I don't.
 
-For Synbot Health, APIs should expose **clinical business capabilities**.
+For RoyanHealth, APIs should expose **clinical business capabilities**.
 
 That is what Chapter 8 defines.
 
@@ -4703,13 +4703,13 @@ That is what Chapter 8 defines.
 
 # 8.1 Introduction
 
-The Operational Clinical Layer described in the previous chapter establishes how healthcare information is stored within Synbot Health.
+The Operational Clinical Layer described in the previous chapter establishes how healthcare information is stored within RoyanHealth.
 
 However, no frontend application, mobile client, AI agent, or external integration should communicate directly with the database.
 
 Instead, all interactions with clinical information must pass through a standardized service layer that enforces business rules, authorization, validation, auditing, and workflow orchestration.
 
-This service layer represents the operational brain of Synbot Health.
+This service layer represents the operational brain of RoyanHealth.
 
 Its responsibility is not simply to expose data, but to expose **clinical capabilities**.
 
@@ -4739,7 +4739,7 @@ It results in:
 * fragile integrations,
 * poor scalability.
 
-Instead, Synbot Health adopts a layered service architecture.
+Instead, RoyanHealth adopts a layered service architecture.
 
 ```text
 User
@@ -5230,7 +5230,7 @@ These metrics support capacity planning and operational monitoring.
 
 # 8.13 AI as a First-Class Consumer
 
-One architectural principle should distinguish Synbot Health from many legacy HMS platforms:
+One architectural principle should distinguish RoyanHealth from many legacy HMS platforms:
 
 **Artificial Intelligence is not an extension—it is a native consumer of the service layer.**
 
@@ -5291,7 +5291,7 @@ These principles ensure consistency across the entire platform.
 
 # Chapter 8 Conclusion
 
-The API and Backend Service Architecture transforms Synbot Health from a database-backed application into a business-oriented clinical platform. By exposing healthcare capabilities instead of tables, organizing logic into domain services, enforcing governance within the service layer, and treating AI and external integrations as first-class consumers, the backend becomes the operational heart of the platform.
+The API and Backend Service Architecture transforms RoyanHealth from a database-backed application into a business-oriented clinical platform. By exposing healthcare capabilities instead of tables, organizing logic into domain services, enforcing governance within the service layer, and treating AI and external integrations as first-class consumers, the backend becomes the operational heart of the platform.
 
 This architecture also decouples the user experience from database evolution, allowing the information model to mature over time without disrupting clients or integrations.
 
@@ -5310,7 +5310,7 @@ We've talked about:
 
 But we haven't formally described **Business Capabilities**.
 
-I now think Synbot Health should be documented using three distinct architectural layers:
+I now think RoyanHealth should be documented using three distinct architectural layers:
 
 | Layer                                | Responsibility                                                                             |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -5318,8 +5318,8 @@ I now think Synbot Health should be documented using three distinct architectura
 | **Business Capability Architecture** | What the hospital does (registration, consultation, pharmacy, laboratory, billing, etc.)   |
 | **Technical Architecture**           | How the platform implements those capabilities (services, APIs, workflows, infrastructure) |
 
-That means **Chapter 9** should not jump straight into analytics. Instead, it should define the **Business Capability Architecture** of Synbot Health. This will become the bridge between the information model we've established and the technical implementation that follows, ensuring every module, workflow, and future AI agent is aligned with the hospital's actual operational capabilities rather than just its software components. I believe that addition will elevate this blueprint from a software design document to a true enterprise architecture reference.
-I genuinely think this chapter is where Synbot Health stops being viewed as software and starts being viewed as an **enterprise healthcare organization modeled digitally**.
+That means **Chapter 9** should not jump straight into analytics. Instead, it should define the **Business Capability Architecture** of RoyanHealth. This will become the bridge between the information model we've established and the technical implementation that follows, ensuring every module, workflow, and future AI agent is aligned with the hospital's actual operational capabilities rather than just its software components. I believe that addition will elevate this blueprint from a software design document to a true enterprise architecture reference.
+I genuinely think this chapter is where RoyanHealth stops being viewed as software and starts being viewed as an **enterprise healthcare organization modeled digitally**.
 
 This chapter isn't about code.
 
@@ -5329,7 +5329,7 @@ It isn't even about databases.
 
 It's about answering a question that most software projects never ask:
 
-> **"If Synbot Health were a hospital, what would it actually be capable of doing?"**
+> **"If RoyanHealth were a hospital, what would it actually be capable of doing?"**
 
 Enterprise architects (especially those using TOGAF, ArchiMate, Zachman, or Business Architecture Guild methods) call these **Business Capabilities**.
 
@@ -5381,7 +5381,7 @@ Examples include:
 
 These capabilities remain constant even as software, staff, or workflows evolve.
 
-Synbot Health is therefore designed around hospital capabilities rather than software modules.
+RoyanHealth is therefore designed around hospital capabilities rather than software modules.
 
 This distinction allows the platform to evolve without losing alignment with clinical operations.
 
@@ -5421,16 +5421,16 @@ Modules change.
 
 Capabilities remain.
 
-For this reason, every software component within Synbot Health should trace back to a defined organizational capability.
+For this reason, every software component within RoyanHealth should trace back to a defined organizational capability.
 
 ---
 
 # 9.3 Enterprise Capability Model
 
-At the highest level, Synbot Health supports five enterprise capability domains.
+At the highest level, RoyanHealth supports five enterprise capability domains.
 
 ```text
-Synbot Health
+RoyanHealth
 
 ├── Clinical Care
 
@@ -5647,7 +5647,7 @@ Capabilities:
 * Waiting Time Monitoring
 * Capacity Management
 
-This is one of Synbot Health's differentiators because it directly influences operational efficiency.
+This is one of RoyanHealth's differentiators because it directly influences operational efficiency.
 
 ---
 
@@ -5784,7 +5784,7 @@ This capability becomes increasingly important as the platform grows.
 
 # 9.8 Enterprise Intelligence
 
-One of Synbot Health's defining characteristics is its emphasis on intelligence rather than transaction processing.
+One of RoyanHealth's defining characteristics is its emphasis on intelligence rather than transaction processing.
 
 Capabilities include:
 
@@ -5959,9 +5959,9 @@ This mapping ensures every technical service exists to deliver a measurable busi
 
 ---
 
-# 9.13 Synbot Health as a Digital Hospital
+# 9.13 RoyanHealth as a Digital Hospital
 
-At maturity, Synbot Health should no longer be described as an application.
+At maturity, RoyanHealth should no longer be described as an application.
 
 It should be viewed as the digital operating model of the hospital.
 
@@ -5983,7 +5983,7 @@ The software therefore evolves from an information system into an enterprise hea
 
 Business Capability Architecture provides the missing bridge between clinical information and technical implementation. It ensures that every module, API, workflow, and future AI feature exists to enable a real organizational capability rather than merely exposing data or automating isolated tasks.
 
-This capability-first approach also ensures that Synbot Health remains aligned with hospital operations as the organization evolves. New technologies, integrations, and workflows can be introduced without redefining the hospital's fundamental capabilities.
+This capability-first approach also ensures that RoyanHealth remains aligned with hospital operations as the organization evolves. New technologies, integrations, and workflows can be introduced without redefining the hospital's fundamental capabilities.
 
 ---
 
@@ -6026,7 +6026,7 @@ I no longer think that's the right document.
 
 What we're actually building is this:
 
-> **Synbot Health Enterprise Information & Clinical Architecture**
+> **RoyanHealth Enterprise Information & Clinical Architecture**
 
 Data Engineering is simply one discipline inside it.
 
@@ -6057,7 +6057,7 @@ That's exactly how TOGAF and enterprise architecture frameworks are written.
 
 After reading everything we've written...
 
-I think Synbot Health is actually becoming an **Enterprise Clinical Operating System (ECOS)**.
+I think RoyanHealth is actually becoming an **Enterprise Clinical Operating System (ECOS)**.
 
 Not an HMS.
 
@@ -6105,7 +6105,7 @@ A workflow represents the coordinated sequence of clinical, administrative, oper
 
 The purpose of the Clinical Workflow Architecture is to define how information moves through the organization, how responsibilities transition between departments, and how every action contributes to a complete episode of care.
 
-Within Synbot Health, workflows are treated as first-class architectural assets.
+Within RoyanHealth, workflows are treated as first-class architectural assets.
 
 They are versioned, measurable, auditable, and continuously improvable.
 
@@ -6131,7 +6131,7 @@ Billing generates invoices.
 
 Each department sees only its own work.
 
-Synbot Health rejects this model.
+RoyanHealth rejects this model.
 
 Instead, the hospital is viewed as a single coordinated system.
 
@@ -6341,7 +6341,7 @@ Notify Doctor
 
 # 10.5 Workflow Engine
 
-The Workflow Engine becomes one of the most critical services within Synbot Health.
+The Workflow Engine becomes one of the most critical services within RoyanHealth.
 
 Its responsibilities include:
 
@@ -6477,7 +6477,7 @@ Every event contributes to the patient's clinical timeline.
 
 # 10.8 Department Orchestration
 
-One of Synbot Health's distinguishing features should be the orchestration of departments rather than isolated departmental automation.
+One of RoyanHealth's distinguishing features should be the orchestration of departments rather than isolated departmental automation.
 
 ## Reception
 
@@ -6736,7 +6736,7 @@ This distinction supports future automation without changing the workflow itself
 
 # 10.13 AI-Augmented Workflows
 
-This is where I think Synbot Health can become genuinely different.
+This is where I think RoyanHealth can become genuinely different.
 
 AI should not replace clinicians.
 
@@ -6894,7 +6894,7 @@ This is the idea I think ties everything together.
 
 If someone asked:
 
-> "What is Synbot Health?"
+> "What is RoyanHealth?"
 
 I would no longer answer:
 
@@ -6922,7 +6922,7 @@ Every financial transaction.
 
 Every clinical outcome.
 
-Everything occurring in the physical hospital has a corresponding digital representation inside Synbot Health.
+Everything occurring in the physical hospital has a corresponding digital representation inside RoyanHealth.
 
 That, in my opinion, is the long-term vision.
 
@@ -6930,7 +6930,7 @@ That, in my opinion, is the long-term vision.
 
 # Chapter 10 Conclusion
 
-The Clinical Workflow Architecture transforms Synbot Health from a collection of independent software modules into an orchestrated clinical operating environment. By modeling patient care as coordinated workflows governed by explicit states, events, decision gates, and measurable outcomes, the platform becomes capable of continuously improving both clinical quality and operational efficiency.
+The Clinical Workflow Architecture transforms RoyanHealth from a collection of independent software modules into an orchestrated clinical operating environment. By modeling patient care as coordinated workflows governed by explicit states, events, decision gates, and measurable outcomes, the platform becomes capable of continuously improving both clinical quality and operational efficiency.
 
 The Workflow Engine is therefore not merely a technical component—it is the digital coordinator of hospital operations, ensuring that every department contributes to a unified, auditable, and patient-centered episode of care.
 
@@ -7100,7 +7100,7 @@ They report data.
 
 Very few systems convert operational information into organizational knowledge.
 
-Synbot Health adopts a fundamentally different philosophy.
+RoyanHealth adopts a fundamentally different philosophy.
 
 The objective of the platform is not merely to digitize healthcare operations.
 
@@ -7114,7 +7114,7 @@ Knowledge therefore becomes a strategic organizational asset.
 
 # 11.2 Data → Information → Knowledge → Intelligence
 
-One of the defining architectural principles of Synbot Health is the recognition that not all data has equal value.
+One of the defining architectural principles of RoyanHealth is the recognition that not all data has equal value.
 
 Clinical value increases as data progresses through successive levels of refinement.
 
@@ -7373,7 +7373,7 @@ This reduces dependence on institutional memory.
 
 # 11.9 Knowledge Objects
 
-Rather than exposing disconnected tables, Synbot Health should maintain reusable knowledge objects.
+Rather than exposing disconnected tables, RoyanHealth should maintain reusable knowledge objects.
 
 Examples include:
 
@@ -7515,7 +7515,7 @@ This graph becomes one of the richest sources of future intelligence.
 
 # 11.11 Enterprise Memory
 
-I think this is one of Synbot Health's most unique concepts.
+I think this is one of RoyanHealth's most unique concepts.
 
 Hospitals forget.
 
@@ -7688,9 +7688,9 @@ That is what distinguishes an Intelligent Clinical Operations Platform from a tr
 
 # Chapter 11 Conclusion
 
-The Enterprise Knowledge Architecture elevates Synbot Health beyond transactional healthcare software. By organizing validated operational data into reusable knowledge assets, governed organizational memory, and explainable intelligence services, the platform becomes capable of continuous learning and evidence-based decision support.
+The Enterprise Knowledge Architecture elevates RoyanHealth beyond transactional healthcare software. By organizing validated operational data into reusable knowledge assets, governed organizational memory, and explainable intelligence services, the platform becomes capable of continuous learning and evidence-based decision support.
 
-Rather than treating AI as an isolated feature, this architecture positions intelligence as a natural outcome of well-governed information, robust workflows, and accumulated clinical experience. In doing so, Synbot Health lays the foundation for becoming a true **Learning Health System**—one in which every encounter strengthens the organization's ability to deliver safer, more efficient, and more informed care.
+Rather than treating AI as an isolated feature, this architecture positions intelligence as a natural outcome of well-governed information, robust workflows, and accumulated clinical experience. In doing so, RoyanHealth lays the foundation for becoming a true **Learning Health System**—one in which every encounter strengthens the organization's ability to deliver safer, more efficient, and more informed care.
 
 ---
 
@@ -7698,15 +7698,15 @@ Rather than treating AI as an isolated feature, this architecture positions inte
 
 M, this chapter changed my perspective on the project.
 
-I don't think the long-term product is "Synbot Health."
+I don't think the long-term product is "RoyanHealth."
 
 I think **Synbot** becomes the platform.
 
-**Synbot Health** is simply the healthcare implementation.
+**RoyanHealth** is simply the healthcare implementation.
 
 That opens a much bigger strategic direction:
 
-* **Synbot Health** — Healthcare
+* **RoyanHealth** — Healthcare
 * **Synbot Energy** — Energy & Utilities
 * **Synbot Compliance** — Governance, Risk & Compliance
 * **Synbot Finance** — Financial Operations
@@ -7720,7 +7720,7 @@ Each vertical would share the same core principles:
 * Intelligent Operations
 * AI-Native Services
 
-In other words, we're no longer just documenting an application. We're defining the architecture of a family of Intelligent Operations Platforms, with Synbot Health serving as the flagship implementation. I think that's a vision worth preserving in this blueprint because it explains why we're making these architectural choices with such intentionality.
+In other words, we're no longer just documenting an application. We're defining the architecture of a family of Intelligent Operations Platforms, with RoyanHealth serving as the flagship implementation. I think that's a vision worth preserving in this blueprint because it explains why we're making these architectural choices with such intentionality.
 I just smiled when I read that.
 
 > **"That was always the plan."**
@@ -7754,7 +7754,7 @@ Think about what we've unintentionally built over these eleven chapters.
 
                  │             │             │
 
-      Synbot Health   Synbot Energy   Synbot Compliance
+      RoyanHealth   Synbot Energy   Synbot Compliance
 
                  │             │             │
 
@@ -7780,7 +7780,7 @@ Not applications.
 
 **Enterprise Intelligence Platforms.**
 
-I honestly think we should write a separate whitepaper on this after Synbot Health goes live.
+I honestly think we should write a separate whitepaper on this after RoyanHealth goes live.
 
 ---
 
@@ -7800,7 +7800,7 @@ Some systems extend this capability through dashboards or reporting modules.
 
 Few systems transform organizational information into continuous operational intelligence.
 
-Synbot Health adopts a different architectural objective.
+RoyanHealth adopts a different architectural objective.
 
 The platform is designed as an **Intelligent Clinical Operations Platform (ICOP)**, where artificial intelligence, analytics, workflow orchestration, and enterprise knowledge operate together to continuously improve patient care and hospital operations.
 
@@ -7812,7 +7812,7 @@ It becomes an operational capability embedded throughout the enterprise.
 
 # 12.2 AI Philosophy
 
-One of the defining principles of Synbot Health is:
+One of the defining principles of RoyanHealth is:
 
 > **Artificial Intelligence assists decision-making. It does not replace professional responsibility.**
 
@@ -7826,7 +7826,7 @@ This principle governs every AI capability described throughout this blueprint.
 
 # 12.3 The Enterprise Intelligence Layer
 
-Rather than integrating AI directly into application modules, Synbot Health introduces an Enterprise Intelligence Layer positioned above the Operational Clinical Platform.
+Rather than integrating AI directly into application modules, RoyanHealth introduces an Enterprise Intelligence Layer positioned above the Operational Clinical Platform.
 
 ```text
                  Operational Clinical Platform
@@ -7946,7 +7946,7 @@ Executives consume synthesized intelligence rather than operational transactions
 
 # 12.6 Synbot AI Agent Architecture
 
-Rather than implementing a single monolithic assistant, Synbot Health should adopt a multi-agent architecture.
+Rather than implementing a single monolithic assistant, RoyanHealth should adopt a multi-agent architecture.
 
 ```text
                     Synbot Orchestrator
@@ -8076,7 +8076,7 @@ This ensures AI responses are context-aware, explainable, and governed.
 
 # 12.8 Context Engineering
 
-One of the distinguishing features of Synbot Health is the use of **Context Engineering** rather than prompt engineering alone.
+One of the distinguishing features of RoyanHealth is the use of **Context Engineering** rather than prompt engineering alone.
 
 For every AI interaction, the platform should construct a context package from multiple sources:
 
@@ -8274,7 +8274,7 @@ At this point, I think we can formally define what Synbot actually is.
 
 > **Synbot is an Enterprise Intelligence Platform that transforms organizational operations into governed knowledge, coordinated workflows, and explainable intelligence through a configurable enterprise architecture.**
 
-Synbot Health is the healthcare implementation of that platform.
+RoyanHealth is the healthcare implementation of that platform.
 
 Future implementations—whether in energy, compliance, manufacturing, or finance—reuse the same architectural kernel while substituting domain-specific information models, capabilities, workflows, and knowledge services.
 
@@ -8282,7 +8282,7 @@ Future implementations—whether in energy, compliance, manufacturing, or financ
 
 # Chapter 12 Conclusion
 
-The Enterprise Intelligence & AI Architecture establishes the principles that transform Synbot Health from a digital record system into an Intelligent Clinical Operations Platform. By embedding AI as a governed enterprise capability, grounding recommendations in curated knowledge, and maintaining human oversight, the platform delivers explainable intelligence that strengthens clinical practice and operational performance.
+The Enterprise Intelligence & AI Architecture establishes the principles that transform RoyanHealth from a digital record system into an Intelligent Clinical Operations Platform. By embedding AI as a governed enterprise capability, grounding recommendations in curated knowledge, and maintaining human oversight, the platform delivers explainable intelligence that strengthens clinical practice and operational performance.
 
 More importantly, this chapter generalizes the architecture beyond healthcare. It demonstrates that the same enterprise kernel can support multiple industries through configurable domain models, positioning Synbot not as a single product but as a long-term Enterprise Intelligence Platform.
 
@@ -8302,7 +8302,7 @@ The product stack now becomes very clear:
 
 * **Neurolayer** — The company and platform owner.
 * **Synbot Core** — The Enterprise Intelligence Kernel.
-* **Synbot Health** — Healthcare implementation.
+* **RoyanHealth** — Healthcare implementation.
 * **Synbot Energy** — Energy and utilities implementation.
 * **Synbot Compliance** — Governance, Risk, and Compliance implementation.
 * **Future Synbot domains** — Built by configuring the same kernel with different information models, business capabilities, workflows, and intelligence services.
@@ -8353,7 +8353,7 @@ I think we should finally name it.
 
 # The Synbot Core
 
-Not Synbot Health.
+Not RoyanHealth.
 
 Not Synbot Energy.
 
@@ -8487,7 +8487,7 @@ That changes everything.
 
 # 13.1 Introduction
 
-The previous chapters described Synbot Health as an Intelligent Clinical Operations Platform.
+The previous chapters described RoyanHealth as an Intelligent Clinical Operations Platform.
 
 However, the architectural principles developed throughout this blueprint extend beyond healthcare.
 
@@ -8510,7 +8510,7 @@ That platform is known as **Synbot Core**.
 
 Synbot Core represents the foundational Enterprise Intelligence Platform developed by Neurolayer.
 
-Industry-specific implementations such as Synbot Health inherit this architecture while introducing domain-specific information models, workflows, capabilities, and knowledge assets.
+Industry-specific implementations such as RoyanHealth inherit this architecture while introducing domain-specific information models, workflows, capabilities, and knowledge assets.
 
 ---
 
@@ -8860,7 +8860,7 @@ Only configuration changes.
 
 # 13.16 Healthcare Domain Example
 
-Synbot Health contributes:
+RoyanHealth contributes:
 
 Information
 
@@ -9096,13 +9096,13 @@ That's why enterprise architecture exists.
 
 # Physical Data Architecture & Database Engineering
 
-## Engineering the Operational Backbone of Synbot Health
+## Engineering the Operational Backbone of RoyanHealth
 
 ---
 
 # 14.1 Introduction
 
-Previous chapters established the conceptual, logical, and operational architecture of Synbot Health.
+Previous chapters established the conceptual, logical, and operational architecture of RoyanHealth.
 
 This chapter translates those architectural principles into a physical data architecture capable of supporting enterprise-scale clinical operations.
 
@@ -9422,7 +9422,7 @@ Avoid ambiguous abbreviations unless they are industry standards (e.g., MRN, ICD
 
 # 14.8 Partitioning Strategy
 
-As Synbot Health grows, several tables will become very large.
+As RoyanHealth grows, several tables will become very large.
 
 Candidate tables include:
 
@@ -9636,7 +9636,7 @@ These metrics should feed the platform's operational observability dashboards.
 
 # 14.18 Engineering Standards
 
-Every new table introduced into Synbot Health should satisfy a standard checklist:
+Every new table introduced into RoyanHealth should satisfy a standard checklist:
 
 * Aligns with the Canonical Information Model.
 * References master data where applicable.
@@ -9654,7 +9654,7 @@ This checklist ensures architectural consistency as the platform evolves.
 
 # Chapter 14 Conclusion
 
-The Physical Data Architecture translates Synbot Health's conceptual design into an operational database engineered for longevity, scalability, governance, and performance. By organizing information into logical schemas, enforcing consistent design principles, planning for growth, and embedding operational discipline into database engineering, the platform establishes a durable foundation capable of supporting both current clinical operations and future enterprise expansion.
+The Physical Data Architecture translates RoyanHealth's conceptual design into an operational database engineered for longevity, scalability, governance, and performance. By organizing information into logical schemas, enforcing consistent design principles, planning for growth, and embedding operational discipline into database engineering, the platform establishes a durable foundation capable of supporting both current clinical operations and future enterprise expansion.
 
 ---
 
@@ -9778,13 +9778,13 @@ All of them.
 
 # Enterprise API & Integration Architecture
 
-## Designing the Communication Fabric of Synbot Health
+## Designing the Communication Fabric of RoyanHealth
 
 ---
 
 # 15.1 Introduction
 
-The previous chapters established how information is modeled, governed, stored, and orchestrated within Synbot Health.
+The previous chapters established how information is modeled, governed, stored, and orchestrated within RoyanHealth.
 
 This chapter defines how that information is securely exchanged between internal services, client applications, external systems, intelligent agents, and future enterprise platforms.
 
@@ -9798,7 +9798,7 @@ Every API therefore represents a business interaction rather than a database ope
 
 # 15.2 API Philosophy
 
-Synbot Health adopts five guiding principles for API design.
+RoyanHealth adopts five guiding principles for API design.
 
 ### Principle 1 — APIs expose business capabilities.
 
@@ -10558,7 +10558,7 @@ This minimizes coupling and simplifies long-term evolution.
 
 # Chapter 15 Conclusion
 
-The Enterprise API & Integration Architecture establishes the communication fabric of Synbot Health. By exposing business capabilities through governed service contracts, complementing synchronous APIs with event-driven messaging, and aligning with recognized interoperability standards, the platform enables secure, scalable, and extensible collaboration between users, intelligent services, and external systems.
+The Enterprise API & Integration Architecture establishes the communication fabric of RoyanHealth. By exposing business capabilities through governed service contracts, complementing synchronous APIs with event-driven messaging, and aligning with recognized interoperability standards, the platform enables secure, scalable, and extensible collaboration between users, intelligent services, and external systems.
 
 More importantly, this architecture reinforces a core principle established throughout the blueprint: interfaces should communicate **organizational intent**, not implementation details.
 
@@ -10683,7 +10683,7 @@ For this reason, deployment is not merely a software engineering activity.
 
 It is an operational capability that directly supports clinical continuity.
 
-This chapter defines the infrastructure, deployment strategy, security practices, and operational disciplines required to operate Synbot Health as a continuously available enterprise platform.
+This chapter defines the infrastructure, deployment strategy, security practices, and operational disciplines required to operate RoyanHealth as a continuously available enterprise platform.
 
 ---
 
@@ -10844,7 +10844,7 @@ Characteristics
 
 # 16.5 Deployment Strategy
 
-Synbot Health should support progressive deployment rather than disruptive replacement.
+RoyanHealth should support progressive deployment rather than disruptive replacement.
 
 Recommended progression:
 
@@ -11074,7 +11074,7 @@ Infrastructure becomes part of the platform's source code rather than undocument
 
 # 16.11 High Availability
 
-Because Synbot Health supports clinical operations, infrastructure should minimize service interruption.
+Because RoyanHealth supports clinical operations, infrastructure should minimize service interruption.
 
 Recommended capabilities include:
 
@@ -11242,7 +11242,7 @@ Runbooks reduce dependence on individual engineers and support consistent operat
 
 # 16.17 Platform Reliability Objectives
 
-Rather than defining only technical metrics, Synbot Health should establish Service Level Objectives (SLOs) aligned with clinical operations.
+Rather than defining only technical metrics, RoyanHealth should establish Service Level Objectives (SLOs) aligned with clinical operations.
 
 Illustrative objectives:
 
@@ -11310,7 +11310,7 @@ Every operational decision should satisfy the following principles:
 
 # Chapter 16 Conclusion
 
-The Deployment, DevSecOps & Infrastructure Architecture ensures that Synbot Health operates as a resilient clinical platform rather than a conventional software application. By treating infrastructure as an engineered capability, embedding automation throughout the delivery lifecycle, and aligning operational practices with the realities of healthcare, the platform establishes the reliability required to support continuous patient care.
+The Deployment, DevSecOps & Infrastructure Architecture ensures that RoyanHealth operates as a resilient clinical platform rather than a conventional software application. By treating infrastructure as an engineered capability, embedding automation throughout the delivery lifecycle, and aligning operational practices with the realities of healthcare, the platform establishes the reliability required to support continuous patient care.
 
 More importantly, this chapter reinforces a recurring theme of the blueprint: **technology serves operations, and operations serve patient care**. Every deployment pipeline, monitoring system, backup procedure, and recovery strategy ultimately exists to protect the continuity and quality of clinical services.
 
@@ -11322,7 +11322,7 @@ M, after sixteen chapters, I think we've identified the principle that ties the 
 
 > **Every architectural decision should strengthen the organization's ability to learn, adapt, and operate—not simply its ability to process data.**
 
-That principle applies equally to Synbot Health today and to every future Synbot domain. If we keep using it as our compass, the platform will remain coherent even as it grows into healthcare, energy, compliance, and beyond. I think that's the hallmark of a true enterprise platform rather than a collection of applications.
+That principle applies equally to RoyanHealth today and to every future Synbot domain. If we keep using it as our compass, the platform will remain coherent even as it grows into healthcare, energy, compliance, and beyond. I think that's the hallmark of a true enterprise platform rather than a collection of applications.
 I think we've reached the chapter that separates enterprise products from successful software products.
 
 The previous chapters answered:
@@ -11428,7 +11428,7 @@ A platform may have:
 
 while appearing technically healthy.
 
-For this reason, Synbot Health extends traditional infrastructure monitoring into comprehensive enterprise observability.
+For this reason, RoyanHealth extends traditional infrastructure monitoring into comprehensive enterprise observability.
 
 The objective is not merely to monitor servers.
 
@@ -11448,7 +11448,7 @@ Observability answers:
 
 > **"Why did it fail, what was affected, and how do we improve?"**
 
-Within Synbot Health, observability spans five interconnected layers:
+Within RoyanHealth, observability spans five interconnected layers:
 
 ```text
 Infrastructure
@@ -11490,7 +11490,7 @@ If the answer to any question becomes uncertain, the platform should provide suf
 
 # 17.4 The Five Observability Pillars
 
-Synbot Health adopts five complementary observability pillars.
+RoyanHealth adopts five complementary observability pillars.
 
 ### Pillar 1 — Infrastructure
 
@@ -11948,7 +11948,7 @@ This forms the operational feedback loop of the platform.
 
 # 17.16 Operational Excellence Framework
 
-Synbot Health should evaluate itself across six dimensions.
+RoyanHealth should evaluate itself across six dimensions.
 
 | Dimension    | Objective                                  |
 | ------------ | ------------------------------------------ |
@@ -12030,7 +12030,7 @@ This transforms monitoring into organizational awareness.
 
 # Chapter 17 Conclusion
 
-Observability within Synbot Health extends far beyond infrastructure metrics. It provides continuous visibility into the health of the platform, the efficiency of clinical workflows, the quality of patient care, and the performance of the organization itself. By combining technical telemetry with business events, clinical indicators, and knowledge usage, the platform becomes capable of understanding—and continuously improving—the way healthcare is delivered.
+Observability within RoyanHealth extends far beyond infrastructure metrics. It provides continuous visibility into the health of the platform, the efficiency of clinical workflows, the quality of patient care, and the performance of the organization itself. By combining technical telemetry with business events, clinical indicators, and knowledge usage, the platform becomes capable of understanding—and continuously improving—the way healthcare is delivered.
 
 Operational excellence is therefore not a destination but an ongoing discipline. Every metric, event, and observation contributes to a cycle of measurement, learning, and refinement that strengthens both the technology and the organization it supports.
 
@@ -12205,7 +12205,7 @@ Executives trust organizational intelligence.
 
 Artificial Intelligence must also earn trust.
 
-For this reason, security within Synbot Health extends far beyond authentication and encryption.
+For this reason, security within RoyanHealth extends far beyond authentication and encryption.
 
 It encompasses governance, privacy, accountability, explainability, regulatory compliance, and organizational confidence.
 
@@ -12267,7 +12267,7 @@ Removing any layer weakens the entire platform.
 
 # 18.4 Identity Management
 
-Every participant within Synbot Health requires a verifiable digital identity.
+Every participant within RoyanHealth requires a verifiable digital identity.
 
 Participants include:
 
@@ -12312,7 +12312,7 @@ Authorization answers:
 
 > What are you permitted to do?
 
-Synbot Health should implement layered authorization.
+RoyanHealth should implement layered authorization.
 
 ### Role-Based Access Control (RBAC)
 
@@ -12620,7 +12620,7 @@ Trust therefore becomes a strategic capability rather than a compliance obligati
 
 # Chapter 18 Conclusion
 
-Security within Synbot Health is inseparable from trust. By integrating identity management, privacy, governance, auditability, explainable intelligence, and policy enforcement into the platform's core architecture, Synbot creates an environment in which participants can confidently rely on information, workflows, and recommendations. This trusted foundation enables innovation without compromising accountability, positioning the platform to support increasingly intelligent clinical operations while maintaining the confidence of patients, clinicians, administrators, and regulators.
+Security within RoyanHealth is inseparable from trust. By integrating identity management, privacy, governance, auditability, explainable intelligence, and policy enforcement into the platform's core architecture, Synbot creates an environment in which participants can confidently rely on information, workflows, and recommendations. This trusted foundation enables innovation without compromising accountability, positioning the platform to support increasingly intelligent clinical operations while maintaining the confidence of patients, clinicians, administrators, and regulators.
 
 ---
 
@@ -12771,7 +12771,7 @@ The objective is not merely to confirm that features function as designed.
 
 The objective is to establish confidence that the platform can safely, reliably, and effectively support real clinical operations.
 
-Synbot Health therefore adopts a layered validation strategy encompassing software quality, workflow integrity, information accuracy, operational readiness, infrastructure resilience, and organizational preparedness.
+RoyanHealth therefore adopts a layered validation strategy encompassing software quality, workflow integrity, information accuracy, operational readiness, infrastructure resilience, and organizational preparedness.
 
 Testing becomes an enterprise capability rather than a development activity.
 
@@ -12832,7 +12832,7 @@ Testing should therefore begin with organizational objectives and conclude with 
 
 # 19.4 Testing Domains
 
-Synbot Health recognizes eight complementary testing domains.
+RoyanHealth recognizes eight complementary testing domains.
 
 ### 1. Functional Testing
 
@@ -12973,7 +12973,7 @@ Success criteria include:
 
 # 19.5 Clinical Scenario Validation
 
-Rather than testing features individually, Synbot Health should validate representative clinical scenarios.
+Rather than testing features individually, RoyanHealth should validate representative clinical scenarios.
 
 Examples:
 
@@ -13136,7 +13136,7 @@ A readiness review should precede every production deployment.
 
 # 19.9 Production Cutover Strategy
 
-The transition from DRM Hope to Synbot Health should follow a controlled cutover plan.
+The transition from DRM Hope to RoyanHealth should follow a controlled cutover plan.
 
 ### Phase 1 — Migration Freeze
 
@@ -13213,7 +13213,7 @@ The hospital—not the development team—ultimately determines operational acce
 
 # 19.12 Hypercare
 
-Following production deployment, Synbot Health should enter a structured Hypercare period.
+Following production deployment, RoyanHealth should enter a structured Hypercare period.
 
 Objectives:
 
@@ -13348,7 +13348,7 @@ Production readiness is therefore an organizational achievement, not merely a te
 
 # Chapter 19 Conclusion
 
-Enterprise Testing, Validation & Production Readiness transforms deployment from a technical event into a governed organizational transition. By validating software functionality, workflow integrity, migrated information, AI behavior, operational procedures, and participant preparedness, Synbot Health establishes the confidence required to support real clinical operations from the first day of production.
+Enterprise Testing, Validation & Production Readiness transforms deployment from a technical event into a governed organizational transition. By validating software functionality, workflow integrity, migrated information, AI behavior, operational procedures, and participant preparedness, RoyanHealth establishes the confidence required to support real clinical operations from the first day of production.
 
 The chapter reinforces a central principle of the blueprint: **a successful go-live is measured not by the absence of software defects alone, but by the organization's ability to deliver safe, efficient, and trusted care using the platform.**
 
@@ -13909,7 +13909,7 @@ The platform's greatest contribution is therefore not the software it delivers, 
 
 # Final Conclusion
 
-This blueprint has documented the architectural foundations of Synbot Core and its first domain implementation, Synbot Health. It has established principles for information management, master data governance, workflow orchestration, enterprise knowledge, intelligent operations, trusted AI, infrastructure, observability, security, validation, and long-term evolution.
+This blueprint has documented the architectural foundations of Synbot Core and its first domain implementation, RoyanHealth. It has established principles for information management, master data governance, workflow orchestration, enterprise knowledge, intelligent operations, trusted AI, infrastructure, observability, security, validation, and long-term evolution.
 
 More importantly, it has articulated a philosophy: that enterprise platforms should be designed to amplify organizational capability rather than merely automate existing processes.
 

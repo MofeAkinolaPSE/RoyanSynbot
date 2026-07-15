@@ -127,7 +127,7 @@ class CapabilityDiscoveryAgent(BaseAgent):
         try:
             from src.routers.cache_ui import get_shared_cache
             cache = get_shared_cache()
-            cache.set(self.name, insight, ttl_seconds=3600)  # 1-hour cache for capability data
+            cache.set(self.name, insight, ttl=3600)  # 1-hour cache for capability data
         except Exception as exc:
             logger.warning("capability_discovery: cache write failed: %s", exc)
 

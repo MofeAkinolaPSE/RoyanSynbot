@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import psycopg2.extras
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from src.db import db, audit_event, get_psycopg_dsn
 from src.middleware import verify_jwt, require_role

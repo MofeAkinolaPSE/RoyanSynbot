@@ -2,13 +2,10 @@ import { apiUrl } from "@/lib/api-base";
 
 type TokenResponse = {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   expires_in: number;
   roles: string[];
 };
-
-const REFRESH_TOKEN_KEY = "refresh_token";
 
 class AuthClient {
   private accessToken: string | null = null;
@@ -58,6 +55,7 @@ class AuthClient {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
+      credentials: "include", // required to receive/store the httpOnly refresh-token cookie
     });
     if (!res.ok) {
       this.lastAuthError = `login_failed:${res.status}`;
@@ -82,17 +80,13 @@ class AuthClient {
   }
 
   private async refreshInternal(signal?: AbortSignal): Promise<boolean> {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (!refreshToken) {
-      this.lastAuthError = "refresh_failed:no_refresh_token";
-      return false;
-    }
-
+    // The refresh token lives in an httpOnly cookie now — the browser sends it
+    // automatically (credentials: "include"), and JS can't read it to pre-check
+    // presence, so we always attempt the call and let the server say no.
     try {
       const res = await fetch(apiUrl("/refresh"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: "include",
         signal,
       });
       if (!res.ok) {
@@ -121,17 +115,13 @@ class AuthClient {
   }
 
   async logout(): Promise<void> {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (refreshToken) {
-      try {
-        await fetch(apiUrl("/logout"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-      } catch {
-        // Ignore network failures during local logout.
-      }
+    try {
+      await fetch(apiUrl("/logout"), {
+        method: "POST",
+        credentials: "include", // sends the refresh cookie so the server can revoke it and clear it
+      });
+    } catch {
+      // Ignore network failures during local logout.
     }
     this.clear();
   }
@@ -139,14 +129,12 @@ class AuthClient {
   private applyTokenResponse(data: TokenResponse): void {
     this.accessToken = data.access_token;
     this.roles = Array.isArray(data.roles) ? data.roles : [];
-    localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
     this.lastAuthError = null;
   }
 
   clear(): void {
     this.accessToken = null;
     this.roles = [];
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("auth:expired"));
     }

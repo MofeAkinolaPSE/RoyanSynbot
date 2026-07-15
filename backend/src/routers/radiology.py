@@ -1,5 +1,5 @@
 """
-Radiology Router — SynbotHealth / Royan Hospital
+Radiology Router — RoyanHealth / Royan Hospital
 ==================================================
 Imaging requests, worklist management, report entry, and TAT analytics.
 VistA Reference: Clinical Procedures / Imaging module.

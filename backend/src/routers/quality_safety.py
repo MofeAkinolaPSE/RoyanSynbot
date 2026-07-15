@@ -1,5 +1,5 @@
 """
-Quality & Safety Router — SynbotHealth / Royan Hospital
+Quality & Safety Router — RoyanHealth / Royan Hospital
 =========================================================
 Incident reporting, infection control surveillance, and HEFAMAA facility
 inspection checklist management.

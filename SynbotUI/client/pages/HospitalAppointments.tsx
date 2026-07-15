@@ -114,7 +114,7 @@ const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const today = new Date().toISOString().split("T")[0];
 const EMPTY_SLOT = { date: today, start_time: "08:00", end_time: "08:30", provider_name: "", department: "General OPD", capacity: 1 };
-const EMPTY_BOOK = { patient_id: "", slot_id: "", appointment_type: "consultation", notes: "" };
+const EMPTY_BOOK = { patient_id: "", slot_id: "", slot_date: today, appointment_type: "consultation", notes: "" };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function HospitalAppointments() {
@@ -194,6 +194,15 @@ export default function HospitalAppointments() {
     staleTime: 0,
   });
 
+  // Available slots for the Book Appointment modal's slot picker
+  const { data: bookSlotsData, isLoading: bookSlotsLoading } = useQuery({
+    queryKey: ["appointment-slots", "book", bookForm.slot_date],
+    queryFn: () => api.hospital.appointments.listSlots({ date: bookForm.slot_date }),
+    enabled: bookOpen,
+    staleTime: 15_000,
+  });
+  const bookSlots: Slot[] = Array.isArray(bookSlotsData?.slots) ? bookSlotsData.slots : Array.isArray(bookSlotsData) ? bookSlotsData : [];
+
   // Day view query
   const { data: dayData, isLoading: dayLoading } = useQuery({
     queryKey: ["appointments-day", dayView],
@@ -249,7 +258,10 @@ export default function HospitalAppointments() {
   });
 
   const bookMut = useMutation({
-    mutationFn: () => api.hospital.appointments.book(bookForm),
+    mutationFn: () => {
+      const { slot_date, ...payload } = bookForm;
+      return api.hospital.appointments.book(payload);
+    },
     onSuccess: () => {
       toast({ title: "Appointment booked" });
       setBookOpen(false);
@@ -743,11 +755,38 @@ export default function HospitalAppointments() {
           <div className="space-y-4 py-2">
             <div className="space-y-1">
               <Label>Patient MRN *</Label>
-              <Input value={bookForm.patient_id} onChange={e => setBookForm(f => ({ ...f, patient_id: e.target.value }))} placeholder="e.g. RHN-000001" />
+              <Input value={bookForm.patient_id} onChange={e => setBookForm(f => ({ ...f, patient_id: e.target.value }))} placeholder="e.g. RH2026000011" />
             </div>
             <div className="space-y-1">
-              <Label>Slot ID *</Label>
-              <Input value={bookForm.slot_id} onChange={e => setBookForm(f => ({ ...f, slot_id: e.target.value }))} placeholder="Slot UUID" />
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={bookForm.slot_date}
+                onChange={e => setBookForm(f => ({ ...f, slot_date: e.target.value, slot_id: "" }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Available Slot *</Label>
+              <Select
+                value={bookForm.slot_id}
+                onValueChange={v => setBookForm(f => ({ ...f, slot_id: v }))}
+                disabled={bookSlotsLoading || bookSlots.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={
+                    bookSlotsLoading ? "Loading slots..." : bookSlots.length === 0 ? "No slots available this date" : "Select a slot"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {bookSlots.map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.start_time?.slice(0, 5)}
+                      {s.provider_name ? ` — ${s.provider_name}` : ""}
+                      {s.department ? ` (${s.department})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Appointment Type</Label>
@@ -881,7 +920,11 @@ export default function HospitalAppointments() {
             <Button variant="outline" onClick={() => setNextSlotOpen(false)}>Close</Button>
             {nextSlotData?.slot && (
               <Button onClick={() => {
-                setBookForm(f => ({ ...f, slot_id: String(nextSlotData.slot.id ?? "") }));
+                setBookForm(f => ({
+                  ...f,
+                  slot_id: String(nextSlotData.slot.id ?? ""),
+                  slot_date: nextSlotData.slot.date ?? f.slot_date,
+                }));
                 setNextSlotOpen(false);
                 setBookOpen(true);
               }}>

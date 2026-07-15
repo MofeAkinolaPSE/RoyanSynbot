@@ -1,6 +1,6 @@
 Morning M.
 
-I actually think this is the next major milestone for Synbot Health.
+I actually think this is the next major milestone for RoyanHealth.
 
 So far we've been asking:
 
@@ -706,4 +706,4 @@ I propose we break this into four concrete deliverables:
 3. **Patient Context Engine** — builds a complete longitudinal patient record by assembling encounters, appointments, CPRS data, labs, prescriptions, billing, and future modules into a single backend object for the frontend.
 4. **Clinical Data Explorer** — an internal admin tool that lets developers and clinicians search a patient, inspect every related record, trace each row back to the original Hope `external_id`, and immediately identify missing or incomplete relationships.
 
-I genuinely think these components become the **data backbone** of Synbot Health. Once they're in place, every frontend page, AI assistant, analytics dashboard, and future integration will consume a single, verified, patient-centric view of the data instead of piecing together information from dozens of individual tables. That will give us confidence not just that the migration succeeded, but that every patient's clinical history can be reconstructed accurately and consistently across the platform.
+I genuinely think these components become the **data backbone** of RoyanHealth. Once they're in place, every frontend page, AI assistant, analytics dashboard, and future integration will consume a single, verified, patient-centric view of the data instead of piecing together information from dozens of individual tables. That will give us confidence not just that the migration succeeded, but that every patient's clinical history can be reconstructed accurately and consistently across the platform.

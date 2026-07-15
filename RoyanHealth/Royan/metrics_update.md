@@ -139,7 +139,7 @@ From your audit docs:
 
 ---
 
-## Hospital Version (Synbot Health)
+## Hospital Version (RoyanHealth)
 
 ```text
 Dashboard
@@ -249,7 +249,7 @@ Here’s the structured prompt you can feed directly:
 ---
 
 SYSTEM GOAL:
-Design and restructure Synbot Health dashboards and navigation to reflect a hospital-first operational system instead of a finance-first system.
+Design and restructure RoyanHealth dashboards and navigation to reflect a hospital-first operational system instead of a finance-first system.
 
 CONTEXT:
 This system will be used by hospital leadership (CMD), doctors, nurses, and admin staff. The primary focus is patient flow, clinical activity, and operational efficiency—not financial reporting.

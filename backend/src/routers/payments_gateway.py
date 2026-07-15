@@ -1,5 +1,5 @@
 """
-Payments Router — SynbotHealth / Royan Hospital
+Payments Router — RoyanHealth / Royan Hospital
 =================================================
 Paystack and Flutterwave payment gateway integration with stub fallback.
 All payment transactions are persisted to royan_payment_transactions.

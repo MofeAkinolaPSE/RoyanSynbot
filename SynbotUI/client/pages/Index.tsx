@@ -33,7 +33,7 @@ export default function Index() {
     <div className="pw-page-surface min-h-screen flex items-center justify-center">
       <div className="text-center">
         <h1 className="text-2xl font-semibold text-foreground">
-          Royan Hospital — SynbotHealth
+          Royan Hospital — RoyanHealth
         </h1>
         {fetchError ? (
           <div className="mt-4 mx-auto max-w-md rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-left">

@@ -1,5 +1,5 @@
 """
-Pharmacy Dispensing Router — SynbotHealth / Royan Hospital
+Pharmacy Dispensing Router — RoyanHealth / Royan Hospital
 ============================================================
 Manages prescriptions and dispensing records.
 
@@ -139,7 +139,18 @@ async def list_prescriptions(
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
-    query = db.table(TABLE_PRESCRIPTIONS).select("*").order("prescribed_at", desc=True).limit(limit)
+    # Exclude Hope-imported placeholder rows (drug_name "Imported prescription",
+    # external_source "hope") from every live prescriptions view — same convention
+    # as list_encounters. These are low-fidelity historical import rows with no
+    # real drug data, left in "pending" status forever; they were drowning out
+    # actual current prescriptions in the pharmacy queue.
+    query = (
+        db.table(TABLE_PRESCRIPTIONS)
+        .select("*")
+        .is_("external_source", None)
+        .order("prescribed_at", desc=True)
+        .limit(limit)
+    )
     if encounter_id:
         query = query.eq("encounter_id", encounter_id)
     if patient_id:
@@ -420,11 +431,8 @@ async def get_encounter_mar(encounter_id: int, user=Depends(verify_jwt)):
 
 class AllergyCreate(BaseModel):
     allergen: str = Field(..., min_length=1, max_length=200)
-    allergen_type: str = "drug"   # drug | food | environmental | other
-    severity: str = "moderate"   # mild | moderate | severe | life_threatening
+    severity: str = "moderate"   # mild | moderate | severe | unknown
     reaction: Optional[str] = None
-    onset_date: Optional[str] = None
-    notes: Optional[str] = None
 
     model_config = {"extra": "ignore"}
 
@@ -432,17 +440,21 @@ class AllergyCreate(BaseModel):
 @router.get("/allergies/{patient_id}")
 async def list_allergies(patient_id: int, user=Depends(verify_jwt)):
     """List documented allergies for a patient."""
-    result = db.table(TABLE_ALLERGIES).select("*").eq("patient_id", patient_id).eq("active", True).order("created_at", desc=True).execute()
+    result = db.table(TABLE_ALLERGIES).select("*").eq("patient_id", patient_id).eq("status", "active").order("created_at", desc=True).execute()
     return {"allergies": result.data or [], "count": len(result.data or [])}
 
 
 @router.post("/allergies/{patient_id}", status_code=201)
 async def add_allergy(patient_id: int, payload: AllergyCreate, user=Depends(verify_jwt)):
     """Record a new allergy for a patient."""
-    data = payload.model_dump(exclude_none=True)
-    data["patient_id"] = patient_id
-    data["recorded_by"] = user.get("sub") or "system"
-    data["active"] = True
+    data = {
+        "patient_id": patient_id,
+        "allergen": payload.allergen,
+        "severity": payload.severity,
+        "reaction": payload.reaction,
+        "recorded_by": user.get("sub") or "system",
+        "status": "active",
+    }
     try:
         result = db.table(TABLE_ALLERGIES).insert(data).execute()
     except Exception as exc:
@@ -458,7 +470,7 @@ async def remove_allergy(allergy_id: int, user=Depends(verify_jwt)):
     r = db.table(TABLE_ALLERGIES).select("id").eq("id", allergy_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Allergy record {allergy_id} not found")
-    db.table(TABLE_ALLERGIES).update({"active": False}).eq("id", allergy_id).execute()
+    db.table(TABLE_ALLERGIES).update({"status": "resolved"}).eq("id", allergy_id).execute()
     audit_event("allergy_removed", {}, actor_id=user.get("sub"), subject_type="allergy", subject_id=str(allergy_id))
     return {"ok": True, "allergy_id": allergy_id}
 

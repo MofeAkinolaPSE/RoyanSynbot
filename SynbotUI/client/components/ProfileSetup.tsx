@@ -195,7 +195,7 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
         {/* ── Step 1: Identity ── */}
         {step === 1 && (
           <div>
-            <h2 className="mb-1 text-xl font-semibold">Welcome to Synbot Health</h2>
+            <h2 className="mb-1 text-xl font-semibold">Welcome to RoyanHealth</h2>
             <p className="mb-6 text-sm text-muted-foreground">Let's confirm your details so Roy knows exactly who it's working with.</p>
             <div className="space-y-4">
               <div>
@@ -268,7 +268,7 @@ const ProfileSetup = ({ initialData, onComplete }: ProfileSetupProps) => {
         {step === 3 && (
           <div>
             <h2 className="mb-1 text-xl font-semibold">Your Quick-Start Guide</h2>
-            <p className="mb-4 text-sm text-muted-foreground">Here are the key areas of Synbot Health for your role.</p>
+            <p className="mb-4 text-sm text-muted-foreground">Here are the key areas of RoyanHealth for your role.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {guideCards.map((card) => (
                 <div key={card.title} className="flex items-start gap-3 rounded-xl border border-border/50 bg-muted/20 p-3">

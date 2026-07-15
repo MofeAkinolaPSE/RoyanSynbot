@@ -1,4 +1,4 @@
-"""MDM master data loader — Chapter 4 of Synbot Health Blueprint.
+"""MDM master data loader — Chapter 4 of RoyanHealth Blueprint.
 
 Upserts all master reference entities to PostgreSQL before operational
 entities are loaded. Returns lookup maps used by enrichment_loader to

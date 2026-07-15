@@ -479,7 +479,7 @@ class CapabilityDiscoveryEngine:
         cycle = 0
         while True:
             try:
-                result = run_discovery_cycle()
+                result = await asyncio.to_thread(run_discovery_cycle)
                 logger.info(
                     "capability_discovery: signals=%d proposals_created=%d",
                     result.get("signals_ingested", 0),

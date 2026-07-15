@@ -1,6 +1,6 @@
 function myFunction() {
   /**
-   * SynbotHealth — Royan Hospital System Requirements
+   * RoyanHealth — Royan Hospital System Requirements
    *
    * HOW TO USE:
    * 1. Go to https://script.google.com → New project
@@ -10,12 +10,12 @@ function myFunction() {
    * 5. Wait ~30 seconds → open "Execution log" → copy the form URLs
    */
 
-  var BOT_NAME    = "SynbotHealth";
+  var BOT_NAME    = "RoyanHealth";
   var CLIENT_NAME = "Royan Hospital";
 
   function buildHospitalForm() {
-    var form = FormApp.create("SynbotHealth — Royan Hospital System Requirements");
-    form.setDescription("This questionnaire helps the SynbotHealth team understand exactly how Royan Hospital operates today — and where you want the system to take you. Answers will directly shape the modules we configure, the workflows we automate, and the integrations we prioritise. Estimated time: 25–35 minutes.");
+    var form = FormApp.create("RoyanHealth — Royan Hospital System Requirements");
+    form.setDescription("This questionnaire helps the RoyanHealth team understand exactly how Royan Hospital operates today — and where you want the system to take you. Answers will directly shape the modules we configure, the workflows we automate, and the integrations we prioritise. Estimated time: 25–35 minutes.");
     form.setCollectEmail(false);
     form.setIsQuiz(false);
 
@@ -51,7 +51,7 @@ function myFunction() {
       .setChoiceValues(["None", "1–3", "4–10", "More than 10"]);
 
     form.addMultipleChoiceItem()
-      .setTitle("Target go-live timeline for SynbotHealth")
+      .setTitle("Target go-live timeline for RoyanHealth")
       .setChoiceValues(["ASAP (within 1 month)", "1–3 months", "3–6 months", "6–12 months", "Flexible / not yet decided"]);
 
     // ── Department sections ────────────────────────────────
@@ -70,7 +70,7 @@ function myFunction() {
       .setChoiceValues(["Yes, consistently", "Yes, but inconsistently applied", "No"]);
 
     form.addCheckboxItem()
-      .setTitle("Which of the following registration capabilities do you want SynbotHealth to handle?")
+      .setTitle("Which of the following registration capabilities do you want RoyanHealth to handle?")
       .setChoiceValues(["Automated MRN generation", "Digital registration form (no paper)", "Returning patient lookup", "Duplicate record detection", "Patient photo capture", "Next-of-kin & emergency contact capture", "HMO / insurance details at registration", "Patient consent form (digital)", "Patient-facing registration kiosk / QR self-check-in"]);
 
     form.addScaleItem()
@@ -93,10 +93,10 @@ function myFunction() {
 
     form.addCheckboxItem()
       .setTitle("Which appointment booking channels do you currently offer? (select all that apply)")
-      .setChoiceValues(["Phone / front desk", "Walk-in (no appointment)", "WhatsApp booking", "Website / online form", "SynbotHealth AI chat booking"]);
+      .setChoiceValues(["Phone / front desk", "Walk-in (no appointment)", "WhatsApp booking", "Website / online form", "RoyanHealth AI chat booking"]);
 
     form.addCheckboxItem()
-      .setTitle("Which queue & appointment features do you want SynbotHealth to provide?")
+      .setTitle("Which queue & appointment features do you want RoyanHealth to provide?")
       .setChoiceValues(["Real-time digital queue display", "SMS/WhatsApp queue notifications", "Online appointment booking portal", "Doctor-specific scheduling", "Appointment reminders (SMS/email)", "Triage-based queue priority", "Multi-department queue routing", "No-show tracking & rescheduling", "Daily appointment dashboard for staff", "Specialty clinic scheduling (Cardiology, OB/GYN, etc.)"]);
 
     form.addScaleItem()
@@ -118,7 +118,7 @@ function myFunction() {
       .setChoiceValues(["Manual paper triage and records", "Paper triage + basic computer logging", "Semi-digital (some parts on software)", "Fully digital ED management"]);
 
     form.addCheckboxItem()
-      .setTitle("Which A&E capabilities do you want SynbotHealth to support?")
+      .setTitle("Which A&E capabilities do you want RoyanHealth to support?")
       .setChoiceValues(["Digital triage assessment form", "Emergency queue bypass", "Real-time A&E patient tracking board", "ED-to-ward admission workflow", "Ambulance dispatch and arrival logging", "A&E disposition tracking", "Resuscitation and code alerts", "ED wait time monitoring", "Emergency medication administration log"]);
 
     form.addScaleItem()
@@ -188,7 +188,7 @@ function myFunction() {
       .setChoiceValues(["Full Blood Count (FBC)", "Liver Function Tests (LFT)", "Kidney Function Tests (KFT / U&E)", "Blood glucose / HbA1c", "Lipid profile / cholesterol", "Urine analysis (dipstick + microscopy)", "Malaria RDT / microscopy", "HIV screening", "Pregnancy test (urine / serum)", "Culture & sensitivity (microbiology)", "Blood grouping & cross-matching", "Hepatitis B & C serology", "Widal test (typhoid)", "Semen analysis", "Thyroid function tests (TFT)", "Hormonal assays (FSH, LH, Prolactin, etc.)", "Point-of-care testing (bedside glucometer, etc.)", "Send-out / outsourced tests (reference lab)"]);
 
     form.addCheckboxItem()
-      .setTitle("Which laboratory management features do you want SynbotHealth to provide?")
+      .setTitle("Which laboratory management features do you want RoyanHealth to provide?")
       .setChoiceValues(["Electronic lab order from doctor's workstation", "Sample collection & tracking (specimen log)", "Digital result entry by lab scientist", "Critical result alerts", "Patient result notification (SMS)", "Reference range display", "Lab TAT (turnaround time) monitoring", "Cumulative result history view", "LOINC / standard test coding", "Send-out specimen tracking", "Lab workload reporting"]);
 
     form.addScaleItem()
@@ -236,7 +236,7 @@ function myFunction() {
       .setChoiceValues(["Fully manual (paper prescriptions, paper stock book)", "Paper prescriptions + basic Excel stock tracking", "Standalone pharmacy software (not connected to clinical system)", "Integrated pharmacy module"]);
 
     form.addCheckboxItem()
-      .setTitle("Which pharmacy management features do you need SynbotHealth to provide?")
+      .setTitle("Which pharmacy management features do you need RoyanHealth to provide?")
       .setChoiceValues(["Electronic prescription reception", "Drug inventory & stock management", "Drug-drug interaction checking", "Allergy / contraindication checking", "Dispensing confirmation & patient notification", "Outpatient prescription tracking", "Inpatient medication administration integration", "Controlled substance register", "Automatic ward stock replenishment", "Drug return / wastage logging", "Supplier purchase order management", "Chronic prescription / repeat refill management", "Pharmacy revenue reporting", "National Drug File / formulary management"]);
 
     form.addScaleItem()
@@ -350,7 +350,7 @@ function myFunction() {
       .setChoiceValues(["Manual paper bills / receipts", "Excel-based invoicing", "Standalone billing software (not connected to clinical system)", "Integrated billing module in HMS"]);
 
     form.addCheckboxItem()
-      .setTitle("Which billing and finance features do you need SynbotHealth to provide?")
+      .setTitle("Which billing and finance features do you need RoyanHealth to provide?")
       .setChoiceValues(["Automatic bill generation from clinical orders", "HMO pre-authorisation request", "HMO claim submission & tracking", "Co-payment calculation", "Multiple payment method receipt (cash, POS, transfer)", "Inpatient running bill (live balance)", "Itemised invoice / discharge bill", "Outstanding debt / credit management", "Petty cash / staff cash drawer reconciliation", "Financial reporting (daily revenue, monthly P&L summary)", "Consultation fee schedule management", "Waiver / discount authorisation workflow", "Indigent patient support tracking"]);
 
     form.addParagraphTextItem()
@@ -430,7 +430,7 @@ function myFunction() {
     // 📱 Digital & Patient Engagement
     form.addPageBreakItem()
       .setTitle("📱 Digital & Patient Engagement")
-      .setHelpText("Covers online patient-facing features — self-service, telemedicine, notifications, and the SynbotHealth AI assistant.");
+      .setHelpText("Covers online patient-facing features — self-service, telemedicine, notifications, and the RoyanHealth AI assistant.");
 
     form.addMultipleChoiceItem()
       .setTitle("Does Royan Hospital currently offer any digital / online patient services?")
@@ -438,7 +438,7 @@ function myFunction() {
 
     form.addCheckboxItem()
       .setTitle("Which digital patient engagement features interest you?")
-      .setChoiceValues(["AI chatbot (SynbotHealth) for patient enquiries", "WhatsApp appointment booking via SynbotHealth", "Online patient registration / pre-registration", "Patient portal (view results, history, prescriptions)", "SMS / WhatsApp appointment reminders", "Telemedicine / video consultation", "Patient satisfaction surveys (post-visit)", "Health tips and campaign messaging", "Digital queue number on patient's phone", "Bill payment via mobile money / online transfer"]);
+      .setChoiceValues(["AI chatbot (RoyanHealth) for patient enquiries", "WhatsApp appointment booking via RoyanHealth", "Online patient registration / pre-registration", "Patient portal (view results, history, prescriptions)", "SMS / WhatsApp appointment reminders", "Telemedicine / video consultation", "Patient satisfaction surveys (post-visit)", "Health tips and campaign messaging", "Digital queue number on patient's phone", "Bill payment via mobile money / online transfer"]);
 
     form.addScaleItem()
       .setTitle("How high a priority is digital / patient-facing technology for Royan Hospital's strategy?")
@@ -482,10 +482,10 @@ function myFunction() {
 
     form.addMultipleChoiceItem()
       .setTitle("What is your preference for system deployment?")
-      .setChoiceValues(["Cloud-hosted (SynbotHealth manages servers — lower upfront cost)", "On-premise server in hospital (hospital manages hardware)", "Hybrid (critical data on-premise, reporting in cloud)", "No preference / need guidance"]);
+      .setChoiceValues(["Cloud-hosted (RoyanHealth manages servers — lower upfront cost)", "On-premise server in hospital (hospital manages hardware)", "Hybrid (critical data on-premise, reporting in cloud)", "No preference / need guidance"]);
 
     form.addCheckboxItem()
-      .setTitle("Which external systems or services would you want SynbotHealth to integrate with?")
+      .setTitle("Which external systems or services would you want RoyanHealth to integrate with?")
       .setChoiceValues(["HMO / insurance portals (claim submission API)", "NHIA (National Health Insurance Authority) portal", "Paystack / Flutterwave (online payment)", "WhatsApp Business API", "SMS gateway (bulk SMS for notifications)", "LIMS (existing lab equipment data export)", "PACS / digital imaging viewer", "Accounting software (QuickBooks, Sage, etc.)", "NHIA / HMIS government reporting portal", "Biometric / fingerprint authentication"]);
 
     form.addParagraphTextItem()
@@ -495,7 +495,7 @@ function myFunction() {
     // 💾 Current HMS — DRM Hope Configuration
     form.addPageBreakItem()
       .setTitle("💾 Current HMS — DRM Hope Configuration")
-      .setHelpText("DRM Hope is your current Hospital Management System. These answers determine exactly how SynbotHealth connects to it — via REST API, ODBC database bridge, or HL7 FHIR — and which data is already tracked in Hope so we know what to read versus what to build fresh.");
+      .setHelpText("DRM Hope is your current Hospital Management System. These answers determine exactly how RoyanHealth connects to it — via REST API, ODBC database bridge, or HL7 FHIR — and which data is already tracked in Hope so we know what to read versus what to build fresh.");
 
     form.addMultipleChoiceItem()
       .setTitle("Which edition of DRM Hope is installed at Royan Hospital?")
@@ -531,7 +531,7 @@ function myFunction() {
   // =============================================================================
 
   function createForm() {
-    Logger.log("SynbotHealth — Royan Hospital System Requirements");
+    Logger.log("RoyanHealth — Royan Hospital System Requirements");
     var form = buildHospitalForm();
     Logger.log("\n\u2713 Form created!");
     Logger.log("  Edit URL:      " + form.getEditUrl());

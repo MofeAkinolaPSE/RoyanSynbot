@@ -1,5 +1,5 @@
 -- Auth tables for JWT + refresh token rotation
--- SynbotHealth — Royan Hospital
+-- RoyanHealth — Royan Hospital
 
 ROLLBACK; -- clear any prior aborted transaction
 BEGIN;

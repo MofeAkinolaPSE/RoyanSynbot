@@ -25,7 +25,7 @@ import {
   Receipt, Activity, Plus, CalendarPlus, MessageSquare, UserCheck,
   ChevronRight, FileText, Loader2, ListChecks, ShieldAlert, CheckCircle2,
   XCircle, PenLine, Thermometer, TrendingUp, ClipboardCheck, Upload, Send,
-  Scissors, ScanLine, Eye, NotebookPen,
+  Scissors, ScanLine, Eye, NotebookPen, Megaphone, CalendarClock, Bell, Syringe,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api-client";
@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CoverageQuote } from "@/components/CoverageQuote";
 import { AlertBanner } from "@/components/AlertBanner";
 import { AllergyBanner } from "@/components/AllergyBanner";
+import { CoverSheetWidget } from "@/components/patient/CoverSheetWidget";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -78,10 +79,14 @@ interface ProfileData {
   patient: Patient & { insurance?: Insurance; current_encounter?: any };
   insurance?: Insurance;
   active_encounter?: Record<string, any>;
+  last_encounter?: Record<string, any>;
   encounters: any[];
   lab_orders: any[];
   prescriptions: any[];
   bills: any[];
+  appointments: any[];
+  postings: any[];
+  immunisations: any[];
   timeline: TimelineItem[];
 }
 
@@ -91,6 +96,35 @@ function calcAge(dob?: string): string {
   if (!dob) return "—";
   const years = new Date().getFullYear() - new Date(dob).getFullYear();
   return `${years} yrs`;
+}
+
+// Hope's historical dump never captured the actual drug/test name for
+// pharmacy or lab records (its "pharmacy" export turned out to be billing
+// invoice data with no medication fields at all, and lab orders only carry
+// an internal catalog ID) — the ETL writes these exact sentinel strings when
+// the source has nothing to map. Render them as an honest "no detail
+// captured" state instead of fake-looking clinical content a clinician could
+// mistake for real dosing/test information.
+const HOPE_PLACEHOLDER_NAMES = new Set(["Imported prescription", "Imported lab order"]);
+function isPlaceholderRecord(name: string | undefined, source: string | undefined): boolean {
+  return source === "hope" && !!name && HOPE_PLACEHOLDER_NAMES.has(name);
+}
+
+// Same root cause, a different shape: Hope's dump resolves "who" (a doctor,
+// orderer, prescriber) to either a bare internal numeric ID (appointment
+// slots' doctor_name, most of lab_orders.ordered_by) or a generic ETL-bot
+// sentinel ("hope_ingest", all of prescriptions.prescribed_by — the source
+// never captured a real prescriber at all). Showing either as if it were a
+// real name is misleading; label them honestly until the reference/catalog
+// tables get re-extracted from Hope to resolve the IDs to real names.
+function isRawIdAttribution(value: string | undefined | null): boolean {
+  return !!value && /^\d+$/.test(value.trim());
+}
+function formatAttribution(value: string | undefined | null): string | null {
+  if (!value) return null;
+  if (value === "hope_ingest") return "Not recorded by source system";
+  if (isRawIdAttribution(value)) return `Staff ID ${value} (name not yet resolved)`;
+  return value;
 }
 
 function fmtDate(ts?: string): string {
@@ -114,29 +148,6 @@ function waitMins(ts?: string): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-const ENCOUNTER_STATUS_COLORS: Record<string, string> = {
-  patient_registered:  "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  triaged:             "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  consulting:          "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  lab_ordered:         "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  pharmacy_dispensing: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  billing_pending:     "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  discharged:          "bg-green-500/20 text-green-400 border-green-500/30",
-};
-
-const TYPE_ICONS: Record<string, React.ElementType> = {
-  encounter:    Stethoscope,
-  lab_order:    FlaskConical,
-  prescription: Pill,
-  bill:         Receipt,
-};
-
-const TYPE_COLORS: Record<string, string> = {
-  encounter:    "bg-blue-500/20 text-blue-400",
-  lab_order:    "bg-purple-500/20 text-purple-400",
-  prescription: "bg-orange-500/20 text-orange-400",
-  bill:         "bg-green-500/20 text-green-400",
-};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -147,86 +158,6 @@ function InfoRow({ label, value, icon: Icon }: { label: string; value?: string |
       <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="truncate font-medium">{value || "—"}</p>
-      </div>
-    </div>
-  );
-}
-
-function TimelineCard({ item }: { item: TimelineItem }) {
-  const Icon = TYPE_ICONS[item.type] ?? FileText;
-  const colorCls = TYPE_COLORS[item.type] ?? "bg-slate-500/20 text-slate-400";
-  const r = item.record;
-
-  return (
-    <div className="flex gap-3">
-      {/* Dot + line */}
-      <div className="flex flex-col items-center">
-        <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full", colorCls)}>
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-        <div className="w-px flex-1 bg-border/50 mt-1" />
-      </div>
-
-      {/* Content */}
-      <div className="mb-4 min-w-0 flex-1 rounded-xl border border-border/60 bg-card p-3 shadow-sm">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold capitalize text-foreground">
-            {item.type.replace(/_/g, " ")}
-          </span>
-          <span className="text-[11px] text-muted-foreground">{fmtDateTime(item.timestamp)}</span>
-        </div>
-
-        {item.type === "encounter" && (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={cn("text-xs capitalize", ENCOUNTER_STATUS_COLORS[r.status] ?? "")}>
-                {(r.status ?? "").replace(/_/g, " ")}
-              </Badge>
-              {r.encounter_type && <span className="capitalize">{r.encounter_type}</span>}
-              {r.department && <span>· {r.department}</span>}
-            </div>
-            {r.chief_complaint && <p className="mt-1">{r.chief_complaint}</p>}
-            {r.discharge_summary && (
-              <p className="mt-1 border-t border-border/50 pt-1 text-foreground/70">{r.discharge_summary}</p>
-            )}
-          </div>
-        )}
-
-        {item.type === "lab_order" && (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">{r.test_name ?? "Lab Test"}</p>
-            <div className="flex gap-2">
-              {r.urgency && <span className="capitalize">{r.urgency}</span>}
-              {r.status && <Badge variant="outline" className="text-[10px] capitalize">{r.status.replace(/_/g, " ")}</Badge>}
-            </div>
-            {r.result_value && <p className="mt-1">Result: <strong>{r.result_value}</strong> {r.result_unit ?? ""}</p>}
-            {r.interpretation && <p>{r.interpretation}</p>}
-          </div>
-        )}
-
-        {item.type === "prescription" && (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">{r.drug_name ?? "Prescription"}</p>
-            <div className="flex gap-2 flex-wrap">
-              {r.dosage && <span>{r.dosage}</span>}
-              {r.frequency && <span>· {r.frequency}</span>}
-              {r.duration && <span>· {r.duration}</span>}
-            </div>
-            {r.status && <Badge variant="outline" className="text-[10px] capitalize">{r.status.replace(/_/g, " ")}</Badge>}
-          </div>
-        )}
-
-        {item.type === "bill" && (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <div className="flex items-center justify-between">
-              <span>Total: <strong className="text-foreground">₦{Number(r.total_amount ?? 0).toLocaleString()}</strong></span>
-              {r.status && <Badge variant="outline" className="text-[10px] capitalize">{r.status}</Badge>}
-            </div>
-            {r.hmo_covered > 0 && (
-              <p>HMO: ₦{Number(r.hmo_covered ?? 0).toLocaleString()} · Patient: ₦{Number((r.total_amount ?? 0) - (r.hmo_covered ?? 0)).toLocaleString()}</p>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -243,7 +174,24 @@ export default function PatientProfile() {
   const [encounterOpen, setEncounterOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [rxOpen, setRxOpen] = useState(false);
-  const [mainTab, setMainTab] = useState<"timeline" | "problems" | "meds" | "orders" | "notes" | "labs" | "surgery" | "vitals" | "consent" | "specialist">("timeline");
+  const [mainTab, setMainTab] = useState<"timeline" | "problems" | "meds" | "orders" | "notes" | "labs" | "surgery" | "consent" | "specialist">("timeline");
+  const [vitalsDialogOpen, setVitalsDialogOpen] = useState(false);
+  // Generic "view full record" popup shared by every Cover Sheet card —
+  // each card builds its own [label, value] rows at click time so this one
+  // dialog covers appointments/visits, meds, labs, reminders, and
+  // immunizations without repeating the same dialog shell 5 times.
+  const [recordDetail, setRecordDetail] = useState<{ title: string; subtitle?: string; rows: [string, any][] } | null>(null);
+  const [postingOpen, setPostingOpen] = useState(false);
+  const [postingForm, setPostingForm] = useState({ posting_type: "alert", message: "", severity: "info" });
+  const [immunisationOpen, setImmunisationOpen] = useState(false);
+  const [immunisationForm, setImmunisationForm] = useState({ vaccine_name: "", dose_number: "", site: "" });
+  const [allergyOpen, setAllergyOpen] = useState(false);
+  const [allergyForm, setAllergyForm] = useState({ allergen: "", severity: "moderate", reaction: "" });
+  const [editPatientOpen, setEditPatientOpen] = useState(false);
+  const [editPatientForm, setEditPatientForm] = useState({
+    phone: "", address: "", next_of_kin_name: "", next_of_kin_phone: "",
+    blood_group: "", genotype: "", allergies: "",
+  });
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteForm, setNoteForm] = useState({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "" });
   const [problemOpen, setProblemOpen] = useState(false);
@@ -261,6 +209,14 @@ export default function PatientProfile() {
     drug_name: "", frequency: "twice daily", dosage: "", duration: "5 days", route: "oral",
   });
 
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpForm, setFollowUpForm] = useState({
+    slot_date: new Date().toISOString().split("T")[0],
+    slot_id: "",
+    appointment_type: "follow_up",
+    notes: "",
+  });
+
   const [docUploadOpen, setDocUploadOpen]   = useState(false);
   const [referralOpen, setReferralOpen]     = useState(false);
   const [uploadedFile, setUploadedFile]     = useState<File | null>(null);
@@ -273,6 +229,12 @@ export default function PatientProfile() {
     queryKey: ["patient-profile", mrn],
     queryFn: () => api.hospital.patients.profile(mrn!),
     enabled: !!mrn,
+    // Override the global 3-minute staleTime/refetchOnMount:false defaults (App.tsx)
+    // for this page specifically — active_encounter drives which action buttons are
+    // enabled, and a stale snapshot here made freshly-created encounters invisible,
+    // pushing users toward opening duplicate encounters.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const patient = data?.patient;
@@ -285,8 +247,15 @@ export default function PatientProfile() {
       patient_id: patient?.mrn ?? patient?.id,
       ...encounterForm,
     }),
-    onSuccess: () => {
-      toast({ title: "Encounter opened", description: `${patient?.first_name} added to the clinical queue.` });
+    onSuccess: (res: any) => {
+      if (res?.already_active) {
+        toast({
+          title: "Encounter already open",
+          description: `${patient?.first_name} already has an active encounter${res.encounter?.queue_number ? ` (${res.encounter.queue_number})` : ""} — using that one instead of opening a duplicate.`,
+        });
+      } else {
+        toast({ title: "Encounter opened", description: `${patient?.first_name} added to the clinical queue.` });
+      }
       setEncounterOpen(false);
       setEncounterForm({ encounter_type: "outpatient", department: "OPD", chief_complaint: "" });
       void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
@@ -327,14 +296,44 @@ export default function PatientProfile() {
   });
 
   // Discharge mutation
+  const [dischargeOpen, setDischargeOpen] = useState(false);
+  const [dischargeForm, setDischargeForm] = useState({ disposition: "home", discharge_summary: "" });
   const dischargeMut = useMutation({
     mutationFn: () => api.hospital.queue.discharge(
       String(data?.active_encounter?.id),
-      { discharge_summary: "Discharged from patient profile" },
+      dischargeForm,
     ),
     onSuccess: () => {
       toast({ title: "Patient discharged" });
+      setDischargeOpen(false);
+      setDischargeForm({ disposition: "home", discharge_summary: "" });
       void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // Available slots for the in-CPRS Schedule Follow-up picker
+  const { data: followUpSlotsData, isLoading: followUpSlotsLoading } = useQuery({
+    queryKey: ["appointment-slots", "follow-up", followUpForm.slot_date],
+    queryFn: () => api.hospital.appointments.listSlots({ date: followUpForm.slot_date }),
+    enabled: followUpOpen,
+    staleTime: 15_000,
+  });
+  const followUpSlots: any[] = Array.isArray(followUpSlotsData?.slots) ? followUpSlotsData.slots : Array.isArray(followUpSlotsData) ? followUpSlotsData : [];
+
+  const followUpMut = useMutation({
+    mutationFn: () => api.hospital.appointments.book({
+      patient_id: patient?.mrn ?? patient?.id,
+      slot_id: followUpForm.slot_id,
+      appointment_type: followUpForm.appointment_type,
+      notes: followUpForm.notes,
+    }),
+    onSuccess: () => {
+      toast({ title: "Follow-up scheduled" });
+      setFollowUpOpen(false);
+      setFollowUpForm({ slot_date: new Date().toISOString().split("T")[0], slot_id: "", appointment_type: "follow_up", notes: "" });
+      void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["appointments-calendar"] });
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
@@ -396,7 +395,13 @@ export default function PatientProfile() {
   const icd10Results: any[] = Array.isArray(icd10Data?.codes) ? icd10Data.codes : [];
 
   const addProblemMut = useMutation({
-    mutationFn: () => api.hospital.clinical.addProblem(patientNumId!, problemForm),
+    mutationFn: () => api.hospital.clinical.addProblem(patientNumId!, {
+      ...problemForm,
+      // icd10_code only gets set when a search suggestion is clicked (see the
+      // dropdown onClick below) — if the user typed a code but never clicked a
+      // match, fall back to whatever they typed instead of silently dropping it.
+      icd10_code: problemForm.icd10_code || icd10Search.trim(),
+    }),
     onSuccess: () => {
       toast({ title: "Problem added" });
       setProblemOpen(false);
@@ -513,6 +518,160 @@ export default function PatientProfile() {
     (data?.lab_orders ?? []).filter((o: any) => ["ordered", "sample_collected", "processing"].includes(o.status)),
     [data?.lab_orders]
   );
+  const resultedLabs = useMemo(() =>
+    (data?.lab_orders ?? []).filter((o: any) => o.result_summary),
+    [data?.lab_orders]
+  );
+
+  // ── Postings (CPRS cover-sheet clinical flags/notices) ───────────────────────
+  const { data: postingsData, refetch: refetchPostings } = useQuery({
+    queryKey: ["patient-postings", patientNumId],
+    queryFn: () => api.hospital.clinical.listPostings(patientNumId!, true),
+    enabled: !!patientNumId,
+    staleTime: 60_000,
+  });
+  const postings: any[] = Array.isArray(postingsData?.postings) ? postingsData.postings : [];
+
+  const addPostingMut = useMutation({
+    mutationFn: () => api.hospital.clinical.addPosting(patientNumId!, postingForm),
+    onSuccess: () => {
+      toast({ title: "Posting added" });
+      setPostingOpen(false);
+      setPostingForm({ posting_type: "alert", message: "", severity: "info" });
+      void refetchPostings();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const resolvePostingMut = useMutation({
+    mutationFn: (postingId: number) => api.hospital.clinical.resolvePosting(postingId),
+    onSuccess: () => { toast({ title: "Posting resolved" }); void refetchPostings(); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Clinical Reminders ────────────────────────────────────────────────────────
+  const { data: remindersData, refetch: refetchReminders } = useQuery({
+    queryKey: ["patient-reminders", patientNumId],
+    queryFn: () => api.hospital.clinical.listReminders(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 60_000,
+  });
+  const reminders: any[] = Array.isArray(remindersData?.reminders) ? remindersData.reminders : [];
+
+  const dismissReminderMut = useMutation({
+    mutationFn: (reminderId: number) => api.hospital.clinical.dismissReminder(reminderId),
+    onSuccess: () => { toast({ title: "Reminder dismissed" }); void refetchReminders(); },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Immunisations ──────────────────────────────────────────────────────────────
+  const { data: immunisationsData, refetch: refetchImmunisations } = useQuery({
+    queryKey: ["patient-immunisations", patientNumId],
+    queryFn: () => api.hospital.mch.getImmunisationHistory(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 60_000,
+  });
+  const immunisations: any[] = Array.isArray(immunisationsData?.immunisations) ? immunisationsData.immunisations : [];
+
+  const addImmunisationMut = useMutation({
+    mutationFn: () => api.hospital.mch.logImmunisation(patientNumId!, {
+      ...immunisationForm,
+      dose_number: immunisationForm.dose_number ? Number(immunisationForm.dose_number) : undefined,
+    }),
+    onSuccess: () => {
+      toast({ title: "Immunisation recorded" });
+      setImmunisationOpen(false);
+      setImmunisationForm({ vaccine_name: "", dose_number: "", site: "" });
+      void refetchImmunisations();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Structured allergies (severity/reaction detail) ───────────────────────────
+  const { data: allergiesData, refetch: refetchAllergies } = useQuery({
+    queryKey: ["patient-allergies-structured", patientNumId],
+    queryFn: () => api.hospital.pharmacy.listAllergies(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 60_000,
+  });
+  const structuredAllergies: any[] = Array.isArray(allergiesData?.allergies) ? allergiesData.allergies : [];
+
+  const addAllergyMut = useMutation({
+    mutationFn: () => api.hospital.pharmacy.addAllergy(patientNumId!, allergyForm),
+    onSuccess: () => {
+      toast({ title: "Allergy recorded" });
+      setAllergyOpen(false);
+      setAllergyForm({ allergen: "", severity: "moderate", reaction: "" });
+      void refetchAllergies();
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Edit Patient Information (backfill missing demographics) ─────────────────
+  const openEditPatient = () => {
+    setEditPatientForm({
+      phone: patient.phone ?? "",
+      address: patient.address ?? "",
+      next_of_kin_name: patient.next_of_kin_name ?? "",
+      next_of_kin_phone: patient.next_of_kin_phone ?? "",
+      blood_group: patient.blood_group ?? "",
+      genotype: patient.genotype ?? "",
+      allergies: (patient.allergies ?? []).join(", "),
+    });
+    setEditPatientOpen(true);
+  };
+
+  const editPatientMut = useMutation({
+    mutationFn: () => api.hospital.patients.update(mrn!, {
+      // The form always shows every field's current value (openEditPatient
+      // pre-fills from the patient record), so this save is authoritative
+      // for all of them: a blank field means "clear this," sent as an
+      // explicit null (not "" — royan_patients.blood_group/genotype have DB
+      // CHECK constraints that reject an empty string but allow NULL; see
+      // update_patient()'s exclude_unset handling on the backend).
+      phone: editPatientForm.phone || null,
+      address: editPatientForm.address || null,
+      next_of_kin_name: editPatientForm.next_of_kin_name || null,
+      next_of_kin_phone: editPatientForm.next_of_kin_phone || null,
+      blood_group: editPatientForm.blood_group || null,
+      genotype: editPatientForm.genotype || null,
+      allergies: editPatientForm.allergies
+        ? editPatientForm.allergies.split(",").map(s => s.trim()).filter(Boolean)
+        : null,
+    }),
+    onSuccess: () => {
+      toast({ title: "Patient information updated" });
+      setEditPatientOpen(false);
+      void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── Appointments/Visits (real bookings + native encounters, merged) ───────────
+  const appointmentsAndVisits = useMemo(() => {
+    const appts = (data?.appointments ?? []).map((a: any) => {
+      // Doctor names on Hope-imported appointment slots are always a raw
+      // internal ID (see formatAttribution) — not informative at a glance,
+      // so leave them out of the compact label; the detail dialog shows
+      // them honestly labeled instead.
+      const doctorForLabel = a.doctor_name && !isRawIdAttribution(a.doctor_name) ? a.doctor_name : null;
+      return {
+        kind: "appointment" as const,
+        date: a.slot_date ? `${a.slot_date}T${a.slot_time ?? "00:00"}` : a.booked_at,
+        label: a.department ? `${a.department}${doctorForLabel ? " · " + doctorForLabel : ""}` : (doctorForLabel ?? "Appointment"),
+        status: a.ui_status ?? a.status,
+        record: a,
+      };
+    });
+    const visits = (data?.encounters ?? []).map((e: any) => ({
+      kind: "visit" as const,
+      date: e.created_at,
+      label: e.department ? `${e.department} · ${(e.encounter_type ?? "").replace(/_/g, " ")}` : (e.encounter_type ?? "Visit"),
+      status: e.status,
+      record: e,
+    }));
+    return [...appts, ...visits].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  }, [data?.appointments, data?.encounters]);
 
   // ── Note write mutation ──────────────────────────────────────────────────────
   const noteMut = useMutation({
@@ -712,8 +871,8 @@ export default function PatientProfile() {
                 {lastVitals.bp_systolic && (
                   <div><p className="text-muted-foreground text-[10px]">BP</p><p className="font-medium">{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</p></div>
                 )}
-                {lastVitals.pulse_rate && (
-                  <div><p className="text-muted-foreground text-[10px]">Pulse</p><p className="font-medium">{lastVitals.pulse_rate} bpm</p></div>
+                {lastVitals.pulse && (
+                  <div><p className="text-muted-foreground text-[10px]">Pulse</p><p className="font-medium">{lastVitals.pulse} bpm</p></div>
                 )}
                 {lastVitals.temperature && (
                   <div><p className="text-muted-foreground text-[10px]">Temp</p><p className="font-medium">{lastVitals.temperature}°C</p></div>
@@ -721,8 +880,8 @@ export default function PatientProfile() {
                 {lastVitals.spo2 && (
                   <div><p className="text-muted-foreground text-[10px]">SpO2</p><p className="font-medium">{lastVitals.spo2}%</p></div>
                 )}
-                {lastVitals.weight_kg && (
-                  <div><p className="text-muted-foreground text-[10px]">Weight</p><p className="font-medium">{lastVitals.weight_kg} kg</p></div>
+                {lastVitals.weight && (
+                  <div><p className="text-muted-foreground text-[10px]">Weight</p><p className="font-medium">{lastVitals.weight} kg</p></div>
                 )}
                 {lastVitals.pain_score != null && (
                   <div><p className="text-muted-foreground text-[10px]">Pain</p><p className="font-medium">{lastVitals.pain_score}/10</p></div>
@@ -747,8 +906,22 @@ export default function PatientProfile() {
             </div>
           )}
 
+          {/* No active encounter — show the most recent past visit instead */}
+          {!hasActiveEnc && data?.last_encounter && (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>
+                No active encounter — last visit <strong className="capitalize text-foreground">
+                  {(data.last_encounter.status ?? "").replace(/_/g, " ")}
+                </strong>
+                {data.last_encounter.department && ` · ${data.last_encounter.department}`}
+                {data.last_encounter.created_at && ` · ${fmtDate(data.last_encounter.created_at)}`}
+              </span>
+            </div>
+          )}
+
           <div className="mb-3">
-            {/* Tab navigation — horizontal scroll for 10 CPRS tabs */}
+            {/* Tab navigation — horizontal scroll for 9 CPRS tabs */}
             <div className="overflow-x-auto whitespace-nowrap rounded-lg border p-0.5 text-xs scrollbar-none">
               <div className="inline-flex gap-0.5">
                 {[
@@ -759,7 +932,6 @@ export default function PatientProfile() {
                   { key: "notes",      label: "Notes", icon: NotebookPen },
                   { key: "labs",       label: "Labs", icon: TrendingUp },
                   { key: "surgery",    label: `Surgery (${theatreCases.length})`, icon: Scissors },
-                  { key: "vitals",     label: `Vitals (${vitals.length})`, icon: Thermometer },
                   { key: "consent",    label: `Consent (${consents.length})`, icon: ShieldAlert },
                   { key: "specialist", label: `Specialist (${specialistNotes.length})`, icon: ClipboardCheck },
                 ].map(({ key, label, icon: Icon }) => (
@@ -780,42 +952,321 @@ export default function PatientProfile() {
             </div>
           </div>
 
-          {/* ── Tab: Cover Sheet (Timeline) ── */}
+          {/* ── Tab: Cover Sheet ── */}
           {mainTab === "timeline" && (
-            <>
-              {/* CPRS Cover Sheet summary strip */}
-              <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  { label: "Active Problems", value: problems.filter(p => p.status === "active").length, color: "text-blue-700", bg: "bg-blue-50", onClick: () => setMainTab("problems") },
-                  { label: "Active Meds",     value: activeMeds.length,   color: "text-green-700", bg: "bg-green-50", onClick: () => setMainTab("meds") },
-                  { label: "Pending Orders",  value: pendingOrders.length, color: "text-orange-700", bg: "bg-orange-50", onClick: () => setMainTab("orders") },
-                  { label: "Last Vitals",     value: lastVitals ? fmtDate(lastVitals.recorded_at) : "None", color: lastVitals ? "text-foreground" : "text-muted-foreground", bg: lastVitals ? "bg-muted/40" : "bg-muted/20", onClick: () => setMainTab("vitals") },
-                ].map(k => (
-                  <button key={k.label} onClick={k.onClick}
-                    className={cn("rounded-xl border border-border/60 px-3 py-2 text-left hover:brightness-95 transition-all", k.bg)}>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{k.label}</p>
-                    <p className={cn("text-xl font-bold mt-0.5 leading-tight", k.color)}>{k.value}</p>
-                  </button>
-                ))}
-              </div>
-              {timeline.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-              <FileText className="h-8 w-8 opacity-30" />
-              No clinical records yet
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Active Problems */}
+              <CoverSheetWidget
+                title="Active Problems" icon={ListChecks}
+                count={problems.filter((p: any) => p.status === "active").length}
+                isEmpty={problems.filter((p: any) => p.status === "active").length === 0}
+                emptyLabel="No active problems"
+                onAdd={() => setProblemOpen(true)} addLabel="Add problem"
+                onViewAll={() => setMainTab("problems")}
+              >
+                <div className="space-y-1.5">
+                  {problems.filter((p: any) => p.status === "active").slice(0, 6).map((p: any) => (
+                    <div key={p.id} className="flex items-start justify-between gap-2 text-xs">
+                      <span className="min-w-0 truncate">{p.description}</span>
+                      {p.icd10_code && <span className="shrink-0 font-mono text-muted-foreground">{p.icd10_code}</span>}
+                    </div>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Allergies */}
+              <CoverSheetWidget
+                title="Allergies / Adverse Reactions" icon={AlertTriangle}
+                count={structuredAllergies.length || patient.allergies?.length || 0}
+                isEmpty={structuredAllergies.length === 0 && !patient.allergies?.length}
+                emptyLabel="No known allergies"
+                onAdd={() => setAllergyOpen(true)} addLabel="Add allergy"
+              >
+                <div className="space-y-1.5">
+                  {structuredAllergies.length > 0
+                    ? structuredAllergies.slice(0, 6).map((a: any) => (
+                      <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="min-w-0 truncate font-medium text-red-600 dark:text-red-400">{a.allergen}</span>
+                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{a.severity}</Badge>
+                      </div>
+                    ))
+                    : (patient.allergies ?? []).slice(0, 6).map((a: string) => (
+                      <div key={a} className="text-xs font-medium text-red-600 dark:text-red-400">{a}</div>
+                    ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Postings */}
+              <CoverSheetWidget
+                title="Postings" icon={Megaphone}
+                count={postings.length}
+                isEmpty={postings.length === 0}
+                emptyLabel="No active postings"
+                onAdd={() => setPostingOpen(true)} addLabel="Add posting"
+              >
+                <div className="space-y-1.5">
+                  {postings.slice(0, 6).map((p: any) => (
+                    <div key={p.id} className="flex items-start justify-between gap-2 text-xs">
+                      <div className="min-w-0">
+                        <Badge variant="outline" className={cn("text-[10px] capitalize mr-1.5",
+                          p.severity === "critical" ? "border-red-500/30 text-red-500 bg-red-500/10" :
+                          p.severity === "warning" ? "border-amber-500/30 text-amber-500 bg-amber-500/10" :
+                          "border-slate-500/30 text-slate-400"
+                        )}>{p.posting_type}</Badge>
+                        <span className="align-middle">{p.message}</span>
+                      </div>
+                      <button
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => resolvePostingMut.mutate(p.id)}
+                        title="Resolve"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Active Medications */}
+              <CoverSheetWidget
+                title="Active Medications" icon={Pill}
+                count={activeMeds.length}
+                isEmpty={activeMeds.length === 0}
+                emptyLabel="No active medications"
+                onAdd={() => setRxOpen(true)} addLabel="Prescribe"
+                onViewAll={() => setMainTab("meds")}
+              >
+                <div className="space-y-1.5">
+                  {activeMeds.slice(0, 6).map((rx: any) => {
+                    const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
+                    return (
+                      <button
+                        key={rx.id}
+                        onClick={() => setRecordDetail({
+                          title: "Medication Details",
+                          subtitle: noDetail ? "No drug detail captured" : rx.drug_name,
+                          rows: [
+                            ["Drug", noDetail ? "Not captured by source" : rx.drug_name],
+                            ["Dosage", rx.dosage],
+                            ["Frequency", rx.frequency],
+                            ["Duration", rx.duration],
+                            ["Route", rx.route],
+                            ["Status", rx.status?.replace(/_/g, " ")],
+                            ["Prescribed by", formatAttribution(rx.prescribed_by)],
+                            ["Prescribed at", rx.prescribed_at ? fmtDateTime(rx.prescribed_at) : null],
+                            ["Dispensed at", rx.dispensed_at ? fmtDateTime(rx.dispensed_at) : null],
+                            ["Source", rx.external_source ?? "Native (prescribed in app)"],
+                            ["External ID", rx.external_id],
+                          ],
+                        })}
+                        className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
+                      >
+                        <span className={cn("min-w-0 truncate", noDetail && "italic text-muted-foreground")}>
+                          {noDetail ? "No drug detail captured" : rx.drug_name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{rx.status?.replace(/_/g, " ")}</Badge>
+                      </button>
+                    );
+                  })}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Recent Lab Results */}
+              <CoverSheetWidget
+                title="Recent Lab Results" icon={TrendingUp}
+                count={resultedLabs.length}
+                isEmpty={resultedLabs.length === 0}
+                emptyLabel="No resulted labs yet"
+                onViewAll={() => setMainTab("labs")}
+              >
+                <div className="space-y-1.5">
+                  {resultedLabs.slice(0, 6).map((o: any) => (
+                    <button
+                      key={o.id}
+                      onClick={() => setRecordDetail({
+                        title: "Lab Result Details",
+                        subtitle: o.test_name,
+                        rows: [
+                          ["Test", o.test_name],
+                          ["Result", o.result_summary],
+                          ["Reference range", o.reference_range],
+                          ["Interpretation", o.interpretation],
+                          ["Critical", o.is_critical ? "Yes" : null],
+                          ["Urgency", o.urgency],
+                          ["Sample type", o.sample_type],
+                          ["Ordered by", formatAttribution(o.ordered_by)],
+                          ["Ordered at", o.ordered_at ? fmtDateTime(o.ordered_at) : null],
+                          ["Resulted at", o.resulted_at ? fmtDateTime(o.resulted_at) : null],
+                          ["Notes", o.notes],
+                          ["Source", o.external_source ?? "Native (ordered in app)"],
+                          ["External ID", o.external_id],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
+                    >
+                      <span className="min-w-0 truncate">{o.test_name}</span>
+                      <span className="shrink-0 text-muted-foreground">{o.result_summary}</span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Vitals */}
+              <CoverSheetWidget
+                title="Vitals" icon={Thermometer}
+                count={vitals.length}
+                isEmpty={!lastVitals}
+                emptyLabel="No vitals recorded yet"
+                onViewAll={vitals.length > 0 ? () => setVitalsDialogOpen(true) : undefined}
+              >
+                {lastVitals && (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    {lastVitals.bp_systolic != null && <div><span className="text-muted-foreground">BP </span>{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</div>}
+                    {lastVitals.pulse != null && <div><span className="text-muted-foreground">Pulse </span>{lastVitals.pulse}</div>}
+                    {lastVitals.temperature != null && <div><span className="text-muted-foreground">Temp </span>{lastVitals.temperature}°C</div>}
+                    {lastVitals.spo2 != null && <div><span className="text-muted-foreground">SpO2 </span>{lastVitals.spo2}%</div>}
+                    {lastVitals.weight != null && <div><span className="text-muted-foreground">Wt </span>{lastVitals.weight}kg</div>}
+                    {lastVitals.height != null && <div><span className="text-muted-foreground">Ht </span>{lastVitals.height}cm</div>}
+                  </div>
+                )}
+              </CoverSheetWidget>
+
+              {/* Appointments / Visits */}
+              <CoverSheetWidget
+                title="Appointments / Visits" icon={CalendarClock}
+                count={appointmentsAndVisits.length}
+                isEmpty={appointmentsAndVisits.length === 0}
+                emptyLabel="No appointments or visits"
+                onAdd={() => setFollowUpOpen(true)} addLabel="Schedule follow-up"
+              >
+                <div className="space-y-1.5">
+                  {appointmentsAndVisits.slice(0, 6).map((v, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setRecordDetail({
+                        title: v.kind === "appointment" ? "Appointment Details" : "Visit Details",
+                        subtitle: `${fmtDate(v.date)} · ${v.label}`,
+                        rows: v.kind === "appointment"
+                          ? [
+                              ["Status", (v.record.ui_status ?? v.record.status)?.replace(/_/g, " ")],
+                              ["Department", v.record.department],
+                              ["Doctor", formatAttribution(v.record.doctor_name)],
+                              ["Date", v.record.slot_date ? fmtDate(v.record.slot_date) : null],
+                              ["Time", v.record.slot_time],
+                              ["Duration", v.record.duration_mins != null ? `${v.record.duration_mins} min` : null],
+                              ["Type", v.record.appointment_type],
+                              ["Reason", v.record.reason],
+                              ["Booked by", v.record.booked_by],
+                              ["Booked at", v.record.booked_at ? fmtDateTime(v.record.booked_at) : null],
+                              ["Reminder sent", v.record.reminder_sent ? `Yes${v.record.reminder_sent_at ? " · " + fmtDateTime(v.record.reminder_sent_at) : ""}` : "No"],
+                              ["Cancellation reason", v.record.cancellation_reason],
+                              ["Notes", v.record.notes],
+                              ["MRN", v.record.mrn],
+                              ["Phone", v.record.patient_phone],
+                              ["Source", v.record.external_source ?? "Native (booked in app)"],
+                              ["External ID", v.record.external_id],
+                            ]
+                          : [
+                              ["Status", v.record.status?.replace(/_/g, " ")],
+                              ["Department", v.record.department],
+                              ["Encounter type", v.record.encounter_type?.replace(/_/g, " ")],
+                              ["Created", v.record.created_at ? fmtDateTime(v.record.created_at) : null],
+                              ["Discharged", v.record.discharge_at ? fmtDateTime(v.record.discharge_at) : null],
+                              ["Triage level", v.record.triage_level],
+                              ["Consulting doctor", v.record.consulting_doctor],
+                              ["Ward", v.record.ward_id],
+                              ["Chief complaint", v.record.chief_complaint],
+                              ["Notes", v.record.notes],
+                              ["Source", v.record.external_source ?? "Native (opened in app)"],
+                              ["External ID", v.record.external_id],
+                            ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground mr-1">{fmtDate(v.date)}</span>
+                        <span className="truncate">{v.label}</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">{v.status?.replace(/_/g, " ")}</Badge>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Clinical Reminders */}
+              <CoverSheetWidget
+                title="Clinical Reminders" icon={Bell}
+                count={reminders.length}
+                isEmpty={reminders.length === 0}
+                emptyLabel="No reminders due"
+              >
+                <div className="space-y-1.5">
+                  {reminders.slice(0, 6).map((r: any) => (
+                    <div key={r.id} className="flex items-start justify-between gap-2 text-xs">
+                      <button
+                        onClick={() => setRecordDetail({
+                          title: "Reminder Details",
+                          subtitle: r.message,
+                          rows: [
+                            ["Message", r.message],
+                            ["Severity", r.severity],
+                            ["Rule", r.rule_key],
+                            ["Due since", r.due_since ? fmtDate(r.due_since) : null],
+                            ["Created", r.created_at ? fmtDateTime(r.created_at) : null],
+                          ],
+                        })}
+                        className="min-w-0 text-left text-amber-600 dark:text-amber-400 hover:underline"
+                      >
+                        {r.message}
+                      </button>
+                      <button
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => dismissReminderMut.mutate(r.id)}
+                        title="Dismiss"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Recent Immunizations */}
+              <CoverSheetWidget
+                title="Recent Immunizations" icon={Syringe}
+                count={immunisations.length}
+                isEmpty={immunisations.length === 0}
+                emptyLabel="No immunizations recorded"
+                onAdd={() => setImmunisationOpen(true)} addLabel="Log immunization"
+              >
+                <div className="space-y-1.5">
+                  {immunisations.slice(0, 6).map((im: any) => (
+                    <button
+                      key={im.id}
+                      onClick={() => setRecordDetail({
+                        title: "Immunization Details",
+                        subtitle: im.vaccine_name,
+                        rows: [
+                          ["Vaccine", im.vaccine_name],
+                          ["Dose #", im.dose_number],
+                          ["Date given", im.date_given ? fmtDate(im.date_given) : null],
+                          ["Batch #", im.batch_number],
+                          ["Site", im.site],
+                          ["Administered by", formatAttribution(im.administered_by)],
+                          ["Next due", im.next_due_date ? fmtDate(im.next_due_date) : null],
+                          ["Reaction", im.reaction],
+                          ["Notes", im.notes],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
+                    >
+                      <span className="min-w-0 truncate">{im.vaccine_name}{im.dose_number ? ` (dose ${im.dose_number})` : ""}</span>
+                      <span className="shrink-0 text-muted-foreground">{fmtDate(im.date_given)}</span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
             </div>
-          ) : (
-            <div className="space-y-0 pr-1">
-              {timeline.map((item, idx) => (
-                <TimelineCard key={`${item.type}-${idx}`} item={item} />
-              ))}
-              {/* End of timeline */}
-              <div className="flex items-center gap-2 pl-3.5 text-xs text-muted-foreground">
-                <div className="h-2 w-2 rounded-full border-2 border-muted-foreground/30" />
-                Patient registered {fmtDate(patient.registered_at)}
-              </div>
-            </div>
-          )}
-            </>
           )}
 
           {/* ── Tab: Problems ── */}
@@ -897,85 +1348,6 @@ export default function PatientProfile() {
             </div>
           )}
 
-          {/* ── Tab: Vitals ── */}
-          {mainTab === "vitals" && (
-            <div className="space-y-2">
-              {vitals.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                  <Thermometer className="h-7 w-7 opacity-30" />No vitals recorded yet
-                </div>
-              ) : (
-                vitals.map((v: any, idx: number) => (
-                  <div key={v.id ?? idx} className="rounded-xl border border-border/60 bg-card px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />
-                        Vitals Entry
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
-                      {v.bp_systolic != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">BP</p>
-                          <p className="font-semibold">{v.bp_systolic}/{v.bp_diastolic} <span className="font-normal text-muted-foreground">mmHg</span></p>
-                        </div>
-                      )}
-                      {v.pulse_rate != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pulse</p>
-                          <p className="font-semibold">{v.pulse_rate} <span className="font-normal text-muted-foreground">bpm</span></p>
-                        </div>
-                      )}
-                      {v.temperature != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Temp</p>
-                          <p className="font-semibold">{v.temperature}<span className="font-normal text-muted-foreground">°C</span></p>
-                        </div>
-                      )}
-                      {v.spo2 != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">SpO2</p>
-                          <p className="font-semibold">{v.spo2}<span className="font-normal text-muted-foreground">%</span></p>
-                        </div>
-                      )}
-                      {v.respiratory_rate != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">RR</p>
-                          <p className="font-semibold">{v.respiratory_rate} <span className="font-normal text-muted-foreground">/min</span></p>
-                        </div>
-                      )}
-                      {v.weight_kg != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Weight</p>
-                          <p className="font-semibold">{v.weight_kg} <span className="font-normal text-muted-foreground">kg</span></p>
-                        </div>
-                      )}
-                      {v.height_cm != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Height</p>
-                          <p className="font-semibold">{v.height_cm} <span className="font-normal text-muted-foreground">cm</span></p>
-                        </div>
-                      )}
-                      {v.pain_score != null && (
-                        <div>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pain</p>
-                          <p className="font-semibold">{v.pain_score}<span className="font-normal text-muted-foreground">/10</span></p>
-                        </div>
-                      )}
-                    </div>
-                    {v.notes && (
-                      <p className="mt-2 text-xs text-muted-foreground italic border-t border-border/50 pt-1.5">"{v.notes}"</p>
-                    )}
-                    {v.recorded_by && (
-                      <p className="mt-1 text-[10px] text-muted-foreground">Recorded by: {v.recorded_by}</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
           {/* ── Tab: Specialist ── */}
           {mainTab === "specialist" && (
             <div className="space-y-2">
@@ -1045,29 +1417,53 @@ export default function PatientProfile() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Medications</h3>
                 {activeMeds.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No active medications</p>
-                ) : activeMeds.map((rx: any) => (
-                  <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-semibold">{rx.drug_name}</p>
-                      <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency} · {rx.duration} · Route: {rx.route}</p>
+                ) : activeMeds.map((rx: any) => {
+                  const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
+                  return (
+                    <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                      <div>
+                        {noDetail ? (
+                          <>
+                            <p className="text-sm font-semibold italic text-muted-foreground">No drug detail captured</p>
+                            <p className="text-xs text-muted-foreground">Legacy billing record only — source system didn't record a medication name or dosage</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold">{rx.drug_name}</p>
+                            <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency} · {rx.duration} · Route: {rx.route}</p>
+                          </>
+                        )}
+                      </div>
+                      <Badge variant="outline" className={cn("text-[10px] capitalize shrink-0", noDetail ? "bg-muted text-muted-foreground border-border" : "bg-green-50 text-green-700 border-green-300")}>{rx.status?.replace(/_/g," ")}</Badge>
                     </div>
-                    <Badge variant="outline" className="text-[10px] capitalize bg-green-50 text-green-700 border-green-300 shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {/* Past */}
               {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).length > 0 && (
                 <div>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Past Medications</h3>
-                  {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).map((rx: any) => (
-                    <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                      <div>
-                        <p className="text-sm">{rx.drug_name}</p>
-                        <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency}</p>
+                  {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).map((rx: any) => {
+                    const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
+                    return (
+                      <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                        <div>
+                          {noDetail ? (
+                            <>
+                              <p className="text-sm italic text-muted-foreground">No drug detail captured</p>
+                              <p className="text-xs text-muted-foreground">Legacy billing record only</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm">{rx.drug_name}</p>
+                              <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency}</p>
+                            </>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
                       </div>
-                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1080,18 +1476,23 @@ export default function PatientProfile() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lab Orders</h3>
                 {(data?.lab_orders ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No lab orders</p>
-                ) : (data?.lab_orders ?? []).map((o: any) => (
-                  <div key={o.id} className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2">
-                    <div>
-                      <p className="text-sm font-medium">{o.test_name}</p>
-                      <p className="text-xs text-muted-foreground">{fmtDate(o.ordered_at)}</p>
+                ) : (data?.lab_orders ?? []).map((o: any) => {
+                  const noDetail = isPlaceholderRecord(o.test_name, o.external_source);
+                  return (
+                    <div key={o.id} className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2">
+                      <div>
+                        <p className={cn("text-sm font-medium", noDetail && "italic text-muted-foreground")}>
+                          {noDetail ? "No test detail captured" : o.test_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{noDetail ? "Legacy record — source system only recorded an internal catalog ID" : fmtDate(o.ordered_at)}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline" className="text-[10px] uppercase">{o.urgency}</Badge>
+                        <Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant="outline" className="text-[10px] uppercase">{o.urgency}</Badge>
-                      <Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Imaging Orders</h3>
@@ -1244,6 +1645,16 @@ export default function PatientProfile() {
           <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</p>
 
           <Button
+            variant="outline"
+            className="w-full justify-start gap-2"
+            size="sm"
+            onClick={openEditPatient}
+          >
+            <PenLine className="h-3.5 w-3.5" />
+            Edit Patient Info
+          </Button>
+
+          <Button
             className="w-full justify-start gap-2"
             size="sm"
             onClick={() => setEncounterOpen(true)}
@@ -1281,7 +1692,7 @@ export default function PatientProfile() {
             variant="outline"
             className="w-full justify-start gap-2"
             size="sm"
-            onClick={() => navigate("/hospital/appointments")}
+            onClick={() => setFollowUpOpen(true)}
           >
             <CalendarPlus className="h-3.5 w-3.5" />
             Schedule Follow-up
@@ -1291,7 +1702,8 @@ export default function PatientProfile() {
             variant="outline"
             className="w-full justify-start gap-2"
             size="sm"
-            onClick={() => navigate(`/hospital/billing?patient_id=${patient?.id ?? ""}`)}
+            disabled={!patient?.id}
+            onClick={() => patient?.id && navigate(`/hospital/billing?patient_id=${patient.id}`)}
           >
             <Receipt className="h-3.5 w-3.5" />
             View Billing
@@ -1328,7 +1740,7 @@ export default function PatientProfile() {
             Referral Letter
           </Button>
 
-          {hasActiveEnc && (
+          {hasActiveEnc && data?.active_encounter?.status === "billing_pending" && (
             <>
               <Separator className="my-1" />
               <Button
@@ -1336,14 +1748,17 @@ export default function PatientProfile() {
                 size="sm"
                 className="w-full justify-start gap-2 border-green-500/30 text-green-400 hover:bg-green-500/10"
                 disabled={dischargeMut.isPending}
-                onClick={() => dischargeMut.mutate()}
+                onClick={() => setDischargeOpen(true)}
               >
-                {dischargeMut.isPending
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <UserCheck className="h-3.5 w-3.5" />}
+                <UserCheck className="h-3.5 w-3.5" />
                 Discharge
               </Button>
             </>
+          )}
+          {hasActiveEnc && data?.active_encounter?.status !== "billing_pending" && (
+            <p className="text-[10px] text-muted-foreground pl-1">
+              Discharge available once billing is finalized (current: {String(data?.active_encounter?.status ?? "").replace(/_/g, " ")})
+            </p>
           )}
 
           <Separator className="my-2" />
@@ -1437,6 +1852,343 @@ export default function PatientProfile() {
         </DialogContent>
       </Dialog>
 
+      {/* ── All Vitals Dialog (Cover Sheet "View all") ──────────────────── */}
+      <Dialog open={vitalsDialogOpen} onOpenChange={setVitalsDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Vitals</DialogTitle>
+            <DialogDescription>Full vitals history for {fullName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {vitals.map((v: any, idx: number) => (
+              <div key={v.id ?? idx} className="rounded-xl border border-border/60 bg-card px-4 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />
+                    Vitals Entry
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                  {v.bp_systolic != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">BP</p>
+                      <p className="font-semibold">{v.bp_systolic}/{v.bp_diastolic} <span className="font-normal text-muted-foreground">mmHg</span></p>
+                    </div>
+                  )}
+                  {v.pulse != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pulse</p>
+                      <p className="font-semibold">{v.pulse} <span className="font-normal text-muted-foreground">bpm</span></p>
+                    </div>
+                  )}
+                  {v.temperature != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Temp</p>
+                      <p className="font-semibold">{v.temperature}<span className="font-normal text-muted-foreground">°C</span></p>
+                    </div>
+                  )}
+                  {v.spo2 != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">SpO2</p>
+                      <p className="font-semibold">{v.spo2}<span className="font-normal text-muted-foreground">%</span></p>
+                    </div>
+                  )}
+                  {v.respiratory_rate != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">RR</p>
+                      <p className="font-semibold">{v.respiratory_rate} <span className="font-normal text-muted-foreground">/min</span></p>
+                    </div>
+                  )}
+                  {v.weight != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Weight</p>
+                      <p className="font-semibold">{v.weight} <span className="font-normal text-muted-foreground">kg</span></p>
+                    </div>
+                  )}
+                  {v.height != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Height</p>
+                      <p className="font-semibold">{v.height} <span className="font-normal text-muted-foreground">cm</span></p>
+                    </div>
+                  )}
+                  {v.bmi != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">BMI</p>
+                      <p className="font-semibold">{v.bmi}</p>
+                    </div>
+                  )}
+                  {v.gcs != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">GCS</p>
+                      <p className="font-semibold">{v.gcs}<span className="font-normal text-muted-foreground">/15</span></p>
+                    </div>
+                  )}
+                  {v.pain_score != null && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pain</p>
+                      <p className="font-semibold">{v.pain_score}<span className="font-normal text-muted-foreground">/10</span></p>
+                    </div>
+                  )}
+                </div>
+                {v.notes && (
+                  <p className="mt-2 text-xs text-muted-foreground italic border-t border-border/50 pt-1.5">"{v.notes}"</p>
+                )}
+                {v.recorded_by && (
+                  <p className="mt-1 text-[10px] text-muted-foreground">Recorded by: {v.recorded_by}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add Posting Dialog ────────────────────────────────────────── */}
+      <Dialog open={postingOpen} onOpenChange={setPostingOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Posting</DialogTitle>
+            <DialogDescription>Add a clinical flag/notice to {fullName}'s chart</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Type</Label>
+                <Select value={postingForm.posting_type} onValueChange={v => setPostingForm(f => ({ ...f, posting_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="alert">Alert</SelectItem>
+                    <SelectItem value="precaution">Precaution</SelectItem>
+                    <SelectItem value="directive">Directive</SelectItem>
+                    <SelectItem value="note">Note</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Severity</Label>
+                <Select value={postingForm.severity} onValueChange={v => setPostingForm(f => ({ ...f, severity: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Info</SelectItem>
+                    <SelectItem value="warning">Warning</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Message *</Label>
+              <Textarea
+                value={postingForm.message}
+                onChange={e => setPostingForm(f => ({ ...f, message: e.target.value }))}
+                placeholder="e.g. Fall risk — assist ambulation"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPostingOpen(false)}>Cancel</Button>
+            <Button disabled={!postingForm.message.trim() || addPostingMut.isPending} onClick={() => addPostingMut.mutate()}>
+              {addPostingMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Posting
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add Allergy Dialog ────────────────────────────────────────── */}
+      <Dialog open={allergyOpen} onOpenChange={setAllergyOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Allergy</DialogTitle>
+            <DialogDescription>Record a documented allergy for {fullName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Allergen *</Label>
+              <Input
+                value={allergyForm.allergen}
+                onChange={e => setAllergyForm(f => ({ ...f, allergen: e.target.value }))}
+                placeholder="e.g. Penicillin"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Severity</Label>
+                <Select value={allergyForm.severity} onValueChange={v => setAllergyForm(f => ({ ...f, severity: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mild">Mild</SelectItem>
+                    <SelectItem value="moderate">Moderate</SelectItem>
+                    <SelectItem value="severe">Severe</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Reaction</Label>
+                <Input
+                  value={allergyForm.reaction}
+                  onChange={e => setAllergyForm(f => ({ ...f, reaction: e.target.value }))}
+                  placeholder="e.g. Rash"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAllergyOpen(false)}>Cancel</Button>
+            <Button disabled={!allergyForm.allergen.trim() || addAllergyMut.isPending} onClick={() => addAllergyMut.mutate()}>
+              {addAllergyMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Allergy
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Patient Information Dialog ─────────────────────────────── */}
+      <Dialog open={editPatientOpen} onOpenChange={setEditPatientOpen}>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Patient Information</DialogTitle>
+            <DialogDescription>Fill in or update {fullName}'s demographics</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Phone</Label>
+                <Input
+                  value={editPatientForm.phone}
+                  onChange={e => setEditPatientForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="e.g. 08012345678"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Blood Group</Label>
+                <Select value={editPatientForm.blood_group || undefined} onValueChange={v => setEditPatientForm(f => ({ ...f, blood_group: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"].map(bg => (
+                      <SelectItem key={bg} value={bg}>{bg}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Genotype</Label>
+              <Input
+                value={editPatientForm.genotype}
+                onChange={e => setEditPatientForm(f => ({ ...f, genotype: e.target.value }))}
+                placeholder="e.g. AA, AS, SS"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Address</Label>
+              <Textarea
+                value={editPatientForm.address}
+                onChange={e => setEditPatientForm(f => ({ ...f, address: e.target.value }))}
+                placeholder="Residential address"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Next of Kin</Label>
+                <Input
+                  value={editPatientForm.next_of_kin_name}
+                  onChange={e => setEditPatientForm(f => ({ ...f, next_of_kin_name: e.target.value }))}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>NOK Phone</Label>
+                <Input
+                  value={editPatientForm.next_of_kin_phone}
+                  onChange={e => setEditPatientForm(f => ({ ...f, next_of_kin_phone: e.target.value }))}
+                  placeholder="e.g. 08012345678"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Allergies</Label>
+              <Input
+                value={editPatientForm.allergies}
+                onChange={e => setEditPatientForm(f => ({ ...f, allergies: e.target.value }))}
+                placeholder="Comma-separated, e.g. Penicillin, Sulfa"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPatientOpen(false)}>Cancel</Button>
+            <Button disabled={editPatientMut.isPending} onClick={() => editPatientMut.mutate()}>
+              {editPatientMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Log Immunisation Dialog ───────────────────────────────────── */}
+      <Dialog open={immunisationOpen} onOpenChange={setImmunisationOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log Immunization</DialogTitle>
+            <DialogDescription>Record an immunization dose for {fullName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Vaccine *</Label>
+              <Input
+                value={immunisationForm.vaccine_name}
+                onChange={e => setImmunisationForm(f => ({ ...f, vaccine_name: e.target.value }))}
+                placeholder="e.g. BCG"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Dose #</Label>
+                <Input
+                  type="number" min={1}
+                  value={immunisationForm.dose_number}
+                  onChange={e => setImmunisationForm(f => ({ ...f, dose_number: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Site</Label>
+                <Input
+                  value={immunisationForm.site}
+                  onChange={e => setImmunisationForm(f => ({ ...f, site: e.target.value }))}
+                  placeholder="e.g. LTA"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImmunisationOpen(false)}>Cancel</Button>
+            <Button disabled={!immunisationForm.vaccine_name.trim() || addImmunisationMut.isPending} onClick={() => addImmunisationMut.mutate()}>
+              {addImmunisationMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Log Immunization
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Generic Record Detail Dialog (shared by every Cover Sheet card) ── */}
+      <Dialog open={!!recordDetail} onOpenChange={(open) => !open && setRecordDetail(null)}>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{recordDetail?.title}</DialogTitle>
+            {recordDetail?.subtitle && <DialogDescription>{recordDetail.subtitle}</DialogDescription>}
+          </DialogHeader>
+          {recordDetail && (
+            <div className="space-y-1.5 text-sm">
+              {recordDetail.rows
+                .filter(([, value]) => value !== null && value !== undefined && value !== "")
+                .map(([label, value]) => (
+                  <div key={label} className="flex items-start justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
+                    <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+                    <span className="text-right min-w-0 break-words">{value}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* ── Record Consent Dialog ─────────────────────────────────────── */}
       <Dialog open={consentOpen} onOpenChange={setConsentOpen}>
         <DialogContent className="sm:max-w-sm">
@@ -1494,6 +2246,13 @@ export default function PatientProfile() {
             <DialogDescription>Register {fullName} into the clinical queue</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {hasActiveEnc && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                {fullName} already has an active encounter
+                {data?.active_encounter?.queue_number ? ` (${data.active_encounter.queue_number})` : ""}
+                {" "}— submitting will reuse it instead of creating a duplicate.
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Encounter Type</Label>
               <Select
@@ -1538,6 +2297,128 @@ export default function PatientProfile() {
               {openEncMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Open Encounter
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Discharge Dialog ───────────────────────────────────────────── */}
+      <Dialog open={dischargeOpen} onOpenChange={setDischargeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Discharge Patient</DialogTitle>
+            <DialogDescription>{fullName} — Encounter {String(data?.active_encounter?.id ?? "").slice(0, 8)}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Disposition</Label>
+              <Select value={dischargeForm.disposition} onValueChange={v => setDischargeForm(f => ({ ...f, disposition: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="home">Home</SelectItem>
+                  <SelectItem value="admit">Admit to Ward</SelectItem>
+                  <SelectItem value="refer">Referred</SelectItem>
+                  <SelectItem value="deceased">Deceased</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Discharge Summary *</Label>
+              <Textarea
+                value={dischargeForm.discharge_summary}
+                onChange={e => setDischargeForm(f => ({ ...f, discharge_summary: e.target.value }))}
+                placeholder="Clinical summary, follow-up instructions..."
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDischargeOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              disabled={dischargeMut.isPending || !dischargeForm.discharge_summary.trim()}
+              onClick={() => dischargeMut.mutate()}
+            >
+              {dischargeMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm Discharge
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Schedule Follow-up Dialog ──────────────────────────────────── */}
+      <Dialog open={followUpOpen} onOpenChange={setFollowUpOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Schedule Follow-up</DialogTitle>
+            <DialogDescription>Book an appointment for {fullName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={followUpForm.slot_date}
+                onChange={e => setFollowUpForm(f => ({ ...f, slot_date: e.target.value, slot_id: "" }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Available Slot *</Label>
+              <Select
+                value={followUpForm.slot_id}
+                onValueChange={v => setFollowUpForm(f => ({ ...f, slot_id: v }))}
+                disabled={followUpSlotsLoading || followUpSlots.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={
+                    followUpSlotsLoading ? "Loading slots..." : followUpSlots.length === 0 ? "No slots available this date" : "Select a slot"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {followUpSlots.map((s: any) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.start_time?.slice(0, 5)}
+                      {s.provider_name ? ` — ${s.provider_name}` : ""}
+                      {s.department ? ` (${s.department})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Appointment Type</Label>
+              <Select value={followUpForm.appointment_type} onValueChange={v => setFollowUpForm(f => ({ ...f, appointment_type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["follow_up", "consultation", "procedure", "review", "antenatal", "vaccination"].map(t => (
+                    <SelectItem key={t} value={t} className="capitalize">{t.replace(/_/g, " ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Notes</Label>
+              <Textarea value={followUpForm.notes} onChange={e => setFollowUpForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Reason for follow-up..." />
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs text-muted-foreground"
+              onClick={() => { setFollowUpOpen(false); navigate("/calendar/tasks"); }}
+            >
+              View Full Doctor Calendar
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setFollowUpOpen(false)}>Cancel</Button>
+              <Button
+                disabled={!followUpForm.slot_id || followUpMut.isPending}
+                onClick={() => followUpMut.mutate()}
+              >
+                {followUpMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Book Follow-up
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

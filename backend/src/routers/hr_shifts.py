@@ -1,5 +1,5 @@
 """
-HR Shifts & Leave Router — SynbotHealth / Royan Hospital
+HR Shifts & Leave Router — RoyanHealth / Royan Hospital
 =========================================================
 Staff shift scheduling, leave request management, and payroll stub.
 

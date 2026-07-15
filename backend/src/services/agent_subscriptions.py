@@ -60,40 +60,43 @@ class AgentSubscriptionProcessor:
     def _mark_processed(self, ev_id: str):
         self._processed.add(ev_id)
 
+    def _run_cycle(self):
+        ledger = self._read_ledger()
+        for ev in ledger:
+            ev_id = ev.get('event_id') or ev.get('version_hash')
+            if not ev_id or ev_id in self._processed:
+                continue
+            if self._should_create_thread(ev):
+                try:
+                    payload = self._build_thread_payload(ev)
+                    thread_id = str(uuid.uuid4())
+                    thread_record = {
+                        'id': thread_id,
+                        'title': payload['title'],
+                        'created_by': None,
+                        'created_at': dt.datetime.utcnow().isoformat() + 'Z',
+                        'last_activity_at': dt.datetime.utcnow().isoformat() + 'Z'
+                    }
+                    db.table('threads').insert(thread_record).execute()
+                    # initial message
+                    msg = {
+                        'id': str(uuid.uuid4()),
+                        'thread_id': thread_id,
+                        'sender': None,
+                        'content': payload['message'],
+                        'created_at': dt.datetime.utcnow().isoformat() + 'Z',
+                        'metadata': {'event_id': ev_id}
+                    }
+                    db.table('thread_messages').insert(msg).execute()
+                    audit_event('agent_thread_created', {'event_id': ev_id, 'thread_id': thread_id}, actor_id=None, event_class='agents', action='create_thread', subject_type='thread', subject_id=thread_id)
+                except Exception:
+                    pass
+            self._mark_processed(ev_id)
+
     async def run_loop(self, interval: int = 5):
         while True:
             try:
-                ledger = self._read_ledger()
-                for ev in ledger:
-                    ev_id = ev.get('event_id') or ev.get('version_hash')
-                    if not ev_id or ev_id in self._processed:
-                        continue
-                    if self._should_create_thread(ev):
-                        try:
-                            payload = self._build_thread_payload(ev)
-                            thread_id = str(uuid.uuid4())
-                            thread_record = {
-                                'id': thread_id,
-                                'title': payload['title'],
-                                'created_by': None,
-                                'created_at': dt.datetime.utcnow().isoformat() + 'Z',
-                                'last_activity_at': dt.datetime.utcnow().isoformat() + 'Z'
-                            }
-                            db.table('threads').insert(thread_record).execute()
-                            # initial message
-                            msg = {
-                                'id': str(uuid.uuid4()),
-                                'thread_id': thread_id,
-                                'sender': None,
-                                'content': payload['message'],
-                                'created_at': dt.datetime.utcnow().isoformat() + 'Z',
-                                'metadata': {'event_id': ev_id}
-                            }
-                            db.table('thread_messages').insert(msg).execute()
-                            audit_event('agent_thread_created', {'event_id': ev_id, 'thread_id': thread_id}, actor_id=None, event_class='agents', action='create_thread', subject_type='thread', subject_id=thread_id)
-                        except Exception:
-                            pass
-                    self._mark_processed(ev_id)
+                await asyncio.to_thread(self._run_cycle)
             except Exception:
                 pass
             await asyncio.sleep(interval)

@@ -1,5 +1,5 @@
 """
-Laboratory Router — SynbotHealth / Royan Hospital
+Laboratory Router — RoyanHealth / Royan Hospital
 ===================================================
 Manages lab test orders, sample collection, results entry, and turnaround metrics.
 

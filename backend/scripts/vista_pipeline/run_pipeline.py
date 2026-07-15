@@ -143,7 +143,7 @@ def main():
     )
 
     parser = argparse.ArgumentParser(
-        description="VistA → SynbotHealth feature pipeline",
+        description="VistA → RoyanHealth feature pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

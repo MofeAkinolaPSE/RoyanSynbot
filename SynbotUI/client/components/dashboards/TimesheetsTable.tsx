@@ -73,7 +73,7 @@ export function TimesheetsTable() {
             ))
           ) : (
             <p className="text-center text-muted-foreground py-6">
-              No timesheet data uploaded yet. Once teams start recording hours in SynbotHealth,
+              No timesheet data uploaded yet. Once teams start recording hours in RoyanHealth,
               entries will appear here automatically.
             </p>
           )}
@@ -113,7 +113,7 @@ export function TimesheetsTable() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-10">
                     <p className="text-muted-foreground">
-                      No timesheet data uploaded yet. Once teams start recording hours in SynbotHealth,
+                      No timesheet data uploaded yet. Once teams start recording hours in RoyanHealth,
                       entries will appear here automatically.
                     </p>
                   </TableCell>

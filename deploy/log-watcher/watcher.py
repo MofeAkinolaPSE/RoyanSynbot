@@ -117,11 +117,15 @@ class ContainerFollower(threading.Thread):
         super().__init__(daemon=True)
         self.client = client
         self.container_name = container_name
-        self._stop = threading.Event()
+        # Named _stop_event, not _stop — threading.Thread has its own internal
+        # _stop() method (called from is_alive() once a thread finishes); an
+        # attribute named self._stop shadows it and crashes every later
+        # is_alive() call on this thread with "'Event' object is not callable".
+        self._stop_event = threading.Event()
         self._traceback_buf: list[str] = []
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
     def _handle_traceback_buffering(self, line: str) -> bool:
         """Returns True if the line was consumed as part of traceback handling."""
@@ -193,7 +197,7 @@ class ContainerFollower(threading.Thread):
         logger.info("following logs for %s", self.container_name)
         try:
             for raw_line in container.logs(stream=True, follow=True, since=int(time.time())):
-                if self._stop.is_set():
+                if self._stop_event.is_set():
                     break
                 try:
                     line = raw_line.decode("utf-8", errors="replace").rstrip("\n")

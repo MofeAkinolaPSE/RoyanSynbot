@@ -20,17 +20,14 @@ export const useAuth = (): AuthContextValue => {
   return ctx;
 };
 
-const STORED_REFRESH_KEY = "refresh_token";
-
 const AuthProvider = ({ children }: PropsWithChildren) => {
-  // Optimistic auth: if a refresh token is already stored (or an access token is in
-  // memory), trust it immediately and verify in the background instead of blocking
-  // the entire render tree on a network round-trip to /refresh.
-  const hasStoredSession =
-    authClient.isAuthenticated() || !!localStorage.getItem(STORED_REFRESH_KEY);
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(hasStoredSession);
+  // Optimistic auth: if an access token is already in memory (e.g. navigated here
+  // right after login), trust it immediately. Otherwise we can't know client-side
+  // whether a session exists — the refresh token lives in an httpOnly cookie that
+  // JS can't read — so show a brief loading state and always attempt a background
+  // refresh() to find out; the server will say no quickly if there's no cookie.
+  const [isLoading, setIsLoading] = useState(!authClient.isAuthenticated());
+  const [isAuthenticated, setIsAuthenticated] = useState(authClient.isAuthenticated());
   const [roles, setRoles] = useState<string[]>(authClient.getRoles());
 
   useEffect(() => {
@@ -47,14 +44,8 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
     if (authClient.isAuthenticated()) {
       // Access token already in memory (e.g. navigated here right after login) — nothing to do.
       setIsLoading(false);
-    } else if (!localStorage.getItem(STORED_REFRESH_KEY)) {
-      // No tokens at all — mark unauthenticated immediately.
-      setIsAuthenticated(false);
-      setIsLoading(false);
     } else {
-      // Have a stored refresh token but no access token (cold page load).
-      // Signal loading so consumers (Sidebar) don't filter on stale empty roles.
-      setIsLoading(true);
+      // Cold page load — attempt to restore the session via the httpOnly refresh cookie.
       (async () => {
         const ok = await authClient.refresh(controller.signal);
         if (!active) return;

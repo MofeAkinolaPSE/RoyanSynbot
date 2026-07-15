@@ -1,5 +1,5 @@
 """
-Lab Turnaround Agent — SynbotHealth / Royan Hospital
+Lab Turnaround Agent — RoyanHealth / Royan Hospital
 ======================================================
 Monitors laboratory test turnaround times (TAT) and surfaces delays:
   - Stat orders overdue > 1 hr from collection to result

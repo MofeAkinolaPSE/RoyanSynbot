@@ -1,5 +1,5 @@
 -- 114_hmo_coverage_and_hope_sync.sql
--- Synbot Health Core MVP: configurable HMO coverage engine + read-only Hope sync metadata
+-- RoyanHealth Core MVP: configurable HMO coverage engine + read-only Hope sync metadata
 
 BEGIN;
 

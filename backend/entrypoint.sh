@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "  SynbotHealth — Royan Hospital"
+echo "  RoyanHealth — Royan Hospital"
 echo "=========================================="
 
 echo "[1/2] Running database migrations..."

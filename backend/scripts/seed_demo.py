@@ -1,5 +1,5 @@
 """
-Demo seed script for SynbotHealth — Royan Hospital
+Demo seed script for RoyanHealth — Royan Hospital
 Populates realistic data for all 10 walkthrough demo scenes.
 
 Run from repo root:
@@ -451,7 +451,7 @@ def seed_chat_history_migration(cur):
 
 def main():
     log.info("\n╔══════════════════════════════════════════════╗")
-    log.info("║  SynbotHealth Demo Seed — Royan Hospital     ║")
+    log.info("║  RoyanHealth Demo Seed — Royan Hospital     ║")
     log.info("╚══════════════════════════════════════════════╝\n")
 
     conn = connect()

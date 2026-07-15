@@ -336,15 +336,26 @@ export const api = {
       phone?: string;
       kyc_details?: Record<string, string>;
     }) => sendPublicJson<{ status: string; registration_id: string }>("/register", "POST", payload),
-    list: (status: string = "pending") => fetchJson<{ data: any[] }>(`/staff/registrations?status=${status}`),
-    detail: (id: string) => fetchJson<{ data: any }>(`/staff/registrations/${encodeURIComponent(id)}`),
+    // fetchRaw, not fetchJson — fetchJson unwraps `{data: [...]}` down to the
+    // bare array, and AdminRegistrations.tsx reads `.data` off the *result*
+    // (expecting the wrapper), so fetchJson here silently made the pending
+    // list always resolve to []. See the same landmine fixed in staff.getMe().
+    list: (status: string = "pending") => fetchRaw<{ data: any[] }>(`/staff/registrations?status=${status}`),
+    detail: (id: string) => fetchRaw<{ data: any }>(`/staff/registrations/${encodeURIComponent(id)}`),
     approve: (id: string, payload: { department_id_override?: number; approval_reason: string; attestation_text: string }) =>
       sendJson<{ status: string; staff_id: string; user_id: string }>(`/staff/registrations/${encodeURIComponent(id)}/approve`, "POST", payload),
     reject: (id: string, payload: { reason: string }) =>
       sendJson<{ status: string }>(`/staff/registrations/${encodeURIComponent(id)}/reject`, "POST", payload),
   },
   staff: {
-    getMe: () => fetchJson<{ data: any; profile_complete: boolean }>("/staff/me"),
+    // fetchJson unwraps to `d.data ?? d` — wrong here, since this response
+    // carries profile_complete as a SIBLING of `data`, not inside it. Whenever
+    // a staff row already exists, fetchJson would silently discard
+    // profile_complete and return just the raw profile row, making
+    // `res.profile_complete` always undefined and re-triggering ProfileSetup
+    // (and, downstream, the tour) on every reload. fetchRaw returns the
+    // response body untouched.
+    getMe: () => fetchRaw<{ data: any; profile_complete: boolean }>("/staff/me"),
     ensureProfile: (payload: Record<string, any>) =>
       sendJson<{ data: any; profile_complete: boolean }>("/staff/me/ensure-profile", "POST", payload),
     updateProfile: (payload: Record<string, any>) =>
@@ -380,6 +391,9 @@ export const api = {
   },
   audit: {
     logs: () => fetchJson<any[]>("/audit/logs"),
+    // SDIL — Data intelligence / relationship integrity audit
+    integrity: () => fetchRaw<any>('/audit/integrity'),
+    run: () => sendJson<any>('/audit/run', 'POST', {}),
   },
   workflow: {
      pending: () => fetchJson<any[]>("/workflow/pending"),
@@ -610,9 +624,6 @@ export const api = {
   },
   analytics: {
     arTrends: (periods: number = 6) => fetchRaw<ArTrendsResponse>(`/analytics/ar_trends?periods=${periods}`),
-  },
-  hr: {
-    summary: (periods: number = 3) => fetchRaw<HrSummaryResponse>(`/hr/analytics/summary?periods=${periods}`),
   },
   crm: {
     riskScores: () => fetchRaw<any>("/crm/risk_scores"),
@@ -1449,11 +1460,22 @@ export const api = {
         fetchRaw<any>('/patients/' + encodeURIComponent(mrn)),
       profile: (mrn: string) =>
         fetchRaw<any>('/patients/' + encodeURIComponent(mrn) + '/profile'),
-      update: (mrn: string, payload: Record<string, any>) =>
-        sendJson<any>('/patients/' + encodeURIComponent(mrn), 'PATCH', {
-          ...payload,
-          blood_group: payload.blood_group ?? payload.blood_type,
-        }),
+      relationshipTree: (mrn: string) =>
+        fetchRaw<any>('/patients/' + encodeURIComponent(mrn) + '/relationship-tree'),
+      update: (mrn: string, payload: Record<string, any>) => {
+        const body = { ...payload };
+        // Only fall back to the legacy blood_type name when blood_group is
+        // truly absent — `??` alone would also catch an explicit
+        // `blood_group: null` (a deliberate "clear this field" signal, see
+        // patient_registration.py's exclude_unset handling) and silently
+        // turn it into undefined, dropping the key from the request instead
+        // of clearing it.
+        if (body.blood_group === undefined && body.blood_type !== undefined) {
+          body.blood_group = body.blood_type;
+        }
+        delete body.blood_type;
+        return sendJson<any>('/patients/' + encodeURIComponent(mrn), 'PATCH', body);
+      },
     },
     queue: {
       open: (payload: Record<string, any>) =>
@@ -1491,22 +1513,6 @@ export const api = {
         sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/admit', 'POST', p),
       freeBed: (wardId: string, bedId: string) =>
         sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/discharge', 'POST', {}),
-    },
-    _lab_base: {
-      // NOTE: This block is intentionally named _lab_base.
-      // The effective api.hospital.lab is the Phase 2 block below which includes all methods.
-      placeOrder: (p: Record<string, any>) => sendJson<any>('/lab/orders', 'POST', p),
-    },
-    pharmacy: {
-      createRx: (p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions', 'POST', p),
-      listRx: (params?: { status?: string; encounter_id?: string }) => {
-        const qs = new URLSearchParams();
-        if (params?.status)       qs.set('status',       params.status === 'active' ? 'pending' : params.status === 'partial' ? 'partially_dispensed' : params.status);
-        if (params?.encounter_id) qs.set('encounter_id', params.encounter_id);
-        return fetchRaw<any>('/pharmacy/prescriptions' + (qs.toString() ? '?' + qs : ''));
-      },
-      dispense: (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/dispense', 'POST',  p),
-      cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/cancel',   'POST', p),
     },
     billing: {
       createBill: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills', 'POST', p),
@@ -1606,6 +1612,18 @@ export const api = {
         sendJson<any>('/clinical/problems/' + problemId, 'PATCH', p),
       deleteProblem: (problemId: number | string) =>
         sendJson<any>('/clinical/problems/' + problemId, 'DELETE', {}),
+      // Postings — CPRS cover-sheet clinical flags/notices
+      listPostings: (patientId: number | string, activeOnly = true) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/postings?active_only=' + activeOnly),
+      addPosting: (patientId: number | string, p: Record<string, any>) =>
+        sendJson<any>('/clinical/patients/' + patientId + '/postings', 'POST', p),
+      resolvePosting: (postingId: number | string) =>
+        sendJson<any>('/clinical/postings/' + postingId + '/resolve', 'PATCH', {}),
+      // Clinical Reminders — CPRS cover-sheet due/overdue care-gap alerts
+      listReminders: (patientId: number | string) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/reminders'),
+      dismissReminder: (reminderId: number | string) =>
+        sendJson<any>('/clinical/reminders/' + reminderId + '/dismiss', 'PATCH', {}),
     },
     consent: {
       list: (patientId: number | string) => fetchRaw<any>('/patients/' + patientId + '/consent'),
@@ -1620,6 +1638,17 @@ export const api = {
     },
     // ── Phase 2 additions ────────────────────────────────────────────────
     pharmacy: {
+      // Prescriptions (consolidated here to avoid duplicate key override —
+      // see the `lab` block below for the same pattern)
+      createRx: (p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions', 'POST', p),
+      listRx: (params?: { status?: string; encounter_id?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status)       qs.set('status',       params.status === 'active' ? 'pending' : params.status === 'partial' ? 'partially_dispensed' : params.status);
+        if (params?.encounter_id) qs.set('encounter_id', params.encounter_id);
+        return fetchRaw<any>('/pharmacy/prescriptions' + (qs.toString() ? '?' + qs : ''));
+      },
+      dispense: (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/dispense', 'POST',  p),
+      cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/cancel',   'POST', p),
       // Allergies
       listAllergies: (patientId: number | string) =>
         fetchRaw<any>('/pharmacy/allergies/' + patientId),
@@ -1899,6 +1928,8 @@ export const api = {
   },
   // ── Phase 7 — HR Shifts & Leave ───────────────────────────────────────────
   hr: {
+    // Consolidated here to avoid duplicate key override — see `pharmacy`/`lab` for the same pattern
+    summary: (periods: number = 3) => fetchRaw<HrSummaryResponse>(`/hr/analytics/summary?periods=${periods}`),
     createShift: (p: Record<string, any>) => sendJson<any>('/hr/shifts', 'POST', p),
     listShifts: (params?: { staff_id?: string; department?: string; shift_date?: string; week_start?: string; status?: string }) => {
       const qs = new URLSearchParams();

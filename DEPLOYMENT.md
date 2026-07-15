@@ -1,4 +1,4 @@
-# SynbotHealth / RoyanHealth — Deployment Walkthrough
+# RoyanHealth — Deployment Walkthrough
 
 > **Current situation:** You are connected to the client's Ubuntu/Windows server via Remote Desktop (RDP) or SSH from your dev laptop.
 > Everything you do in this guide happens inside that session — on the server — unless a step explicitly says "on your dev laptop."
@@ -11,7 +11,7 @@
 
 ## What Are We Deploying?
 
-**SynbotHealth** — a full-stack hospital management system (HMS) running 6 Docker services:
+**RoyanHealth** — a full-stack hospital management system (HMS) running 6 Docker services:
 
 | Service | What It Does | URL Path |
 |---|---|---|
@@ -65,7 +65,7 @@ PART 2 (After Verified):
 
 ---
 
-# PART 1 — Get SynbotHealth Live
+# PART 1 — Get RoyanHealth Live
 
 ---
 
@@ -145,7 +145,7 @@ ALL 68 CHECKS PASSED — DEMO READY
 Then stage and commit everything:
 ```bash
 git add .
-git commit -m "feat: SynbotHealth v1 — full HMS + patient portal, 68/68 PESE validated"
+git commit -m "feat: RoyanHealth v1 — full HMS + patient portal, 68/68 PESE validated"
 ```
 
 > **Do NOT run `git push` yet.** Pushing triggers the deployment pipeline. The server runner must be set up first or the pipeline will fail with no runner available. You will push at Step 8.
@@ -308,8 +308,8 @@ Look for `active (running)`.
 
 **Windows (PowerShell as Administrator):**
 ```powershell
-netsh advfirewall firewall add rule name="SynbotHealth HTTPS" dir=in action=allow protocol=TCP localport=443
-netsh advfirewall firewall add rule name="SynbotHealth HTTP" dir=in action=allow protocol=TCP localport=80
+netsh advfirewall firewall add rule name="RoyanHealth HTTPS" dir=in action=allow protocol=TCP localport=443
+netsh advfirewall firewall add rule name="RoyanHealth HTTP" dir=in action=allow protocol=TCP localport=80
 ```
 Both should print `Ok.`
 
@@ -710,10 +710,24 @@ Add `TERMII_API_KEY` and `TERMII_SENDER_ID` to GitHub Secrets — the notificati
 Add `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` to GitHub Secrets — the Pay Now button on the patient portal becomes live.
 
 **Let's Encrypt TLS (production domain):**
+Once the domain's DNS A record points at this server (ports 80 + 443 reachable from the internet), replace the self-signed cert with a real one. Run from the Ubuntu terminal on the server:
 ```bash
 cd /opt/royan/deploy
-sudo bash setup-letsencrypt.sh --domain royan.yourhospital.com --email admin@yourhospital.com
+./scripts/issue-cert.sh royan.yourhospital.com admin@yourhospital.com
 ```
+This requests the cert via Let's Encrypt's HTTP-01 challenge, installs it into the volume nginx reads from, and reloads nginx — no other steps needed. It's safe to re-run.
+
+Then set up auto-renewal (Let's Encrypt certs expire every 90 days) — add this to the server's own crontab, not a container's:
+```bash
+crontab -e
+# add this line:
+0 3 * * 1  cd /opt/royan/deploy && ./scripts/renew-cert.sh royan.yourhospital.com >> /var/log/royan-cert-renew.log 2>&1
+```
+`renew-cert.sh` only actually renews within 30 days of expiry, so a weekly cron entry is a safe no-op most of the time.
+
+Also update `CORS_ALLOW_ORIGINS` in `deploy/.env` to the real domain at this point (see the security-review notes — it currently points at a placeholder) and restart the backend: `docker compose restart backend`.
+
+> Don't use `setup-letsencrypt.sh` — that script assumes a Docker Swarm deployment via `start-stack.sh` (`docker service update`, host-level nginx + certbot via apt), which doesn't match this stack's plain `docker compose` architecture and will fail.
 
 ---
 
@@ -768,7 +782,7 @@ hostname -I
 
 ## Production Readiness Checklist (NL-implement-guide1.md)
 
-Run through these gates **before** cutting over from DRM Hope to Synbot Health as the primary HMS.
+Run through these gates **before** cutting over from DRM Hope to RoyanHealth as the primary HMS.
 
 ### 1. Database Migrations
 - [ ] All migrations 001–135 applied in order (`psql -f backend/migrations/*.sql`)

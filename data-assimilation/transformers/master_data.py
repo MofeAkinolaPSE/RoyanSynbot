@@ -1,4 +1,4 @@
-"""MDM master data transformer — Chapter 4 of Synbot Health Blueprint.
+"""MDM master data transformer — Chapter 4 of RoyanHealth Blueprint.
 
 Extracts authoritative master entities from staged Hope data:
   - Staff / consultants   → royan_staff

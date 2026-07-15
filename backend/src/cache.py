@@ -208,12 +208,21 @@ def _make_key(
 def ttl_cache(
     ttl_seconds: int,
     ignore_kwargs: Iterable[str] | None = None,
-    tags: Iterable[str] | None = None,
+    tags: Iterable[str] | Callable[..., Iterable[str]] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Cache function results for a fixed TTL.
 
     Uses Redis when REDIS_URL is set (shared across all Swarm replicas).
     Falls back to in-process cache otherwise (single-replica safe).
+
+    `tags` may be a static iterable of tag strings, or a callable receiving
+    the wrapped call's (*args, **kwargs) and returning the tags for that
+    specific call — enabling per-entity invalidation, e.g.:
+
+        @ttl_cache(300, tags=lambda patient_id, **kw: [f"patient:{patient_id}"])
+        def get_patient_context(patient_id): ...
+
+        invalidate_cache_tags(f"patient:{patient_id}")  # after any write
     """
     if ignore_kwargs is None:
         ignore_kwargs = []
@@ -222,6 +231,7 @@ def ttl_cache(
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             raw_key = _make_key(func.__name__, args, kwargs, ignore_kwargs)
+            resolved_tags = tags(*args, **kwargs) if callable(tags) else tags
 
             if _get_redis() is not None:
                 rkey = _redis_key(raw_key)
@@ -229,7 +239,7 @@ def ttl_cache(
                 if cached is not None:
                     return cached
                 value = func(*args, **kwargs)
-                _redis_set(rkey, value, ttl_seconds, tags)
+                _redis_set(rkey, value, ttl_seconds, resolved_tags)
                 return value
 
             # In-process fallback
@@ -237,7 +247,7 @@ def ttl_cache(
             if cached is not None:
                 return cached
             value = func(*args, **kwargs)
-            _global_cache.set(raw_key, value, ttl_seconds, tags=tags)
+            _global_cache.set(raw_key, value, ttl_seconds, tags=resolved_tags)
             return value
 
         return wrapper

@@ -1,4 +1,4 @@
-"""Centralized constants for SynbotHealth.
+"""Centralized constants for RoyanHealth.
 
 This module provides a single source of truth for branding, table names,
 embedding parameters, disclaimers, environment variable keys, and service
@@ -9,7 +9,7 @@ import os
 
 # Branding & Bot Identity
 BOT_BRAND = "Royan Hospital"
-BOT_NAME = "SynbotHealth"
+BOT_NAME = "RoyanHealth"
 
 # Embedding / Retrieval Params
 EMBEDDING_DIM = 384
@@ -115,6 +115,14 @@ TABLE_PARTOGRAPH            = "royan_partograph"
 TABLE_DELIVERY_RECORDS      = "royan_delivery_records"
 TABLE_NEWBORN_ASSESSMENT    = "royan_newborn_assessment"
 TABLE_IMMUNISATION          = "royan_immunisation"
+
+# --- Hospital Phase 6 — CPRS Cover Sheet support ---
+TABLE_PATIENT_POSTINGS      = "royan_patient_postings"
+TABLE_CLINICAL_REMINDERS    = "royan_clinical_reminders"
+
+POSTING_TYPE_ALLOWED        = {"alert", "precaution", "directive", "note"}
+POSTING_SEVERITY_ALLOWED    = {"info", "warning", "critical"}
+REMINDER_SEVERITY_ALLOWED   = {"info", "warning", "critical"}
 
 # Radiology workflow constants
 RADIOLOGY_MODALITIES_ALLOWED = {"xray", "ultrasound", "ct", "mri", "ecg", "echo", "fluoroscopy", "mammography", "endoscopy", "other"}

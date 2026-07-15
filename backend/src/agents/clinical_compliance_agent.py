@@ -1,5 +1,5 @@
 """
-Clinical Compliance Agent — SynbotHealth / Royan Hospital
+Clinical Compliance Agent — RoyanHealth / Royan Hospital
 ===========================================================
 Monitors clinical documentation and regulatory compliance signals:
   - NDPA 2023 (Nigeria Data Protection Act) — patient data handling

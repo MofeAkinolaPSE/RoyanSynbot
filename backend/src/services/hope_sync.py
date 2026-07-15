@@ -1,4 +1,4 @@
-"""Read-only Hope bridge synchronization for Synbot Health.
+"""Read-only Hope bridge synchronization for RoyanHealth.
 
 The bridge is treated as an external data source. This module never writes back
 to Hope; it only pulls rows, normalizes them, and upserts Synbot-owned records
@@ -118,13 +118,22 @@ def _fetch_bridge(entity: str, limit: int) -> list[dict[str, Any]]:
 
 
 def _generate_mrn() -> str:
+    """Generate the next MRN via the shared, atomic Postgres sequence
+    (public.generate_mrn() RPC — same generator patient_registration.py and
+    patient_service.py use). Raises instead of silently falling back to a
+    timestamp-based MRN in a different format — a failure here should be
+    loud (and the caller skips just that row) rather than quietly producing
+    a third MRN format nobody notices."""
     result = db.rpc("generate_mrn", {}).execute()
     if result.data:
         row = result.data[0]
         if isinstance(row, dict):
-            return row.get("generate_mrn") or row.get("mrn") or str(row)
-        return str(row)
-    return f"RH{dt.datetime.utcnow():%Y%m%d%H%M%S}"
+            mrn = row.get("generate_mrn") or row.get("mrn")
+            if mrn:
+                return mrn
+        elif row:
+            return str(row)
+    raise RuntimeError("generate_mrn() RPC returned no data")
 
 
 def _ensure_hmo(name: str | None) -> None:
@@ -187,8 +196,15 @@ def _sync_patients(rows: list[dict[str, Any]]) -> int:
             continue
         hmo = _safe_str(row.get("hmo") or row.get("hmo_provider"))
         _ensure_hmo(hmo)
+        mrn = _safe_str(row.get("mrn"))
+        if not mrn:
+            try:
+                mrn = _generate_mrn()
+            except Exception as exc:
+                logger.error("hope_sync: MRN generation failed for external_id=%s: %s", external_id, exc)
+                continue
         normalized.append({
-            "mrn": _safe_str(row.get("mrn")) or _generate_mrn(),
+            "mrn": mrn,
             "first_name": _safe_str(row.get("first_name")) or "Unknown",
             "last_name": _safe_str(row.get("last_name")) or "Patient",
             "date_of_birth": _safe_str(row.get("dob") or row.get("date_of_birth")),

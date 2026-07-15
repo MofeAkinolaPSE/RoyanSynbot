@@ -1,7 +1,7 @@
 """
 Page Data Validation Service
 =============================
-Validates that every major dashboard page in SynbotHealth is receiving real,
+Validates that every major dashboard page in RoyanHealth is receiving real,
 non-empty data from the backend. Calls each page's endpoints with an internal
 admin token and checks that critical fields exist, are non-null, and meet
 basic sanity rules.

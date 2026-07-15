@@ -26,6 +26,7 @@ import {
   CreditCard,
   ConciergeBell,
   Bug,
+  Database,
 } from "lucide-react";
 
 export type NavChild = { label: string; href: string };
@@ -275,6 +276,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Bug,
     href: "/admin/reliability",
     roles: ["admin"],
+  },
+  {
+    label: "Clinical Data Explorer",
+    icon: Database,
+    href: "/admin/clinical-explorer",
+    roles: ["admin", "management", "ops"],
   },
   {
     label: "Fee Schedule",

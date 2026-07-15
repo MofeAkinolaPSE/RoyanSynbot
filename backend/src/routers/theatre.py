@@ -1,5 +1,5 @@
 """
-Surgical Theatre Router — SynbotHealth / Royan Hospital
+Surgical Theatre Router — RoyanHealth / Royan Hospital
 =========================================================
 Theatre case scheduling, pre-op assessment, anaesthetic records,
 operative notes, and post-op recovery tracking.

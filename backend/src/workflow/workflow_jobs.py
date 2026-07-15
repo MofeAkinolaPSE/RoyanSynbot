@@ -372,18 +372,21 @@ class WorkflowJobsEngine:
             job["last_error"] = str(exc)
             return False
 
+    def _run_cycle(self) -> None:
+        self.discover_and_enqueue()
+        self._escalate_overdue_jobs()
+        jobs = self._load_jobs()
+        changed = False
+        for job in jobs:
+            if job.get("state") in ("submitted", "approved"):
+                changed = self._process_job(job) or changed
+        if changed:
+            self._write_jobs(jobs)
+
     async def run_processor(self, interval_seconds: int = 5):
         while True:
             try:
-                self.discover_and_enqueue()
-                self._escalate_overdue_jobs()
-                jobs = self._load_jobs()
-                changed = False
-                for job in jobs:
-                    if job.get("state") in ("submitted", "approved"):
-                        changed = self._process_job(job) or changed
-                if changed:
-                    self._write_jobs(jobs)
+                await asyncio.to_thread(self._run_cycle)
             except Exception:
                 pass
             await asyncio.sleep(interval_seconds)

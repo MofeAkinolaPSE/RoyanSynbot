@@ -1,4 +1,4 @@
-"""Coverage calculation service for Synbot Health HMO billing.
+"""Coverage calculation service for RoyanHealth HMO billing.
 
 The service is deliberately rule-driven. Patient HMO data can arrive from
 Synbot registration or the read-only Hope overlay, while coverage rules remain

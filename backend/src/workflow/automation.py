@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from src.db import db
+from src.constants import TABLE_KPI_PROMOTIONS
 from src.workflow.batch_locking import lock_batch, is_batch_locked
-from src.workflow.expiry_prevention import create_promotion
 from src.workflow.credit_risk import apply_credit_action, is_customer_flagged
 
 logger = logging.getLogger(__name__)
@@ -61,133 +61,176 @@ class WorkflowAutomation:
         interval = AUTOMATION_CONFIG["scheduler_interval_minutes"] * 60
         while self._running:
             try:
-                await self._run_all_checks()
+                await asyncio.to_thread(self._run_all_checks)
             except Exception as e:
                 logger.exception(f"Automation check failed: {e}")
             await asyncio.sleep(interval)
 
-    async def _run_all_checks(self):
-        """Run all automation checks."""
+    def _run_all_checks(self):
+        """Run all automation checks (synchronous — offloaded to a thread by the caller)."""
         logger.debug("Running workflow automation checks...")
-        
+
         # 1. Check for low stock and trigger replenishment
-        await self._check_low_stock()
-        
+        self._check_low_stock()
+
         # 2. Check for near-expiry items and create promotions
-        await self._check_expiry_prevention()
-        
+        self._check_expiry_prevention()
+
         # 3. Check for AR aging and flag credit risks
-        await self._check_credit_risk()
-        
+        self._check_credit_risk()
+
         logger.debug("Workflow automation checks completed")
 
-    async def _check_low_stock(self):
+    def _check_low_stock(self):
         """
         Check for low stock items and trigger replenishment.
         Creates replenishment orders for items below threshold.
+
+        Batched: 1 query to list candidates + 1 query to check existing
+        replenishment requests + 1 bulk insert, regardless of how many
+        prescriptions are pending — instead of 2 queries per item.
         """
         try:
             threshold = AUTOMATION_CONFIG["low_stock_threshold"]
-            
+
             # Query pharmacy prescriptions pending dispensing
             result = db.table("royan_prescriptions").select(
                 "id, drug_name, drug_code, quantity, unit"
             ).eq("status", "pending").execute()
-            
+
             items = result.data if hasattr(result, 'data') else []
-            
+            if not items:
+                return
+
+            # Dedupe by SKU — only one replenishment request per SKU per cycle
+            # (first occurrence wins, matching the old per-row behavior where
+            # the first insert for a SKU made every later row see it as "already pending").
+            candidates: Dict[str, Dict[str, Any]] = {}
             for item in items:
                 sku = item.get("drug_code") or item.get("drug_name")
+                if sku and sku not in candidates:
+                    candidates[sku] = item
+
+            if not candidates:
+                return
+
+            # One query for every SKU that already has a pending replenishment request
+            existing = db.table("replenishment_requests").select("sku").eq(
+                "status", "recommended"
+            ).in_("sku", list(candidates.keys())).execute()
+            existing_skus = {row.get("sku") for row in (existing.data or [])}
+
+            new_requests = []
+            for sku, item in candidates.items():
+                if sku in existing_skus:
+                    continue
                 current = 0  # prescription is pending — treat as 0 stock consumed
                 safety = item.get("quantity", threshold * 2)
-                
-                # Check if already has pending replenishment
-                pending = db.table("replenishment_requests").select("id").eq(
-                    "sku", sku
-                ).eq("status", "recommended").execute()
-                
-                if pending.data:
-                    continue  # Already has pending request
-                
-                # Calculate reorder quantity
                 reorder_qty = max(safety - current, threshold * 2)
-                
-                # Create replenishment request
-                db.table("replenishment_requests").insert({
+                new_requests.append({
                     "sku": sku,
                     "requested_qty": reorder_qty,
                     "status": "recommended",
                     "created_by": "auto_low_stock",
                     "notes": f"Auto-generated: stock {current} below threshold {threshold}",
-                }).execute()
-                
-                logger.info(f"Auto-replenishment created: {sku} qty={reorder_qty}")
-                
+                })
+
+            if new_requests:
+                db.table("replenishment_requests").insert(new_requests).execute()
+                for req in new_requests:
+                    logger.info(f"Auto-replenishment created: {req['sku']} qty={req['requested_qty']}")
+
         except Exception as e:
             logger.error(f"Low stock check failed: {e}")
 
-    async def _check_expiry_prevention(self):
+    def _check_expiry_prevention(self):
         """
         Check for near-expiry items and create discount promotions.
         Locks batches that are expired.
+
+        Batched: the promotion-existence check and the promotion/KPI inserts
+        happen once for the whole cycle instead of once per near-expiry item.
+        (Batch locking stays a plain loop — batch_locking.py is currently a
+        no-op stub with no DB cost.)
         """
         try:
             warning_days = AUTOMATION_CONFIG["expiry_warning_days"]
             discount = AUTOMATION_CONFIG["auto_promotion_discount"]
             cutoff = (datetime.utcnow() + timedelta(days=warning_days)).isoformat()
-            
+
             # Query dispensing records for near-expiry drugs
             result = db.table("royan_dispensing").select(
                 "drug_name, batch_number, quantity_dispensed, expiry_date"
             ).lt("expiry_date", cutoff).gt("quantity_dispensed", 0).execute()
-            
+
             items = result.data if hasattr(result, 'data') else []
-            
+            if not items:
+                return
+
+            now = datetime.utcnow()
+            expired_batch_ids: List[str] = []
+            near_expiry: Dict[tuple, Dict[str, Any]] = {}  # (sku, batch_id) -> item
+
             for item in items:
                 sku = item.get("drug_name")
                 batch_id = item.get("batch_number")
-                qty = item.get("quantity_dispensed", 0)
                 expiry = item.get("expiry_date")
-                
+
                 if not expiry:
                     continue
-                
-                # Parse expiry date
                 try:
                     exp_date = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
-                except:
+                except Exception:
                     continue
-                
-                # If expired, lock the batch
-                if exp_date < datetime.utcnow().replace(tzinfo=exp_date.tzinfo):
-                    if batch_id and not is_batch_locked(batch_id):
-                        lock_batch(batch_id, "Auto-locked: Expired", "system")
-                        logger.warning(f"Batch {batch_id} auto-locked due to expiry")
+
+                if exp_date < now.replace(tzinfo=exp_date.tzinfo):
+                    if batch_id:
+                        expired_batch_ids.append(batch_id)
                     continue
-                
-                # Check if promotion already exists
-                existing = db.table("promotions").select("id").eq(
-                    "sku", sku
-                ).eq("batch_id", batch_id).execute()
-                
-                if existing.data:
-                    continue  # Already has promotion
-                
-                # Create promotion for near-expiry item
-                create_promotion(
-                    sku=sku,
-                    batch_id=batch_id,
-                    qty=qty,
-                    discount_pct=discount,
-                    created_by="system_auto_expiry"
-                )
-                
-                logger.info(f"Auto-promotion created: {sku} batch={batch_id} discount={discount}%")
-                
+
+                key = (sku, batch_id)
+                if key not in near_expiry:
+                    near_expiry[key] = item
+
+            for batch_id in expired_batch_ids:
+                if not is_batch_locked(batch_id):
+                    lock_batch(batch_id, "Auto-locked: Expired", "system")
+                    logger.warning(f"Batch {batch_id} auto-locked due to expiry")
+
+            if not near_expiry:
+                return
+
+            # One query for every SKU that might already have a promotion,
+            # then refine to exact (sku, batch_id) matches in Python.
+            skus = list({sku for sku, _ in near_expiry.keys()})
+            existing = db.table("promotions").select("sku, batch_id").in_("sku", skus).execute()
+            existing_keys = {(row.get("sku"), row.get("batch_id")) for row in (existing.data or [])}
+
+            new_promotions = []
+            new_kpi_rows = []
+            for (sku, batch_id), item in near_expiry.items():
+                if (sku, batch_id) in existing_keys:
+                    continue
+                qty = item.get("quantity_dispensed", 0)
+                new_promotions.append({
+                    "sku": sku, "batch_id": batch_id, "qty": qty,
+                    "discount_pct": float(discount), "created_by": "system_auto_expiry",
+                })
+                new_kpi_rows.append({
+                    "sku": sku, "batch_id": batch_id, "qty": qty,
+                    "discount_pct": discount, "created_by": "system_auto_expiry",
+                })
+
+            if new_promotions:
+                db.table("promotions").insert(new_promotions).execute()
+                db.table(TABLE_KPI_PROMOTIONS).insert(new_kpi_rows).execute()
+                for p in new_promotions:
+                    logger.info(f"Auto-promotion created: {p['sku']} batch={p['batch_id']} discount={discount}%")
+
         except Exception as e:
             logger.error(f"Expiry prevention check failed: {e}")
 
-    async def _check_credit_risk(self):
+    def _check_credit_risk(self):
         """
         Check AR aging and flag credit risk customers.
         Automatically adjusts credit limits for risky customers.
@@ -289,4 +332,4 @@ async def stop_workflow_automation():
 async def run_automation_checks_once():
     """Run all automation checks once (for testing/manual trigger)."""
     automation = get_workflow_automation()
-    await automation._run_all_checks()
+    await asyncio.to_thread(automation._run_all_checks)

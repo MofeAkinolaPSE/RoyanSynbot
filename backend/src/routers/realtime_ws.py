@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from src.constants import WEBSOCKET_ENABLED
-from src.middleware import decode_jwt_token, verify_jwt
+from src.middleware import verify_jwt
 from src.services.realtime import realtime_hub
 from src.services.ws_ticket import TICKET_TTL_SECONDS, issue_ticket, redeem_ticket
 
@@ -29,40 +29,23 @@ _ALLOWED_CHANNELS: dict[str, set[str]] = {
 }
 
 
-def _resolve_ws_token(websocket: WebSocket) -> str | None:
-    token = websocket.query_params.get("token")
-    if token:
-        return token.strip()
-    auth = websocket.headers.get("Authorization", "")
-    if auth.lower().startswith("bearer "):
-        return auth[7:].strip()
-    return None
-
-
 async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, Any]:
     if channel not in _ALLOWED_CHANNELS:
         await websocket.close(code=4404)
         raise RuntimeError("Unknown channel")
 
+    # Tickets only — no raw-JWT-in-URL fallback. A raw access token in the
+    # query string would land in proxy/access logs for the token's full
+    # 45-minute lifetime; the short-lived, single-use ticket (issued via
+    # POST /realtime/ws-ticket) avoids that.
     ticket = websocket.query_params.get("ticket")
-    if ticket:
-        payload = redeem_ticket(ticket.strip())
-        if not payload:
-            await websocket.close(code=4401)
-            raise RuntimeError("Invalid or expired ticket")
-    else:
-        # Legacy path — kept for any caller not yet migrated to tickets.
-        # Puts the raw JWT in the URL (and therefore in proxy logs), so new
-        # code should always go through POST /realtime/ws-ticket instead.
-        token = _resolve_ws_token(websocket)
-        if not token:
-            await websocket.close(code=4401)
-            raise RuntimeError("Missing token")
-        try:
-            payload = decode_jwt_token(token)
-        except Exception as exc:
-            await websocket.close(code=4401)
-            raise RuntimeError("Invalid token") from exc
+    if not ticket:
+        await websocket.close(code=4401)
+        raise RuntimeError("Missing ticket")
+    payload = redeem_ticket(ticket.strip())
+    if not payload:
+        await websocket.close(code=4401)
+        raise RuntimeError("Invalid or expired ticket")
 
     roles = set(payload.get("roles") or [])
     allowed = _ALLOWED_CHANNELS[channel]

@@ -368,7 +368,7 @@ Use:
 ---
 
 SYSTEM GOAL:
-Design a modern, enterprise-grade hospital frontend for Synbot Health that enables fast, intuitive, and context-aware interaction with complex backend systems (EMR, HMO engine, scheduling, queue, billing).
+Design a modern, enterprise-grade hospital frontend for RoyanHealth that enables fast, intuitive, and context-aware interaction with complex backend systems (EMR, HMO engine, scheduling, queue, billing).
 
 ---
 

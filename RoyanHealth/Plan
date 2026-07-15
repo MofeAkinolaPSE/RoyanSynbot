@@ -70,14 +70,14 @@ Here is the full analysis and the starter pack plan.
 
 Your Study7 makes the Django case well for a greenfield hospital system. But you're not starting from zero — you have 40+ routers, 30+ services, a working EOS agent framework, auth, workflow engine, and audit logging already built and tested. Throwing that away and rebuilding in Django would cost 3–4 months of lost ground. FastAPI handles relational, integrity-sensitive data fine through Supabase + Pydantic schemas. The right call is:
 
-> **FastAPI = Synbot Health overlay + gradual HMS (Phase 1–4)**
+> **FastAPI = RoyanHealth overlay + gradual HMS (Phase 1–4)**
 > Django Admin = optional internal management panel if needed (Phase 3+, additive not replacement)
 
 This matches your own strategy: overlay first, phase the incumbent out. FastAPI IS the overlay layer.
 
 ---
 
-## Plan: Synbot Health — Starter Pack
+## Plan: RoyanHealth — Starter Pack
 
 **TL;DR:** Clone the repo, execute a clean pharma → hospital swap in one focused sprint (remove 6 pharma modules, rebrand 4 files, add hospital config + knowledge base), then build hospital-specific modules on top of the solid generic infrastructure already in place.
 
@@ -85,7 +85,7 @@ This matches your own strategy: overlay first, phase the incumbent out. FastAPI 
 
 ### Phase 0 — Clone & Sanitize (Day 1)
 
-1. Clone repo into `SynbotHealth/` (or separate Git repo)
+1. Clone repo into `RoyanHealth/` (or separate Git repo)
 2. Create `.env.hospital` from `.env.example` — new Supabase project, same DeepSeek key
 3. Remove pharma-specific files entirely:
 
@@ -109,7 +109,7 @@ This matches your own strategy: overlay first, phase the incumbent out. FastAPI 
 ### Phase 1 — Rebrand & Hospital Config (Day 1–2)
 
 **constants.py** — Change:
-- `BOT_BRAND = "Royan Hospital"` / `BOT_NAME = "SynbotHealth"`
+- `BOT_BRAND = "Royan Hospital"` / `BOT_NAME = "RoyanHealth"`
 - `NAFDAC_DISCLAIMER` → `NDPA_DISCLAIMER` (Nigeria Data Protection Act 2023 — patient data)
 - Workflow stages: remove `nafdac_sampling`, `cold_room_stacked`, `port_clearing` → replace with clinical stages: `patient_registered → triaged → consulting → lab_ordered → discharged`
 - Table prefix: `placeware_` → `royan_`
@@ -133,7 +133,7 @@ This matches your own strategy: overlay first, phase the incumbent out. FastAPI 
 **App.jsx** — New nav:
 - Dashboard → Clinical Dashboard
 - Remove: SageImport, Finance Analytics (or repurpose)
-- Add: Queue, EMR, Wards, Lab, Pharmacy, Billing, Ask SynbotHealth
+- Add: Queue, EMR, Wards, Lab, Pharmacy, Billing, Ask RoyanHealth
 
 ---
 
@@ -236,7 +236,7 @@ These need zero modification — use as-is:
 ### Verification Checkpoints
 
 1. After Phase 0: `pytest backend/tests/test_smoke.py` passes with zero pharma routes referenced
-2. After Phase 1: `/chat` endpoint returns responses branded as SynbotHealth with hospital context
+2. After Phase 1: `/chat` endpoint returns responses branded as RoyanHealth with hospital context
 3. After Phase 2: Knowledge retrieval returns relevant hospital answers for "what are your hours", "how do I book an appointment"
 4. After Phase 3: Supabase tables `royan_patients`, `royan_encounters`, `royan_beds` exist with correct RLS policies
 5. After Phase 4: `/patient/register`, `/queue/clinical`, `/appointments/book` return 200 with correct Pydantic schemas
@@ -247,7 +247,7 @@ These need zero modification — use as-is:
 ### Key Decisions
 
 - **Architecture: FastAPI stays** — Django not needed; existing infrastructure is solid
-- **Overlay strategy confirmed** — Hope HMS continues running; Synbot Health runs alongside via WP widget embed on hospital website
+- **Overlay strategy confirmed** — Hope HMS continues running; RoyanHealth runs alongside via WP widget embed on hospital website
 - **Hope HMS integration** — Phase 2: lightweight API bridge or webhook to pull existing patient records if Hope exposes any API; fallback is manual data entry initially
 - **NDPA 2023 compliance** — replaces NAFDAC disclaimer; patient data must never be logged raw; audit trail required on all EMR touches
 - **Excluded from scope initially**: FHIR/HL7 compliance, full inpatient billing with HMO integration (Phase 3+), mobile app, offline mode
@@ -256,7 +256,7 @@ These need zero modification — use as-is:
 
 Does this plan match your vision? Two things I want your input on before we start:
 
-1. **Repo structure** — Should Synbot Health live as a branch on the same Git repo, or a completely separate new repo? (Separate is cleaner for client isolation, same repo is easier to pull infrastructure fixes back)
+1. **Repo structure** — Should RoyanHealth live as a branch on the same Git repo, or a completely separate new repo? (Separate is cleaner for client isolation, same repo is easier to pull infrastructure fixes back)
 2. **Hope HMS integration** — Do you know if Hope Software has an API or export capability? That determines whether Phase 2 can pull existing patient records automatically or needs a CSV import path first.You've used 64% of your weekly rate limit. Your weekly rate limit will reset on May 4 at 1:00 AM. [Learn More](https://aka.ms/github-copilot-rate-limit-error)
 
 
@@ -275,7 +275,7 @@ Your API integration research matters here. Hope HMS is a desktop-first Nigerian
 
 - **Immediate (Phase 1–2):** CSV export path — reuse the existing `sage_csv_import.py` + `data_ingest.py` pattern to build a `hope_csv_import.py` adapter. It's already built for exactly this scenario.
 - **If Hope exposes any API/webhooks:** Build `backend/src/services/hope_adapter.py` — a thin one-way bridge mapping Hope patient IDs → `royan_patients` MRNs. Read-only during the overlay phase. No dual-write until Hope is fully phased out.
-- **Rule during overlay:** Synbot Health **never writes back** to Hope's database. Overlay = read + enhance, not replace data.
+- **Rule during overlay:** RoyanHealth **never writes back** to Hope's database. Overlay = read + enhance, not replace data.
 
 ### 2. Pre-Flight Checklist — First 30 Minutes in the New Repo
 

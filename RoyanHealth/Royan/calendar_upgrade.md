@@ -234,7 +234,7 @@ This is the real deliverable 👇
 ---
 
 SYSTEM GOAL:
-Transform the existing generic calendar UI into a hospital-grade scheduling and orchestration system for Synbot Health.
+Transform the existing generic calendar UI into a hospital-grade scheduling and orchestration system for RoyanHealth.
 
 ---
 

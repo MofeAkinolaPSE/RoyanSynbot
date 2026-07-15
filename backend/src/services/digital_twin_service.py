@@ -546,7 +546,7 @@ class DigitalTwinEngine:
         await asyncio.sleep(30)  # stagger after app start
         while True:
             try:
-                result = run_twin_sync()
+                result = await asyncio.to_thread(run_twin_sync)
                 logger.info(
                     "twin_sync: healthy=%d degraded=%d anomalous=%d events=%d",
                     result.get("healthy", 0),

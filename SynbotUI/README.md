@@ -1,6 +1,6 @@
 # SynbotUI
 
-This folder contains the standalone frontend React application for SynbotHealth — Royan Hospital.
+This folder contains the standalone frontend React application for RoyanHealth — Royan Hospital.
 
 ## Notes
 - This is not packaged as a WordPress admin plugin UI.

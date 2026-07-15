@@ -20,6 +20,13 @@ WORKDIR /backend
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
+# Bake the embedding model into the image so containers never need to reach
+# Hugging Face Hub at runtime — eliminates the ~2-3min cold-start download
+# and removes a runtime dependency on outbound internet access.
+ENV FASTEMBED_CACHE_PATH=/backend/model_cache
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='sentence-transformers/all-MiniLM-L6-v2')"
+ENV HF_HUB_OFFLINE=1
+
 COPY app.py .
 COPY src/ ./src/
 COPY config.yaml .

@@ -1,5 +1,5 @@
 """
-Notifications Router — SynbotHealth / Royan Hospital
+Notifications Router — RoyanHealth / Royan Hospital
 ======================================================
 SMS and WhatsApp outbound messaging via Africa's Talking.
 Falls back to stub/log-only mode when AT credentials are absent.

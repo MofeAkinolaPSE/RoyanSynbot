@@ -29,16 +29,16 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _generate_mrn(conn) -> str:
-    """Generate next MRN in the sequence RH-YYYYNNNNNN."""
-    from datetime import datetime
-    year = datetime.now().year
+    """Generate the next MRN via the shared, atomic Postgres sequence
+    (public.generate_mrn(), see migrations/101_patients.sql — backed by the
+    royan_mrn_seq sequence, so it's race-safe under concurrent registrations).
+    This is the same generator every other registration path uses, so every
+    patient gets the same MRN format (RH<year><6-digit seq>) instead of the
+    formats drifting apart between endpoints.
+    """
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) FROM public.royan_patients WHERE mrn LIKE %s",
-            (f"RH-{year}%",),
-        )
-        count = cur.fetchone()[0]
-    return f"RH-{year}{str(count + 1).zfill(6)}"
+        cur.execute("SELECT public.generate_mrn()")
+        return cur.fetchone()[0]
 
 
 def _row_to_dict(row, cur) -> Dict[str, Any]:

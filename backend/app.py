@@ -430,6 +430,17 @@ async def _log_validation_error(request: Request, exc: RequestValidationError):
     return await request_validation_exception_handler(request, exc)
 
 
+@app.exception_handler(Exception)
+async def _log_unhandled_exception(request: Request, exc: Exception):
+    # Starlette/FastAPI already have their own handler for HTTPException (it takes
+    # precedence over this one), so this only fires for genuinely unhandled bugs —
+    # without it, those return a bare non-JSON 500 page that the frontend's error
+    # parser can't read, surfacing only a generic "Request failed" toast with no
+    # detail (this is exactly what happened with the Add Problem 500).
+    logging.exception("Unhandled exception: %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 app.include_router(analytics.router)
 app.include_router(inventory.router)
 from src.routers.staff_me import router as staff_me_router
@@ -476,6 +487,7 @@ from src.routers.knowledge_router import router as knowledge_router
 from src.routers.maintenance_tracking import router as maintenance_tracking_router
 from src.routers.digital_twin import router as digital_twin_router
 from src.routers.capability_discovery import router as capability_discovery_router
+from src.routers.relationship_audit import router as relationship_audit_router
 from src.routers.internal_reliability import router as internal_reliability_router
 from src.routers.crm_sales import router as crm_sales_router
 from src.routers.frontdesk import router as frontdesk_router
@@ -561,6 +573,7 @@ app.include_router(knowledge_router)
 app.include_router(maintenance_tracking_router)
 app.include_router(digital_twin_router)
 app.include_router(capability_discovery_router)
+app.include_router(relationship_audit_router)
 app.include_router(internal_reliability_router)
 from src.routers.diagnostics import router as diagnostics_router
 app.include_router(diagnostics_router)
@@ -624,7 +637,7 @@ async def _start_supplier_intel():
         async def _work():
             while True:
                 try:
-                    compute_supplier_metrics()
+                    await asyncio.to_thread(compute_supplier_metrics)
                 except Exception:
                     pass
                 await asyncio.sleep(60 * 10)
@@ -3039,7 +3052,7 @@ def _build_demand_forecast_manifest(
 
 
 async def _process_sage_import_job_removed() -> None:
-    """Removed — Sage CSV import pipeline is not used in SynbotHealth."""
+    """Removed — Sage CSV import pipeline is not used in RoyanHealth."""
     pass
 
 
@@ -3813,18 +3826,35 @@ class ChatRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
     roles: list[str]
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+REFRESH_COOKIE_NAME = "refresh_token"
 
 
-class LogoutRequest(BaseModel):
-    refresh_token: str
+def _refresh_auth_error(status_code: int, detail: str) -> JSONResponse:
+    # Raising HTTPException here wouldn't work: FastAPI's exception handler builds
+    # its own response and never sees cookie mutations made on the endpoint's
+    # injected `response` object, so a dead/invalid refresh cookie would linger in
+    # the browser forever. Returning a JSONResponse directly lets us clear it.
+    resp = JSONResponse(status_code=status_code, content={"detail": detail})
+    resp.delete_cookie(REFRESH_COOKIE_NAME, path="/")
+    return resp
+
+
+def _set_refresh_cookie(response: Response, raw_token: str, expires_at: dt.datetime) -> None:
+    max_age = max(int((expires_at - dt.datetime.now(dt.timezone.utc)).total_seconds()), 0)
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=raw_token,
+        max_age=max_age,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
 
 
 # ---- Workflow Models --------------------------------------------------------
@@ -5392,7 +5422,7 @@ async def auth_dev_token(request: Request, roles: list[str] = ["admin"], email: 
 # ---- Auth (Password Flow + Refresh Rotation) -------------------------------
 
 @app.post("/token", response_model=TokenResponse)
-async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+async def token(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
     username = normalize_email(form_data.username)
     rate_limit(request, key=f"auth:{username}")
     user = get_user_by_email(username)
@@ -5426,22 +5456,23 @@ async def token(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     _uid, _email = user["id"], user["email"]
     asyncio.create_task(asyncio.to_thread(audit_event, "auth_login", {"user_id": _uid, "email": _email}))
     expires_in = int((access_exp - dt.datetime.now(dt.timezone.utc)).total_seconds())
+    _set_refresh_cookie(response, refresh_raw, refresh_exp)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_raw,
         expires_in=max(expires_in, 0),
         roles=roles,
     )
 
 
 @app.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: Request, payload: RefreshRequest):
+async def refresh_token(request: Request, response: Response):
     source_ip = request.client.host if request.client else "unknown"
     rate_limit(request, key=f"auth:refresh:{source_ip}")
-    if not payload.refresh_token:
-        raise HTTPException(status_code=400, detail="Missing refresh token")
+    raw_refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if not raw_refresh_token:
+        return _refresh_auth_error(401, "Missing refresh token")
 
-    token_hash = hash_refresh_token(payload.refresh_token)
+    token_hash = hash_refresh_token(raw_refresh_token)
     try:
         record = get_refresh_token_record(token_hash)
     except AuthStoreUnavailableError:
@@ -5451,13 +5482,13 @@ async def refresh_token(request: Request, payload: RefreshRequest):
         asyncio.create_task(asyncio.to_thread(
             audit_event, "auth_refresh_failed", {"reason": "not_found"}
         ))
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        return _refresh_auth_error(401, "Invalid refresh token")
 
     if record.get("revoked_at"):
         asyncio.create_task(asyncio.to_thread(
             audit_event, "auth_refresh_failed", {"reason": "revoked"}
         ))
-        raise HTTPException(status_code=401, detail="Refresh token revoked")
+        return _refresh_auth_error(401, "Refresh token revoked")
 
     exp = parse_iso8601(record.get("expires_at"))
     now = dt.datetime.now(dt.timezone.utc)
@@ -5468,7 +5499,7 @@ async def refresh_token(request: Request, payload: RefreshRequest):
         asyncio.create_task(asyncio.to_thread(
             audit_event, "auth_refresh_failed", {"reason": "expired"}
         ))
-        raise HTTPException(status_code=401, detail="Refresh token expired")
+        return _refresh_auth_error(401, "Refresh token expired")
 
     user = get_user_by_id(record["user_id"])
     if not user or not user.get("is_active"):
@@ -5476,7 +5507,7 @@ async def refresh_token(request: Request, payload: RefreshRequest):
         asyncio.create_task(asyncio.to_thread(
             audit_event, "auth_refresh_failed", {"reason": "invalid_user"}
         ))
-        raise HTTPException(status_code=401, detail="Invalid user")
+        return _refresh_auth_error(401, "Invalid user")
 
     roles = user.get("roles") or []
     access_token, access_exp = create_access_token(user_id=user["id"], roles=roles, email=user.get("email"))
@@ -5497,20 +5528,22 @@ async def refresh_token(request: Request, payload: RefreshRequest):
     _uid, _rid = user["id"], record["id"]
     asyncio.create_task(asyncio.to_thread(audit_event, "auth_refresh", {"user_id": _uid, "refresh_id": _rid}))
     expires_in = int((access_exp - dt.datetime.now(dt.timezone.utc)).total_seconds())
+    _set_refresh_cookie(response, refresh_raw, refresh_exp)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_raw,
         expires_in=max(expires_in, 0),
         roles=roles,
     )
 
 
 @app.post("/logout")
-async def logout(request: Request, payload: LogoutRequest):
+async def logout(request: Request, response: Response):
     source_ip = request.client.host if request.client else "unknown"
     rate_limit(request, key=f"auth:logout:{source_ip}")
-    if payload.refresh_token:
-        token_hash = hash_refresh_token(payload.refresh_token)
+    raw_refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/")
+    if raw_refresh_token:
+        token_hash = hash_refresh_token(raw_refresh_token)
         try:
             record = get_refresh_token_record(token_hash)
         except AuthStoreUnavailableError:

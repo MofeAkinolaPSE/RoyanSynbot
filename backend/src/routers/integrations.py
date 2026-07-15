@@ -1,5 +1,5 @@
 """
-Integrations Router — SynbotHealth / Royan Hospital
+Integrations Router — RoyanHealth / Royan Hospital
 =====================================================
 PACS radiology image archive integration (stub) and QR kiosk patient check-in.
 

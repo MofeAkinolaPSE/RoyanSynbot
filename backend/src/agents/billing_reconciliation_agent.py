@@ -1,5 +1,5 @@
 """
-Billing Reconciliation Agent — SynbotHealth / Royan Hospital
+Billing Reconciliation Agent — RoyanHealth / Royan Hospital
 =============================================================
 Monitors hospital revenue collection and billing integrity:
   - Unpaid / partially paid bills and outstanding balances

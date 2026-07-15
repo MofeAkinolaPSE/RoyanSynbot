@@ -1,4 +1,4 @@
--- Migration 138: Missing operational tables for SynbotHealth HMS
+-- Migration 138: Missing operational tables for RoyanHealth HMS
 -- Safe to re-run (IF NOT EXISTS on all tables)
 
 -- Quality & Incident Management

@@ -293,7 +293,7 @@ class MaintenanceMonitor:
     async def run_loop(self) -> None:
         while True:
             try:
-                self.run_once()
+                await asyncio.to_thread(self.run_once)
             except Exception as exc:
                 logger.exception("Maintenance monitor run_once failed: %s", exc)
             await asyncio.sleep(max(30, int(self.interval_seconds)))

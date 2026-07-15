@@ -11,6 +11,7 @@ from . import expiry_monitoring_agent  # noqa: F401
 from . import maintenance_agent  # noqa: F401
 from . import digital_twin_monitor_agent  # noqa: F401
 from . import capability_discovery_agent  # noqa: F401
+from . import relationship_auditor_agent  # noqa: F401
 # EOS action agents — must be imported here so @register_agent fires at startup
 from . import email_agent  # noqa: F401
 from . import calendar_agent  # noqa: F401

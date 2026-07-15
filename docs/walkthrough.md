@@ -1,4 +1,4 @@
-# SynbotHealth — Live Demo Walkthrough
+# RoyanHealth — Live Demo Walkthrough
 ### Royan Hospital | Presenter Script
 
 > **Total runtime:** ~33 minutes  
@@ -21,7 +21,7 @@
 
 ## THE STORY
 
-> *"Royan Hospital sees hundreds of patients every day. Today we follow two of them — Mr. Emeka Okafor, a 48-year-old hypertensive patient coming for an outpatient review, and Mrs. Halima Bello, a 34-year-old who walks in as an emergency. By the time their visits are done, you will have seen every major feature of SynbotHealth in action."*
+> *"Royan Hospital sees hundreds of patients every day. Today we follow two of them — Mr. Emeka Okafor, a 48-year-old hypertensive patient coming for an outpatient review, and Mrs. Halima Bello, a 34-year-old who walks in as an emergency. By the time their visits are done, you will have seen every major feature of RoyanHealth in action."*
 
 ---
 
@@ -29,7 +29,7 @@
 **⏱ ~2 minutes**
 
 **What to do:**
-1. Open `https://localhost` — the SynbotHealth login screen appears.
+1. Open `https://localhost` — the RoyanHealth login screen appears.
 2. Say: *"Every staff member logs in with their own credentials. The system gives each role exactly what they need — nothing more."*
 3. Log in as **Admin** (username: `admin`, password: from `.env` → `ADMIN_PASSWORD`).
    - Point to the full navigation: Dashboard, Finance, HR, Operations, CRM, Workflow, AskSynbot.
@@ -77,7 +77,7 @@
 3. His patient record opens. Point out:
    - Demographics tab (what was just registered)
    - **History tab** — if Hope Bridge is connected, previous visits from DRM Hope appear here automatically. If HOPE_MOCK=1, show the mock history entries.
-   - Say: *"The doctor does not have to ask the patient for their entire history. SynbotHealth has already pulled it from the hospital's existing DRM Hope system in the background."*
+   - Say: *"The doctor does not have to ask the patient for their entire history. RoyanHealth has already pulled it from the hospital's existing DRM Hope system in the background."*
 4. Open the **AskSynbot panel** (chat icon, usually top-right or side panel).
 5. Type this question exactly:
    > *"What are the common causes of uncontrolled hypertension in a 48-year-old male patient with Type 2 diabetes, and what first-line management steps should be considered?"*
@@ -265,7 +265,7 @@
    - **Status:** Connected (green dot) — or "Mock Mode" if HOPE_MOCK=1
    - **Last sync:** 2 minutes ago
    - **Records imported today:** 14 patients, 8 appointments, 3 lab results
-3. Say: *"DRM Hope is the hospital's existing HMS — it has years of patient history. SynbotHealth does not replace it. Instead, the Hope Bridge service runs quietly on the same Windows PC as DRM Hope, reads patient and appointment data via ODBC, and pushes it to SynbotHealth every 60 seconds. Staff see a unified view. Existing workflows are not disrupted."*
+3. Say: *"DRM Hope is the hospital's existing HMS — it has years of patient history. RoyanHealth does not replace it. Instead, the Hope Bridge service runs quietly on the same Windows PC as DRM Hope, reads patient and appointment data via ODBC, and pushes it to RoyanHealth every 60 seconds. Staff see a unified view. Existing workflows are not disrupted."*
 4. If HOPE_MOCK=1: Say: *"We are running in mock mode today — the bridge is simulating DRM Hope data. When deployed on site, the team will point it at the real database and it will start syncing live records."*
 5. Navigate to the **Notifications panel** (bell icon, top-right).
 6. Scroll through the live notification feed from this session:
@@ -285,7 +285,7 @@
    > *"Give me a brief summary of today's hospital performance and the key actions that need to be taken before end of business."*
 3. The AI responds with a synthesised summary pulling from the dashboard data.
 4. Say: *"That question could be asked by a CEO, a medical director, or a department head. They get a clear, data-backed answer in seconds — from their own hospital's data, running on their own server, with no data leaving the building."*
-5. Close with: *"SynbotHealth is not a reporting tool. It is an intelligent operating layer for the hospital. Every department is connected, every alert is actionable, and every decision has data behind it."*
+5. Close with: *"RoyanHealth is not a reporting tool. It is an intelligent operating layer for the hospital. Every department is connected, every alert is actionable, and every decision has data behind it."*
 
 ---
 
@@ -329,4 +329,4 @@
 
 ---
 
-*SynbotHealth by Neurolayer — built for Nigerian hospitals, deployed on your infrastructure.*
+*RoyanHealth by Neurolayer — built for Nigerian hospitals, deployed on your infrastructure.*

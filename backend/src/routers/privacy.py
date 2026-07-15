@@ -1,7 +1,7 @@
 """NDPA 2023 Privacy & Governance Router — Chapter 18 of the blueprint.
 
 Implements the Data Subject Rights framework required by Nigeria's Data
-Protection Act 2023 for SynbotHealth:
+Protection Act 2023 for RoyanHealth:
   - Patient consent management (per-purpose, withdrawable)
   - Data Subject Access Requests (DSAR)
   - Data erasure / anonymisation requests

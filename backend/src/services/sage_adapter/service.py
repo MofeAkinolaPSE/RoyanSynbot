@@ -1,7 +1,7 @@
 """
 Sage adapter — hospital finance KPIs sourced from royan_billing.
 
-The original Sage/Placeware CSV import pipeline has been removed from SynbotHealth.
+The original Sage/Placeware CSV import pipeline has been removed from RoyanHealth.
 Finance metrics are now computed directly from the royan_billing and royan_payments
 tables that were populated by the DRM Hope ETL.
 

@@ -267,6 +267,25 @@ async def list_bills(
         query = query.eq("status", status)
     result = query.execute()
     bills = [_bill_with_amounts(row) for row in (result.data or [])]
+
+    # Attach patient name/MRN so the frontend can show who a bill actually
+    # belongs to instead of a bare numeric id — a mismatch here was previously
+    # invisible at a glance (see the "wrong patient's billing" bug).
+    patient_ids = {b.get("patient_id") for b in bills if b.get("patient_id")}
+    if patient_ids:
+        patients = (
+            db.table(TABLE_PATIENTS)
+            .select("id,first_name,last_name,mrn")
+            .in_("id", list(patient_ids))
+            .execute()
+        )
+        by_id = {p["id"]: p for p in (patients.data or [])}
+        for b in bills:
+            p = by_id.get(b.get("patient_id"))
+            if p:
+                b["patient_name"] = f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+                b["patient_mrn"] = p.get("mrn")
+
     return {"bills": bills, "count": len(bills)}
 
 

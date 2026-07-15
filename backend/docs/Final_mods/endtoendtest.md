@@ -1,5 +1,5 @@
 Alright, we deploy to a test server tomorrow.
-Synbot Health goes live.
+RoyanHealth goes live.
 I want to run a final layer of test to confirm the entire Patient encounter life cycle is fully implemented. 
 During the last demo, although we confirm the life cycle was implemented, we still had bugs during the demonstration. I'd like to avoid it this time, we already data in the DB, Let's make sure each new encounter per patient is recorded and maintained across this system. 
 So we could design the test like so 

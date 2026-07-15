@@ -254,12 +254,6 @@ export default function ClinicalQueue() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const nursingDoneMut = useMutation({
-    mutationFn: (enc: Encounter) => api.hospital.queue.nursingDone(enc.id),
-    onSuccess: () => { toast({ title: "Vitals recorded — patient ready for doctor" }); void qc.invalidateQueries({ queryKey: ["clinical-queue"] }); },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
   const vitalsMut = useMutation({
     mutationFn: async () => {
       if (!vitalsEnc) throw new Error("No encounter selected");
@@ -538,7 +532,7 @@ export default function ClinicalQueue() {
                         {enc.status === "triaged" && (
                           <>
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
-                              onClick={() => nursingDoneMut.mutate(enc)} disabled={nursingDoneMut.isPending}>
+                              onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
                               <Syringe className="h-3 w-3" /> Vitals
                             </Button>
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>

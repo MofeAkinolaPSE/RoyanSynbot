@@ -1,5 +1,5 @@
 """
-Patient Portal Router — SynbotHealth / Royan Hospital
+Patient Portal Router — RoyanHealth / Royan Hospital
 ======================================================
 Lightweight public-facing endpoints for the patient-portal PWA.
 

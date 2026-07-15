@@ -1,5 +1,5 @@
 """
-Nursing Router — SynbotHealth / Royan Hospital
+Nursing Router — RoyanHealth / Royan Hospital
 ================================================
 Covers inpatient nursing workflows: vitals, care plans, pain scores,
 fluid balance, and nursing notes.

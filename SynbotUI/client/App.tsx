@@ -28,6 +28,7 @@ import Settings from "./pages/Settings";
 import AdminUsers from "./pages/AdminUsers";
 import AdminRegistrations from "./pages/AdminRegistrations";
 import AdminReliability from "./pages/AdminReliability";
+import AdminClinicalExplorer from "./pages/AdminClinicalExplorer";
 import StaffDashboard from "./pages/StaffDashboard";
 import StaffCollaboration from "./pages/StaffCollaboration";
 import StaffTimeTracker from "./pages/StaffTimeTracker";
@@ -124,6 +125,7 @@ const App = () => (
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/registrations" element={<AdminRegistrations />} />
                 <Route path="/admin/reliability" element={<AdminReliability />} />
+                <Route path="/admin/clinical-explorer" element={<AdminClinicalExplorer />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/hospital/patients"          element={<HospitalPatients />} />
                 <Route path="/hospital/patients/:mrn"    element={<PatientProfile />} />

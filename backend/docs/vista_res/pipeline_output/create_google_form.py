@@ -1,7 +1,7 @@
 """
 create_google_form.py
 ---------------------
-Creates the SynbotHealth requirements questionnaire as a real Google Form.
+Creates the RoyanHealth requirements questionnaire as a real Google Form.
 
 Setup (one-time):
   1. Go to https://console.cloud.google.com/

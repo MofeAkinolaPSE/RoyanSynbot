@@ -37,17 +37,17 @@ INPUT_FILE = OUTPUT_DIR / "02_structured_modules.json"
 #
 # Each section maps to a Royan department / workflow.
 # Questions are written in the context of what Royan already does so the
-# client can be specific about what they want SynbotHealth to handle.
+# client can be specific about what they want RoyanHealth to handle.
 #
 # Feature options are drawn from relevant VistA modules (our reference
 # architecture) but labelled in plain operational language.
 # ---------------------------------------------------------------------------
 
 ROYAN_QUESTIONNAIRE: dict = {
-    "title": "SynbotHealth — Royan Hospital System Requirements",
+    "title": "RoyanHealth — Royan Hospital System Requirements",
     "subtitle": "Defining Your Digital Hospital",
     "description": (
-        "This questionnaire helps the SynbotHealth team understand exactly how "
+        "This questionnaire helps the RoyanHealth team understand exactly how "
         "Royan Hospital operates today — and where you want the system to take "
         "you. Answers will directly shape the modules we configure, the workflows "
         "we automate, and the integrations we prioritise. "
@@ -116,7 +116,7 @@ ROYAN_QUESTIONNAIRE: dict = {
         {
             "id":    "go_live_timeline",
             "type":  "radio",
-            "label": "Target go-live timeline for SynbotHealth",
+            "label": "Target go-live timeline for RoyanHealth",
             "options": [
                 "ASAP (within 1 month)",
                 "1–3 months",
@@ -154,7 +154,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "reg_features",
                     "type":  "checkbox",
-                    "label": "Which of the following registration capabilities do you want SynbotHealth to handle?",
+                    "label": "Which of the following registration capabilities do you want RoyanHealth to handle?",
                     "options": [
                         {"feature": "Automated MRN generation", "description": "Unique patient ID assigned at first registration, used across all visits", "impact": "High"},
                         {"feature": "Digital registration form (no paper)", "description": "Front-desk staff enter patient demographics directly into the system", "impact": "High"},
@@ -207,13 +207,13 @@ ROYAN_QUESTIONNAIRE: dict = {
                         {"feature": "Walk-in (no appointment)", "description": "", "impact": "High"},
                         {"feature": "WhatsApp booking", "description": "", "impact": "Medium"},
                         {"feature": "Website / online form", "description": "", "impact": "Medium"},
-                        {"feature": "SynbotHealth AI chat booking", "description": "", "impact": "Medium"},
+                        {"feature": "RoyanHealth AI chat booking", "description": "", "impact": "Medium"},
                     ],
                 },
                 {
                     "id":    "queue_features",
                     "type":  "checkbox",
-                    "label": "Which queue & appointment features do you want SynbotHealth to provide?",
+                    "label": "Which queue & appointment features do you want RoyanHealth to provide?",
                     "options": [
                         {"feature": "Real-time digital queue display", "description": "TV/screen in waiting area showing current number and estimated wait", "impact": "High"},
                         {"feature": "SMS/WhatsApp queue notifications", "description": "Patient receives alert when their turn is approaching", "impact": "High"},
@@ -261,7 +261,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "ae_features",
                     "type":  "checkbox",
-                    "label": "Which A&E capabilities do you want SynbotHealth to support?",
+                    "label": "Which A&E capabilities do you want RoyanHealth to support?",
                     "options": [
                         {"feature": "Digital triage assessment form", "description": "Nurse records presenting complaint, vitals, and acuity level digitally on arrival", "impact": "High"},
                         {"feature": "Emergency queue bypass", "description": "A&E patients are registered and triaged outside the OPD queue automatically", "impact": "High"},
@@ -432,7 +432,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "lab_features",
                     "type":  "checkbox",
-                    "label": "Which laboratory management features do you want SynbotHealth to provide?",
+                    "label": "Which laboratory management features do you want RoyanHealth to provide?",
                     "options": [
                         {"feature": "Electronic lab order from doctor's workstation", "description": "Doctor's digital request auto-appears at lab reception with patient details", "impact": "High"},
                         {"feature": "Sample collection & tracking (specimen log)", "description": "Lab logs sample receipt, tracks processing status, records rejection reasons", "impact": "High"},
@@ -547,7 +547,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "pharm_features",
                     "type":  "checkbox",
-                    "label": "Which pharmacy management features do you need SynbotHealth to provide?",
+                    "label": "Which pharmacy management features do you need RoyanHealth to provide?",
                     "options": [
                         {"feature": "Electronic prescription reception", "description": "Prescription arrives from doctor's workstation; pharmacist reviews and dispenses digitally", "impact": "High"},
                         {"feature": "Drug inventory & stock management", "description": "Real-time stock levels per drug; low-stock alerts; expiry date tracking", "impact": "High"},
@@ -809,7 +809,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "billing_features",
                     "type":  "checkbox",
-                    "label": "Which billing and finance features do you need SynbotHealth to provide?",
+                    "label": "Which billing and finance features do you need RoyanHealth to provide?",
                     "options": [
                         {"feature": "Automatic bill generation from clinical orders", "description": "Every lab test, drug, imaging request, and ward day auto-added to patient's bill", "impact": "High"},
                         {"feature": "HMO pre-authorisation request", "description": "System generates and tracks pre-auth requests to HMO before procedures", "impact": "High"},
@@ -982,7 +982,7 @@ ROYAN_QUESTIONNAIRE: dict = {
             "id":      "digital_patient",
             "domain":  "Digital & Patient Engagement",
             "icon":    "📱",
-            "summary": "Covers online patient-facing features — self-service, telemedicine, notifications, and the SynbotHealth AI assistant.",
+            "summary": "Covers online patient-facing features — self-service, telemedicine, notifications, and the RoyanHealth AI assistant.",
             "questions": [
                 {
                     "id":    "digital_current",
@@ -1000,8 +1000,8 @@ ROYAN_QUESTIONNAIRE: dict = {
                     "type":  "checkbox",
                     "label": "Which digital patient engagement features interest you?",
                     "options": [
-                        {"feature": "AI chatbot (SynbotHealth) for patient enquiries", "description": "Answers patient questions about services, hours, how to book, what to expect", "impact": "High"},
-                        {"feature": "WhatsApp appointment booking via SynbotHealth", "description": "Patient sends WhatsApp message; AI books appointment and confirms slot", "impact": "High"},
+                        {"feature": "AI chatbot (RoyanHealth) for patient enquiries", "description": "Answers patient questions about services, hours, how to book, what to expect", "impact": "High"},
+                        {"feature": "WhatsApp appointment booking via RoyanHealth", "description": "Patient sends WhatsApp message; AI books appointment and confirms slot", "impact": "High"},
                         {"feature": "Online patient registration / pre-registration", "description": "Patient registers via website before coming in; details ready on arrival", "impact": "Medium"},
                         {"feature": "Patient portal (view results, history, prescriptions)", "description": "Secure web or app portal where patient views their own records and results", "impact": "Medium"},
                         {"feature": "SMS / WhatsApp appointment reminders", "description": "Automated reminder sent the day before and morning of appointment", "impact": "High"},
@@ -1103,7 +1103,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                     "type":  "radio",
                     "label": "What is your preference for system deployment?",
                     "options": [
-                        "Cloud-hosted (SynbotHealth manages servers — lower upfront cost)",
+                        "Cloud-hosted (RoyanHealth manages servers — lower upfront cost)",
                         "On-premise server in hospital (hospital manages hardware)",
                         "Hybrid (critical data on-premise, reporting in cloud)",
                         "No preference / need guidance",
@@ -1112,7 +1112,7 @@ ROYAN_QUESTIONNAIRE: dict = {
                 {
                     "id":    "infra_integrations",
                     "type":  "checkbox",
-                    "label": "Which external systems or services would you want SynbotHealth to integrate with?",
+                    "label": "Which external systems or services would you want RoyanHealth to integrate with?",
                     "options": [
                         {"feature": "HMO / insurance portals (claim submission API)", "description": "", "impact": "High"},
                         {"feature": "NHIA (National Health Insurance Authority) portal", "description": "", "impact": "High"},
@@ -1140,7 +1140,7 @@ ROYAN_QUESTIONNAIRE: dict = {
             "icon":    "\U0001f4be",
             "summary": (
                 "DRM Hope is your current Hospital Management System. These answers determine "
-                "exactly how SynbotHealth connects to it \u2014 via REST API, ODBC database bridge, "
+                "exactly how RoyanHealth connects to it \u2014 via REST API, ODBC database bridge, "
                 "or HL7 FHIR \u2014 and which data is already tracked in Hope so we know what to "
                 "read versus what to build fresh."
             ),
@@ -1427,7 +1427,7 @@ def generate_html(spec: dict) -> str:
         }}
       }});
       console.log('Form data:', JSON.stringify(data, null, 2));
-      alert('Thank you! Your requirements have been recorded.\\n\\n(In production, this sends to the SynbotHealth team.)');
+      alert('Thank you! Your requirements have been recorded.\\n\\n(In production, this sends to the RoyanHealth team.)');
     }}
   </script>
 </body>
@@ -1589,7 +1589,7 @@ def generate_google_forms_script(spec: dict) -> str:
     L.append('   * 5. Wait ~30 seconds \u2192 open "Execution log" \u2192 copy the form URLs')
     L.append("   */")
     L.append("")
-    L.append('  var BOT_NAME    = "SynbotHealth";')
+    L.append('  var BOT_NAME    = "RoyanHealth";')
     L.append('  var CLIENT_NAME = "Royan Hospital";')
     L.append("")
 

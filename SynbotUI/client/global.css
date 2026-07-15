@@ -12,7 +12,7 @@
    * A different format will require also updating the theme in tailwind.config.ts.
   */
   :root {
-    /* ── SynbotHealth Light — Royan Hospital clinical platform ────────────── */
+    /* ── RoyanHealth Light — Royan Hospital clinical platform ────────────── */
     /* Brand source: colourscheme.md — Classic hospital: blue-led, cyan highlights, neutral structure */
 
     --background: 0 0% 96%;              /* #F6F6F6 — brand main BG */
@@ -79,7 +79,7 @@
   }
 
   .dark {
-    /* ── SynbotHealth Dark — deep navy, Royan Hospital operations platform ── */
+    /* ── RoyanHealth Dark — deep navy, Royan Hospital operations platform ── */
     /* Hues stay locked to brand (220° blue, 197° cyan); only lightness is lifted for readability */
     --background: 220 40% 10%;
     --foreground: 0 0% 95%;

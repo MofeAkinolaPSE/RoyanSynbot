@@ -1,5 +1,5 @@
 """
-Bed Capacity Agent — SynbotHealth / Royan Hospital
+Bed Capacity Agent — RoyanHealth / Royan Hospital
 ====================================================
 Monitors ward bed occupancy in real time and raises alerts when
 occupancy exceeds safe thresholds.

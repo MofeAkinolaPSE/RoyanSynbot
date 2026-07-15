@@ -160,6 +160,22 @@ async def open_encounter(payload: EncounterCreate, user=Depends(verify_jwt)):
     if not patient.data:
         raise HTTPException(status_code=404, detail=f"Patient {payload.patient_id} not found")
 
+    # Don't silently create a second open encounter for a patient who already has one —
+    # this is what produced duplicate queue numbers when the CPRS page suggested
+    # "New Encounter" for a patient whose Front-Desk encounter just hadn't refreshed yet.
+    existing = (
+        db.table(TABLE_ENCOUNTERS)
+        .select("id,queue_number,status,department,encounter_type,created_at")
+        .eq("patient_id", patient_id)
+        .neq("status", "discharged")
+        .is_("external_source", None)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        return {"ok": True, "encounter": existing.data[0], "already_active": True}
+
     data = {
         "patient_id": patient_id,
         "encounter_type": payload.encounter_type,
@@ -187,6 +203,11 @@ async def open_encounter(payload: EncounterCreate, user=Depends(verify_jwt)):
             conn = db.pool.getconn()
             try:
                 cur = conn.cursor()
+                # Serialize the count-then-write below across concurrent requests for the
+                # same department+day so two near-simultaneous encounters can never be
+                # handed the same queue number. Postgres releases this lock automatically
+                # at the end of the transaction (conn.commit() below).
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"queue:{dept}:{today}",))
                 cur.execute(
                     "SELECT COUNT(*) FROM public.royan_encounters WHERE department = %s AND created_at::date = %s AND external_source IS NULL",
                     (dept, today),
@@ -230,7 +251,20 @@ async def list_encounters(
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
-    query = db.table(TABLE_ENCOUNTERS).select("*").order("created_at", desc=True).limit(limit)
+    # Live queue = native encounters only (external_source IS NULL). Any
+    # imported/synthetic row — Hope historical data or a synbot_repair
+    # ancillary bucket (see repair_shared_encounter_keys.py) — must never
+    # count as an active queue entry. This filter has to run in SQL BEFORE
+    # the limit: filtering client-side after LIMIT (the previous approach,
+    # and it only excluded 'hope') let a batch of same-timestamp synthetic
+    # rows silently crowd out real entries whenever they sorted first.
+    query = (
+        db.table(TABLE_ENCOUNTERS)
+        .select("*")
+        .is_("external_source", None)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
     if status:
         if status not in ENCOUNTER_STATUS_ALLOWED:
             raise HTTPException(status_code=422, detail=f"Unknown status '{status}'")
@@ -240,9 +274,7 @@ async def list_encounters(
     if doctor:
         query = query.eq("consulting_doctor", doctor)
     result = query.execute()
-    # Exclude Hope-imported historical records; native encounters sort first (created_at DESC)
-    rows = [r for r in (result.data or []) if r.get("external_source") != "hope"]
-    encounters = _enrich_encounters(rows)
+    encounters = _enrich_encounters(result.data or [])
     return {"encounters": encounters, "count": len(encounters)}
 
 

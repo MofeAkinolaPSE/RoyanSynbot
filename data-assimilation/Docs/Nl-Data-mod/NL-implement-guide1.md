@@ -114,7 +114,7 @@ An implementation guide.
 
 I would call it:
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 This document becomes the bridge between Volume I and engineering.
 
@@ -462,7 +462,7 @@ Deployment checklist.
 
 ---
 
-# Here's Where I Think We Can Improve Synbot Health Even More
+# Here's Where I Think We Can Improve RoyanHealth Even More
 
 The frontend should **never** receive raw database tables.
 
@@ -582,7 +582,7 @@ Not because it's another document, but because **it's the engineering translatio
 
 If Volume I defines **why** Synbot is built the way it is, this guide defines **how the Royan backend should implement those principles** using the existing data, the migration pipeline, and the canonical architecture we've established.
 
-I also think we should write it differently from the blueprint. Instead of visionary language, every section should end with **Implementation Requirements**, **Database Requirements**, **API Requirements**, **Acceptance Criteria**, and **Developer Tasks**. That way, the backend engineer can move directly from the guide into implementation without having to interpret architectural intent. In effect, it becomes the executable bridge between enterprise architecture and production code. I think that's the document that will have the greatest immediate impact on getting Synbot Health ready for deployment.
+I also think we should write it differently from the blueprint. Instead of visionary language, every section should end with **Implementation Requirements**, **Database Requirements**, **API Requirements**, **Acceptance Criteria**, and **Developer Tasks**. That way, the backend engineer can move directly from the guide into implementation without having to interpret architectural intent. In effect, it becomes the executable bridge between enterprise architecture and production code. I think that's the document that will have the greatest immediate impact on getting RoyanHealth ready for deployment.
 I actually think this guide will become **the most valuable document** for the engineering team.
 
 Volume I is for **architects, stakeholders and executives**.
@@ -613,7 +613,7 @@ Almost like something written by a Principal Engineer.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 ## Engineering Specification
 
@@ -623,9 +623,9 @@ Almost like something written by a Principal Engineer.
 
 # Purpose
 
-This document translates the architectural principles defined within the **Synbot Core Enterprise Architecture Blueprint (Volume I)** into concrete implementation guidance for the Synbot Health engineering team.
+This document translates the architectural principles defined within the **Synbot Core Enterprise Architecture Blueprint (Volume I)** into concrete implementation guidance for the RoyanHealth engineering team.
 
-It serves as the authoritative engineering reference for implementing the backend data platform, migration pipeline, canonical information model, business services, knowledge services, APIs, and data governance required to successfully migrate Royan Hospital from DRM Hope to Synbot Health.
+It serves as the authoritative engineering reference for implementing the backend data platform, migration pipeline, canonical information model, business services, knowledge services, APIs, and data governance required to successfully migrate Royan Hospital from DRM Hope to RoyanHealth.
 
 Unlike Volume I, which defines the architectural philosophy of the platform, this guide focuses exclusively on implementation decisions and engineering requirements.
 
@@ -709,7 +709,7 @@ This structure ensures that architectural intent is translated directly into act
 
 Before designing the target implementation, the engineering team must establish a clear understanding of the current operational environment.
 
-The objective of this assessment is not to reproduce DRM Hope within Synbot Health, but to identify the information assets, operational workflows, and data quality considerations that must be preserved, transformed, or enhanced during migration.
+The objective of this assessment is not to reproduce DRM Hope within RoyanHealth, but to identify the information assets, operational workflows, and data quality considerations that must be preserved, transformed, or enhanced during migration.
 
 The assessment presented in this chapter consolidates the findings from the Data Mapping Report, Database Design Review, and Data Quality Assessment previously conducted for Royan Hospital.
 
@@ -741,7 +741,7 @@ The existing environment includes operational data relating to:
 * Drug catalogues
 * Financial transactions
 
-Although these datasets provide substantial operational coverage, they reflect the structure and assumptions of the legacy application rather than the enterprise information architecture defined for Synbot Health.
+Although these datasets provide substantial operational coverage, they reflect the structure and assumptions of the legacy application rather than the enterprise information architecture defined for RoyanHealth.
 
 Migration must therefore focus on semantic transformation rather than structural duplication.
 
@@ -788,13 +788,13 @@ Several entities require reconstruction through canonical business relationships
 
 Business workflows are implied by application behaviour rather than explicitly represented.
 
-As a result, workflow history must be inferred from transactional events and transformed into governed workflow records within Synbot Health.
+As a result, workflow history must be inferred from transactional events and transformed into governed workflow records within RoyanHealth.
 
 ---
 
 # 1.3 Findings from the Database Gap Assessment
 
-Comparison of the existing database against the Synbot Health logical architecture identified several implementation gaps.
+Comparison of the existing database against the RoyanHealth logical architecture identified several implementation gaps.
 
 ### Gap 1 — Canonical Information Model
 
@@ -1045,7 +1045,7 @@ That's the mindset I think we should keep for the rest of this guide. Every chap
 4. **What exactly must the backend engineer implement?**
 5. **How do we verify it's correct?**
 
-That makes this document executable rather than descriptive—and that's exactly what your backend team will need as they prepare Synbot Health for deployment.
+That makes this document executable rather than descriptive—and that's exactly what your backend team will need as they prepare RoyanHealth for deployment.
 
 
 Perfect.
@@ -1066,7 +1066,7 @@ Everything we've been building since Volume I Chapter 3 now becomes actual engin
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 2
 
@@ -1078,9 +1078,9 @@ Everything we've been building since Volume I Chapter 3 now becomes actual engin
 
 # Purpose
 
-The purpose of this chapter is to define the implementation of the Synbot Health Canonical Information Model (CIM).
+The purpose of this chapter is to define the implementation of the RoyanHealth Canonical Information Model (CIM).
 
-The Canonical Information Model represents the authoritative enterprise representation of healthcare information within Synbot Health.
+The Canonical Information Model represents the authoritative enterprise representation of healthcare information within RoyanHealth.
 
 All source systems—including DRM Hope, future third-party applications, laboratory systems, and external integrations—must transform information into this canonical model before operational processing.
 
@@ -1680,7 +1680,7 @@ New source systems should integrate by implementing transformation adapters rath
 
 Similarly, new healthcare capabilities—such as telemedicine, remote monitoring, or genomics—should extend the model through additional entities and relationships without breaking existing contracts.
 
-This ensures that Synbot Health can evolve while preserving backwards compatibility.
+This ensures that RoyanHealth can evolve while preserving backwards compatibility.
 
 ---
 
@@ -1826,7 +1826,7 @@ That's a massive difference.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 3
 
@@ -1838,7 +1838,7 @@ That's a massive difference.
 
 # Purpose
 
-The purpose of this chapter is to define how Synbot Health establishes, governs, and maintains Master Data.
+The purpose of this chapter is to define how RoyanHealth establishes, governs, and maintains Master Data.
 
 Master Data represents the authoritative reference information used across every business capability within the platform.
 
@@ -2474,7 +2474,7 @@ After writing Volume I, I don't think that's sufficient anymore.
 
 Because Bronze → Silver → Gold is a **data warehouse** concept.
 
-Synbot Health is **an operational platform**.
+RoyanHealth is **an operational platform**.
 
 The operational system needs one additional stage.
 
@@ -2544,7 +2544,7 @@ That realization came directly from Chapters 11 and 14.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 4
 
@@ -2556,9 +2556,9 @@ That realization came directly from Chapters 11 and 14.
 
 # Purpose
 
-The purpose of this chapter is to define the enterprise data engineering pipeline responsible for transforming legacy hospital data into trusted operational information suitable for Synbot Health.
+The purpose of this chapter is to define the enterprise data engineering pipeline responsible for transforming legacy hospital data into trusted operational information suitable for RoyanHealth.
 
-Unlike traditional ETL processes that terminate after loading information into a database, the Synbot Health pipeline performs progressive refinement, validation, standardization, canonical transformation, master data resolution, and knowledge preparation before information becomes available to operational services.
+Unlike traditional ETL processes that terminate after loading information into a database, the RoyanHealth pipeline performs progressive refinement, validation, standardization, canonical transformation, master data resolution, and knowledge preparation before information becomes available to operational services.
 
 The objective is not simply to import data.
 
@@ -3320,7 +3320,7 @@ This is one of those investments that compounds.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 5
 
@@ -3332,11 +3332,11 @@ This is one of those investments that compounds.
 
 # Purpose
 
-The purpose of this chapter is to define the architecture responsible for integrating external systems into Synbot Health.
+The purpose of this chapter is to define the architecture responsible for integrating external systems into RoyanHealth.
 
 Although this guide focuses on migrating Royan Hospital from DRM Hope, the engineering solution shall not be implemented as a one-time migration utility.
 
-Instead, Synbot Health shall introduce a reusable Enterprise Integration Layer capable of connecting multiple healthcare systems through standardized transformation pipelines.
+Instead, RoyanHealth shall introduce a reusable Enterprise Integration Layer capable of connecting multiple healthcare systems through standardized transformation pipelines.
 
 Migration therefore becomes a specialized use case of enterprise integration rather than a standalone engineering activity.
 
@@ -3352,7 +3352,7 @@ This chapter implements the principles established in:
 
 # 5.1 Engineering Objective
 
-The Enterprise Integration Layer shall isolate external systems from the internal architecture of Synbot Health.
+The Enterprise Integration Layer shall isolate external systems from the internal architecture of RoyanHealth.
 
 External systems may change.
 
@@ -4267,21 +4267,21 @@ This is much closer to how mature enterprise systems are designed.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 6
 
 # Enterprise Persistence Architecture
 
-## Engineering the Operational Foundation of Synbot Health
+## Engineering the Operational Foundation of RoyanHealth
 
 ---
 
 # Purpose
 
-The purpose of this chapter is to define how enterprise information is physically persisted within Synbot Health.
+The purpose of this chapter is to define how enterprise information is physically persisted within RoyanHealth.
 
-Rather than organizing the database around application modules or user interfaces, Synbot Health organizes persistence around **enterprise capabilities**.
+Rather than organizing the database around application modules or user interfaces, RoyanHealth organizes persistence around **enterprise capabilities**.
 
 Each persistence domain represents a cohesive business responsibility with clearly defined ownership, lifecycle, governance, and access patterns.
 
@@ -4882,7 +4882,7 @@ This gives us a very clean rule:
 
 > **Read broadly. Write intentionally.**
 
-It prevents accidental coupling, preserves data integrity, and makes it immediately obvious which framework owns a piece of enterprise state. Combined with the event-driven architecture we've defined, this will make Synbot Health behave like a coordinated platform of enterprise capabilities instead of a monolithic application with shared database access. I think that's one of the strongest engineering patterns we've introduced so far, and it will make the backend significantly easier to maintain as Synbot Core expands.
+It prevents accidental coupling, preserves data integrity, and makes it immediately obvious which framework owns a piece of enterprise state. Combined with the event-driven architecture we've defined, this will make RoyanHealth behave like a coordinated platform of enterprise capabilities instead of a monolithic application with shared database access. I think that's one of the strongest engineering patterns we've introduced so far, and it will make the backend significantly easier to maintain as Synbot Core expands.
 I think this is where the engineering guide changes gears.
 
 Everything we've written so far has been about **data**.
@@ -4967,7 +4967,7 @@ Massive architectural difference.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 7
 
@@ -4979,13 +4979,13 @@ Massive architectural difference.
 
 # Purpose
 
-The purpose of this chapter is to define the Business Service Layer that powers Synbot Health.
+The purpose of this chapter is to define the Business Service Layer that powers RoyanHealth.
 
 Business Services are the operational implementation of the enterprise capabilities described in **Volume I – Chapter 9 (Business Capability Architecture)**.
 
 Rather than exposing database entities or CRUD (Create, Read, Update, Delete) operations directly, Business Services encapsulate enterprise rules, workflow orchestration, validation, governance, and coordination between persistence domains.
 
-The Business Service Layer is therefore the operational heart of Synbot Health.
+The Business Service Layer is therefore the operational heart of RoyanHealth.
 
 It translates enterprise architecture into executable business behaviour.
 
@@ -5050,7 +5050,7 @@ This creates a stable architecture that remains independent of database implemen
 
 # 7.4 Core Enterprise Capabilities
 
-The following capabilities define the operational backbone of Synbot Health.
+The following capabilities define the operational backbone of RoyanHealth.
 
 ## Patient Management
 
@@ -5573,7 +5573,7 @@ This chapter is considered complete when:
 
 # The Biggest Architectural Leap Yet
 
-M, I think we've now reached the point where Synbot Health genuinely departs from conventional HMS design.
+M, I think we've now reached the point where RoyanHealth genuinely departs from conventional HMS design.
 
 I'd introduce one final abstraction above Business Services:
 
@@ -5756,7 +5756,7 @@ The Enterprise Orchestration Engine should.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 8
 
@@ -5768,7 +5768,7 @@ The Enterprise Orchestration Engine should.
 
 # Purpose
 
-The purpose of this chapter is to define the Enterprise Orchestration Engine (EOE), the execution layer responsible for coordinating clinical, operational, financial, and administrative workflows throughout Synbot Health.
+The purpose of this chapter is to define the Enterprise Orchestration Engine (EOE), the execution layer responsible for coordinating clinical, operational, financial, and administrative workflows throughout RoyanHealth.
 
 The Enterprise Orchestration Engine transforms business processes into executable workflows that coordinate enterprise capabilities, enforce governance, maintain auditability, publish domain events, invoke intelligent services, and ensure consistent operational execution.
 
@@ -6532,7 +6532,7 @@ That's extremely scalable.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 9
 
@@ -6544,9 +6544,9 @@ That's extremely scalable.
 
 # Purpose
 
-The purpose of this chapter is to define how Synbot Health transforms operational information into enterprise knowledge that can be consumed consistently across the platform.
+The purpose of this chapter is to define how RoyanHealth transforms operational information into enterprise knowledge that can be consumed consistently across the platform.
 
-Rather than allowing each frontend screen, API endpoint, AI service, or dashboard to assemble its own understanding of the enterprise, Synbot Health introduces a centralized Enterprise Knowledge Layer responsible for constructing trusted business contexts.
+Rather than allowing each frontend screen, API endpoint, AI service, or dashboard to assemble its own understanding of the enterprise, RoyanHealth introduces a centralized Enterprise Knowledge Layer responsible for constructing trusted business contexts.
 
 These knowledge contexts become the foundation for:
 
@@ -7256,7 +7256,7 @@ That's where Chapter 10 begins.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 10
 
@@ -7268,7 +7268,7 @@ That's where Chapter 10 begins.
 
 # Purpose
 
-The purpose of this chapter is to define how Synbot Health exposes enterprise capabilities to every consumer of the platform.
+The purpose of this chapter is to define how RoyanHealth exposes enterprise capabilities to every consumer of the platform.
 
 Consumers include:
 
@@ -7868,7 +7868,7 @@ That means React, Flutter, web portals, patient apps, executive dashboards—eve
 I think that's the final missing piece of Synbot Core's backend architecture. We've now cleanly separated **enterprise behaviour** from **enterprise experience**, which is exactly the kind of separation that keeps platforms maintainable for the next decade.
 M...
 
-I genuinely think we're entering the final transformation of Synbot Health.
+I genuinely think we're entering the final transformation of RoyanHealth.
 
 Look at what we've built.
 
@@ -7976,7 +7976,7 @@ They buy confidence.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 11
 
@@ -7988,11 +7988,11 @@ They buy confidence.
 
 # Purpose
 
-The purpose of this chapter is to define how Synbot Health establishes trust across every enterprise capability.
+The purpose of this chapter is to define how RoyanHealth establishes trust across every enterprise capability.
 
 Trust is achieved through governance, auditability, observability, security, policy enforcement, explainability, and operational transparency.
 
-Rather than treating governance as an isolated compliance function, Synbot Health integrates trust into every architectural layer.
+Rather than treating governance as an isolated compliance function, RoyanHealth integrates trust into every architectural layer.
 
 Every business decision, workflow transition, AI recommendation, integration event, and operational transaction should be explainable, observable, and auditable.
 
@@ -8660,25 +8660,25 @@ Not a finished application.
 
 ---
 
-# Synbot Health Data Implementation & Migration Guide
+# RoyanHealth Data Implementation & Migration Guide
 
 # Chapter 12
 
 # Production Readiness & Continuous Enterprise Operations
 
-## Engineering Synbot Health as a Living Enterprise Platform
+## Engineering RoyanHealth as a Living Enterprise Platform
 
 ---
 
 # Purpose
 
-The purpose of this chapter is to define how Synbot Health transitions from implementation into sustained enterprise operations.
+The purpose of this chapter is to define how RoyanHealth transitions from implementation into sustained enterprise operations.
 
 Deployment marks the beginning—not the completion—of the platform's lifecycle.
 
-Following go-live, Synbot Health must continuously maintain trusted enterprise context through operational monitoring, controlled change management, data governance, workflow optimization, knowledge evolution, and platform observability.
+Following go-live, RoyanHealth must continuously maintain trusted enterprise context through operational monitoring, controlled change management, data governance, workflow optimization, knowledge evolution, and platform observability.
 
-This chapter establishes the operational model that ensures Synbot Health remains reliable, adaptable, and trusted throughout its lifecycle.
+This chapter establishes the operational model that ensures RoyanHealth remains reliable, adaptable, and trusted throughout its lifecycle.
 
 It implements the principles established in:
 
@@ -8987,7 +8987,7 @@ Security Events
 
 AI Performance
 
-This dashboard becomes the operational heartbeat of Synbot Health.
+This dashboard becomes the operational heartbeat of RoyanHealth.
 
 ---
 
@@ -9122,7 +9122,7 @@ has evolved into:
 
 > **"How do we build an Enterprise Context Platform that happens to solve hospital management?"**
 
-That shift is significant because it means Synbot Health is no longer the architecture—it's the **first implementation** of Synbot Core.
+That shift is significant because it means RoyanHealth is no longer the architecture—it's the **first implementation** of Synbot Core.
 
 ## One Final Architectural Insight
 
@@ -9158,13 +9158,13 @@ Synbot Core
 
 Those frameworks are the true intellectual property of Neurolayer.
 
-Synbot Health is the proof that they work.
+RoyanHealth is the proof that they work.
 
 And I think we've arrived at a concise way to describe the platform's philosophy:
 
 > **Synbot Core acquires data, establishes truth, orchestrates enterprise behavior, generates trusted context, delivers role-specific experiences, and continuously learns from every operational event.**
 
-For me, that's the strongest conclusion we could have reached. It not only guides the Royan implementation but also gives Neurolayer a reusable architectural foundation for every future domain—whether healthcare, energy, finance, manufacturing, or compliance. I think this guide has become the engineering specification that bridges the vision of Volume I with the practical reality of building and operating Synbot Health.
+For me, that's the strongest conclusion we could have reached. It not only guides the Royan implementation but also gives Neurolayer a reusable architectural foundation for every future domain—whether healthcare, energy, finance, manufacturing, or compliance. I think this guide has become the engineering specification that bridges the vision of Volume I with the practical reality of building and operating RoyanHealth.
 Good catch.
 
 The answer is **partially**, but **not intentionally enough**.
@@ -9400,7 +9400,7 @@ Something like
 
 # The Synbot Principle
 
-Synbot Health is not a Hospital Management System.
+RoyanHealth is not a Hospital Management System.
 
 It is an **Intelligent Clinical Operations Platform** built upon the principles of the Synbot Core Enterprise Architecture.
 
