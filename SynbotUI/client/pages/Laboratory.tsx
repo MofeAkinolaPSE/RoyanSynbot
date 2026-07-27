@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -195,6 +195,11 @@ export default function Laboratory() {
   const [sendOutForm, setSendOutForm]   = useState({ external_lab: "", notes: "" });
   const [refRangeOpen, setRefRangeOpen] = useState(false);
   const [rrForm, setRrForm]             = useState<Record<string, any>>({ test_name: "", unit: "", normal_low: "", normal_high: "" });
+  const [analyteValues, setAnalyteValues] = useState<Array<{ name: string; unit?: string; observed_value: string; comment: string }>>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [newTemplateForm, setNewTemplateForm] = useState<{ test_name: string; analytes: Array<{ name: string; unit: string; normal_low: string; normal_high: string }> }>(
+    { test_name: "", analytes: [{ name: "", unit: "", normal_low: "", normal_high: "" }] },
+  );
 
   const [uploadOpen, setUploadOpen]       = useState(false);
   const [uploadOrderId, setUploadOrderId] = useState<string | null>(null);
@@ -266,6 +271,32 @@ export default function Laboratory() {
   });
   const refRanges: any[] = Array.isArray(refRangeData?.ranges) ? refRangeData.ranges : [];
 
+  const { data: resultTemplateData } = useQuery({
+    queryKey: ["lab-template-for-test", activeOrder?.test_name],
+    queryFn: () => api.hospital.lab.getTemplateForTest(activeOrder!.test_name!),
+    enabled: resultOpen && !!activeOrder?.test_name,
+    staleTime: 60_000,
+  });
+  const activeTemplate: any = resultTemplateData?.template ?? null;
+
+  useEffect(() => {
+    if (activeTemplate?.analytes?.length) {
+      setAnalyteValues(activeTemplate.analytes.map((a: any) => ({
+        name: a.name, unit: a.unit, observed_value: "", comment: "",
+      })));
+    } else {
+      setAnalyteValues([]);
+    }
+  }, [activeTemplate]);
+
+  const { data: allTemplatesData, refetch: refetchTemplates } = useQuery({
+    queryKey: ["lab-templates"],
+    queryFn: () => api.hospital.lab.listTemplates(),
+    enabled: templatesOpen,
+    staleTime: 60_000,
+  });
+  const allTemplates: any[] = Array.isArray(allTemplatesData?.templates) ? allTemplatesData.templates : [];
+
   // KPI values
   const pending          = statsData?.pending           ?? 0;
   const sampleCollecting = statsData?.sample_collecting ?? 0;
@@ -286,13 +317,45 @@ export default function Laboratory() {
   });
 
   const resultMut = useMutation({
-    mutationFn: () => activeOrder ? api.hospital.lab.recordResult(activeOrder.id, resultForm) : Promise.reject(),
+    mutationFn: () => {
+      if (!activeOrder) return Promise.reject();
+      if (activeTemplate) {
+        return api.hospital.lab.recordResult(activeOrder.id, {
+          analyte_values: analyteValues.map(a => ({
+            name: a.name, observed_value: a.observed_value || undefined,
+            unit: a.unit, comment: a.comment || undefined,
+          })),
+          notes: resultForm.notes || undefined,
+        });
+      }
+      return api.hospital.lab.recordResult(activeOrder.id, resultForm);
+    },
     onSuccess: () => {
       toast({ title: "Result recorded" });
       setResultOpen(false);
       setResultForm({ ...EMPTY_RESULT });
+      setAnalyteValues([]);
       void qc.invalidateQueries({ queryKey: ["lab-orders"] });
       void qc.invalidateQueries({ queryKey: ["lab-stats"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const createTemplateMut = useMutation({
+    mutationFn: () => api.hospital.lab.createTemplate({
+      test_name: newTemplateForm.test_name,
+      analytes: newTemplateForm.analytes
+        .filter(a => a.name.trim())
+        .map(a => ({
+          name: a.name, unit: a.unit || undefined,
+          normal_low: a.normal_low !== "" ? Number(a.normal_low) : undefined,
+          normal_high: a.normal_high !== "" ? Number(a.normal_high) : undefined,
+        })),
+    }),
+    onSuccess: () => {
+      toast({ title: "Template saved" });
+      setNewTemplateForm({ test_name: "", analytes: [{ name: "", unit: "", normal_low: "", normal_high: "" }] });
+      void refetchTemplates();
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -748,7 +811,10 @@ export default function Laboratory() {
 
         {/* ── Reference Ranges tab ────────────────────────────────────────── */}
         <TabsContent value="references" className="space-y-4 mt-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => setTemplatesOpen(true)}>
+              <TestTube className="h-3.5 w-3.5" /> Result Templates
+            </Button>
             <Button size="sm" className="gap-2" onClick={() => setRefRangeOpen(true)}>
               <Plus className="h-3.5 w-3.5" /> Add Range
             </Button>
@@ -950,50 +1016,98 @@ export default function Laboratory() {
               {activeOrder?.test_name} — Order #{activeOrder?.id}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+          {activeTemplate ? (
+            <div className="space-y-4 py-2">
+              <div className="text-xs text-muted-foreground">
+                Using template: <span className="font-medium text-foreground">{activeTemplate.test_name}</span> (v{activeTemplate.version})
+              </div>
+              {analyteValues.map((row, i) => {
+                const def = activeTemplate.analytes?.[i] ?? {};
+                const numeric = Number(row.observed_value);
+                const isAbnormal = row.observed_value !== "" && !Number.isNaN(numeric) &&
+                  ((def.normal_low != null && numeric < def.normal_low) || (def.normal_high != null && numeric > def.normal_high));
+                return (
+                  <div key={row.name} className="grid grid-cols-[1fr_120px_100px] gap-2 items-end border-b pb-3">
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-2">
+                        {row.name}
+                        {isAbnormal && <Badge variant="outline" className="text-red-500 border-red-300">Abnormal</Badge>}
+                      </Label>
+                      <Input value={row.observed_value}
+                        onChange={e => setAnalyteValues(vs => vs.map((v, j) => j === i ? { ...v, observed_value: e.target.value } : v))}
+                        placeholder="Observed value" />
+                      {(def.normal_low != null || def.normal_high != null) && (
+                        <p className="text-[10px] text-muted-foreground">Normal: {def.normal_low ?? "–"} to {def.normal_high ?? "–"} {row.unit}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Unit</Label>
+                      <Input value={row.unit ?? ""} readOnly className="bg-muted" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Comment</Label>
+                      <Input value={row.comment}
+                        onChange={e => setAnalyteValues(vs => vs.map((v, j) => j === i ? { ...v, comment: e.target.value } : v))} />
+                    </div>
+                  </div>
+                );
+              })}
               <div className="space-y-1">
-                <Label>Result Value *</Label>
-                <Input value={resultForm.result_value}
-                  onChange={e => setResultForm(f => ({ ...f, result_value: e.target.value }))}
-                  placeholder="e.g. 14.2" />
+                <Label>Notes</Label>
+                <Textarea value={resultForm.notes}
+                  onChange={e => setResultForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Clinical notes..." rows={2} />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Result Value *</Label>
+                  <Input value={resultForm.result_value}
+                    onChange={e => setResultForm(f => ({ ...f, result_value: e.target.value }))}
+                    placeholder="e.g. 14.2" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Unit</Label>
+                  <Input value={resultForm.result_unit}
+                    onChange={e => setResultForm(f => ({ ...f, result_unit: e.target.value }))}
+                    placeholder="e.g. g/dL" />
+                </div>
               </div>
               <div className="space-y-1">
-                <Label>Unit</Label>
-                <Input value={resultForm.result_unit}
-                  onChange={e => setResultForm(f => ({ ...f, result_unit: e.target.value }))}
-                  placeholder="e.g. g/dL" />
+                <Label>Reference Range</Label>
+                <Input value={resultForm.reference_range}
+                  onChange={e => setResultForm(f => ({ ...f, reference_range: e.target.value }))}
+                  placeholder="e.g. 12.0–16.0 g/dL" />
+              </div>
+              <div className="space-y-1">
+                <Label>Notes</Label>
+                <Textarea value={resultForm.notes}
+                  onChange={e => setResultForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Clinical notes..." rows={2} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox id="is-critical" checked={resultForm.is_critical}
+                  onCheckedChange={v => setResultForm(f => ({ ...f, is_critical: !!v }))} />
+                <Label htmlFor="is-critical" className="cursor-pointer text-red-400">
+                  Mark as Critical Result
+                </Label>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>Reference Range</Label>
-              <Input value={resultForm.reference_range}
-                onChange={e => setResultForm(f => ({ ...f, reference_range: e.target.value }))}
-                placeholder="e.g. 12.0–16.0 g/dL" />
-            </div>
-            <div className="space-y-1">
-              <Label>Notes</Label>
-              <Textarea value={resultForm.notes}
-                onChange={e => setResultForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Clinical notes..." rows={2} />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="is-critical" checked={resultForm.is_critical}
-                onCheckedChange={v => setResultForm(f => ({ ...f, is_critical: !!v }))} />
-              <Label htmlFor="is-critical" className="cursor-pointer text-red-400">
-                Mark as Critical Result
-              </Label>
-            </div>
-          </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setResultOpen(false)}>Cancel</Button>
             <Button
-              disabled={!resultForm.result_value.trim() || resultMut.isPending}
+              disabled={
+                resultMut.isPending ||
+                (activeTemplate ? analyteValues.every(a => !a.observed_value.trim()) : !resultForm.result_value.trim())
+              }
               onClick={() => resultMut.mutate()}
-              className={resultForm.is_critical ? "bg-red-600 hover:bg-red-700" : ""}
+              className={!activeTemplate && resultForm.is_critical ? "bg-red-600 hover:bg-red-700" : ""}
             >
               {resultMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {resultForm.is_critical ? "Save Critical Result" : "Save Result"}
+              {!activeTemplate && resultForm.is_critical ? "Save Critical Result" : "Save Result"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1079,6 +1193,64 @@ export default function Laboratory() {
             <Button variant="outline" onClick={() => setRefRangeOpen(false)}>Cancel</Button>
             <Button disabled={!rrForm.test_name?.trim() || addRrMut.isPending} onClick={() => addRrMut.mutate()}>
               {addRrMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Add Range
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Result Templates Manager Dialog ────────────────────────────────── */}
+      <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><TestTube className="h-4 w-4" /> Lab Result Templates</DialogTitle>
+            <DialogDescription>Per-test analyte fields shown in the Record Result pop-up (e.g. "Serum Bilirubin" → Total/Direct Bilirubin).</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            {allTemplates.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No templates yet — create one below.</p>
+            ) : allTemplates.map((t: any) => (
+              <div key={t.id} className="rounded border p-2 text-xs">
+                <div className="font-medium">{t.test_name} <span className="text-muted-foreground">(v{t.version})</span></div>
+                <div className="text-muted-foreground mt-1">{(t.analytes ?? []).map((a: any) => a.name).join(", ")}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t pt-3 space-y-3">
+            <Label>New Template</Label>
+            <Input value={newTemplateForm.test_name}
+              onChange={e => setNewTemplateForm(f => ({ ...f, test_name: e.target.value }))}
+              placeholder="Test name, e.g. Serum Bilirubin (Total And Direct)" />
+            {newTemplateForm.analytes.map((a, i) => (
+              <div key={i} className="grid grid-cols-[1fr_70px_70px_70px_auto] gap-2 items-end">
+                <Input placeholder="Analyte name" value={a.name}
+                  onChange={e => setNewTemplateForm(f => ({ ...f, analytes: f.analytes.map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))} />
+                <Input placeholder="Unit" value={a.unit}
+                  onChange={e => setNewTemplateForm(f => ({ ...f, analytes: f.analytes.map((x, j) => j === i ? { ...x, unit: e.target.value } : x) }))} />
+                <Input placeholder="Low" type="number" value={a.normal_low}
+                  onChange={e => setNewTemplateForm(f => ({ ...f, analytes: f.analytes.map((x, j) => j === i ? { ...x, normal_low: e.target.value } : x) }))} />
+                <Input placeholder="High" type="number" value={a.normal_high}
+                  onChange={e => setNewTemplateForm(f => ({ ...f, analytes: f.analytes.map((x, j) => j === i ? { ...x, normal_high: e.target.value } : x) }))} />
+                <Button size="icon" variant="ghost"
+                  onClick={() => setNewTemplateForm(f => ({ ...f, analytes: f.analytes.filter((_, j) => j !== i) }))}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            <Button size="sm" variant="outline" className="gap-2"
+              onClick={() => setNewTemplateForm(f => ({ ...f, analytes: [...f.analytes, { name: "", unit: "", normal_low: "", normal_high: "" }] }))}>
+              <Plus className="h-3.5 w-3.5" /> Add Analyte
+            </Button>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplatesOpen(false)}>Close</Button>
+            <Button
+              disabled={!newTemplateForm.test_name.trim() || !newTemplateForm.analytes.some(a => a.name.trim()) || createTemplateMut.isPending}
+              onClick={() => createTemplateMut.mutate()}
+            >
+              {createTemplateMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Save Template
             </Button>
           </DialogFooter>
         </DialogContent>

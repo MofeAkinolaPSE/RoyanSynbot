@@ -44,6 +44,8 @@ from src.constants import (
     TABLE_DELIVERY_RECORDS,
     TABLE_NEWBORN_ASSESSMENT,
     TABLE_IMMUNISATION,
+    TABLE_VACCINE_SCHEDULE,
+    TABLE_PATIENTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -215,6 +217,20 @@ def _get_delivery(delivery_id: int) -> dict:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _generate_mrn() -> str:
+    """Same public.generate_mrn() RPC used by patient_registration.py and
+    hope_sync.py — keeps MRN numbering consistent across every path that
+    creates a royan_patients row, including a newborn's own record."""
+    result = db.rpc("generate_mrn", {}).execute()
+    if result.data:
+        row = result.data[0]
+        return row.get("generate_mrn") if isinstance(row, dict) else str(row)
+    raise RuntimeError("generate_mrn() RPC returned no data")
+
+
+_SEX_TO_GENDER = {"male": "male", "female": "female", "indeterminate": "other"}
 
 
 # ---------------------------------------------------------------------------
@@ -400,11 +416,39 @@ async def get_delivery(anc_id: int, user=Depends(verify_jwt)):
 
 @router.post("/delivery/{delivery_id}/newborn", status_code=201)
 async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, user=Depends(verify_jwt)):
-    """Record newborn assessment for a delivery."""
+    """Record newborn assessment for a delivery.
+
+    Gives the baby their own royan_patients row (DOB = delivery date, gender
+    from `sex`, mother_patient_id linking back) instead of filing the
+    assessment under the mother's patient_id — the baby never had a distinct
+    patient record before this, so there was nothing for a "Babies page" or
+    immunisation history to attach to.
+    """
     delivery = _get_delivery(delivery_id)
+    mother = db.table(TABLE_PATIENTS).select("id,last_name,hmo_provider,hmo_id").eq("id", delivery["patient_id"]).execute()
+    mother_row = mother.data[0] if mother.data else {}
+
+    baby_patient = {
+        "mrn": _generate_mrn(),
+        "first_name": "Baby",
+        "last_name": mother_row.get("last_name") or "Unknown",
+        "date_of_birth": delivery.get("delivery_date"),
+        "gender": _SEX_TO_GENDER.get((payload.sex or "").lower()),
+        "hmo_provider": mother_row.get("hmo_provider"),
+        "hmo_id": mother_row.get("hmo_id"),
+        "mother_patient_id": delivery["patient_id"],
+        "registered_by": user.get("sub") or "system",
+    }
+    try:
+        baby_result = db.table(TABLE_PATIENTS).insert(baby_patient).execute()
+    except Exception as exc:
+        logger.error("Baby patient record creation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create the newborn's patient record")
+    baby = baby_result.data[0] if baby_result.data else baby_patient
+
     data = payload.model_dump(exclude_none=True)
     data["delivery_id"] = delivery_id
-    data["patient_id"]  = delivery["patient_id"]
+    data["patient_id"]  = baby["id"]
     data["assessed_by"] = user.get("sub") or "system"
 
     try:
@@ -416,12 +460,12 @@ async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, u
     assessment = result.data[0] if result.data else data
     audit_event(
         "newborn_assessed",
-        {"delivery_id": delivery_id, "apgar_1min": payload.apgar_1min},
+        {"delivery_id": delivery_id, "apgar_1min": payload.apgar_1min, "baby_patient_id": baby["id"]},
         actor_id=user.get("sub"),
         subject_type="newborn_assessment",
         subject_id=str(assessment.get("id") or ""),
     )
-    return {"ok": True, "assessment": assessment}
+    return {"ok": True, "assessment": assessment, "baby_patient": baby}
 
 
 @router.get("/delivery/{delivery_id}/newborn")
@@ -436,29 +480,42 @@ async def get_newborn_assessments(delivery_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/patients/{patient_id}/immunisation", status_code=201)
-async def log_immunisation(patient_id: int, payload: ImmunisationRecord, user=Depends(verify_jwt)):
-    """Record an immunisation dose for a patient (child or adult)."""
-    data = payload.model_dump(exclude_none=True)
-    data["patient_id"]      = patient_id
-    data["administered_by"] = payload.administered_by or user.get("sub") or "system"
-    if "date_given" not in data:
-        data["date_given"] = _now()[:10]
+async def log_immunisation(
+    patient_id: int,
+    payload: ImmunisationRecord | list[ImmunisationRecord],
+    user=Depends(verify_jwt),
+):
+    """Record one or more immunisation doses for a patient in a single call
+    (client ask: "can take multiple immunisation at once")."""
+    records = payload if isinstance(payload, list) else [payload]
+    if not records:
+        raise HTTPException(status_code=422, detail="At least one immunisation record is required")
+
+    rows = []
+    for rec in records:
+        row = rec.model_dump(exclude_none=True)
+        row["patient_id"]      = patient_id
+        row["administered_by"] = rec.administered_by or user.get("sub") or "system"
+        if "date_given" not in row:
+            row["date_given"] = _now()[:10]
+        rows.append(row)
 
     try:
-        result = db.table(TABLE_IMMUNISATION).insert(data).execute()
+        result = db.table(TABLE_IMMUNISATION).insert(rows).execute()
     except Exception as exc:
         logger.error("Immunisation log failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to log immunisation")
 
-    record = result.data[0] if result.data else data
-    audit_event(
-        "immunisation_logged",
-        {"vaccine": payload.vaccine_name, "dose": payload.dose_number},
-        actor_id=user.get("sub"),
-        subject_type="immunisation",
-        subject_id=str(record.get("id") or ""),
-    )
-    return {"ok": True, "record": record}
+    saved = result.data or rows
+    for rec, row in zip(records, saved):
+        audit_event(
+            "immunisation_logged",
+            {"vaccine": rec.vaccine_name, "dose": rec.dose_number},
+            actor_id=user.get("sub"),
+            subject_type="immunisation",
+            subject_id=str(row.get("id") or ""),
+        )
+    return {"ok": True, "records": saved, "count": len(saved)}
 
 
 @router.get("/patients/{patient_id}/immunisation")
@@ -477,6 +534,50 @@ async def get_immunisation_history(
         .execute()
     )
     return {"immunisations": result.data or [], "count": len(result.data or [])}
+
+
+# ---------------------------------------------------------------------------
+# Babies (mother-baby linkage) + vaccine schedule reference data
+# ---------------------------------------------------------------------------
+
+@router.get("/patients/{patient_id}/babies")
+async def list_babies(patient_id: int, user=Depends(verify_jwt)):
+    """List a mother's babies — royan_patients rows linked via mother_patient_id
+    (set by add_newborn_assessment above). Powers the frontend's "Babies" card
+    on a mother's patient profile."""
+    result = (
+        db.table(TABLE_PATIENTS)
+        .select("id,mrn,first_name,last_name,date_of_birth,gender,mother_patient_id")
+        .eq("mother_patient_id", patient_id)
+        .order("date_of_birth", desc=True)
+        .execute()
+    )
+    return {"babies": result.data or [], "count": len(result.data or [])}
+
+
+@router.get("/vaccine-schedule")
+async def get_vaccine_schedule(
+    patient_id: Optional[int] = Query(None, description="Annotate rows with administered status for this patient"),
+    user=Depends(verify_jwt),
+):
+    """Reference vaccination schedule (seeded from the client's vaccination
+    booklet). Optionally cross-references a patient's immunisation history so
+    the frontend can render a due/overdue table."""
+    result = db.table(TABLE_VACCINE_SCHEDULE).select("*").order("age_days").execute()
+    rows = result.data or []
+
+    if patient_id is not None:
+        given = (
+            db.table(TABLE_IMMUNISATION)
+            .select("vaccine_name")
+            .eq("patient_id", patient_id)
+            .execute()
+        )
+        given_names = {g["vaccine_name"].strip().lower() for g in (given.data or []) if g.get("vaccine_name")}
+        for row in rows:
+            row["administered"] = row["vaccine_name"].strip().lower() in given_names
+
+    return {"schedule": rows, "count": len(rows)}
 
 
 # ---------------------------------------------------------------------------

@@ -1,15 +1,17 @@
 """
 Payments Router — RoyanHealth / Royan Hospital
 =================================================
-Paystack and Flutterwave payment gateway integration with stub fallback.
-All payment transactions are persisted to royan_payment_transactions.
+Paystack, Flutterwave, and Stripe payment gateway integration with stub
+fallback. All payment transactions are persisted to royan_payment_transactions.
+Used for both direct patient billing and HMO claim settlement (item 20).
 
 Endpoints:
-  POST  /payments/initiate                – Initiate a payment (Paystack or Flutterwave)
+  POST  /payments/initiate                – Initiate a payment (Paystack, Flutterwave, or Stripe)
   GET   /payments/{reference}             – Verify / check payment status
   GET   /payments                         – List payment transactions
   POST  /payments/webhook/paystack        – Paystack webhook handler
   POST  /payments/webhook/flutterwave     – Flutterwave webhook handler
+  POST  /payments/webhook/stripe          – Stripe webhook handler
 """
 from __future__ import annotations
 
@@ -40,10 +42,13 @@ router = APIRouter(prefix="/payments", tags=["Payment Gateway"])
 # ── Env config ──────────────────────────────────────────────────────────────
 PAYSTACK_SECRET_KEY    = os.getenv("PAYSTACK_SECRET_KEY", "")
 FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY", "")
+STRIPE_SECRET_KEY      = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET  = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PAYSTACK_BASE          = "https://api.paystack.co"
 FLUTTERWAVE_BASE       = "https://api.flutterwave.com/v3"
+STRIPE_BASE            = "https://api.stripe.com/v1"
 
-_STUB_MODE = not (PAYSTACK_SECRET_KEY or FLUTTERWAVE_SECRET_KEY)
+_STUB_MODE = not (PAYSTACK_SECRET_KEY or FLUTTERWAVE_SECRET_KEY or STRIPE_SECRET_KEY)
 
 
 def _now() -> str:
@@ -55,7 +60,7 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 class PaymentInitiate(BaseModel):
-    gateway:        str   = Field("paystack", description="paystack | flutterwave")
+    gateway:        str   = Field("paystack", description="paystack | flutterwave | stripe")
     amount:         float = Field(..., gt=0, description="Amount in NGN kobo (Paystack) or NGN (Flutterwave)")
     email:          str   = Field(..., min_length=3)
     patient_id:     Optional[int]   = None
@@ -158,6 +163,56 @@ async def _flutterwave_verify(tx_id: str) -> dict:
     return resp.json().get("data", {})
 
 
+async def _stripe_initiate(payload: PaymentInitiate, reference: str) -> dict:
+    """Create a Stripe Checkout Session. Stripe's API takes form-encoded
+    bodies (not JSON) — bracket notation builds the nested line_items/
+    metadata params."""
+    if _STUB_MODE:
+        return {
+            "url":       f"https://checkout.stripe.com/stub/{reference}",
+            "id":        f"cs_stub_{reference[:16]}",
+            "reference": reference,
+            "stub":      True,
+        }
+    callback = payload.callback_url or "https://royan.hospital/payment/callback"
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{STRIPE_BASE}/checkout/sessions",
+            headers={"Authorization": f"Bearer {STRIPE_SECRET_KEY}"},
+            data={
+                "mode":                                            "payment",
+                "success_url":                                     f"{callback}?reference={reference}",
+                "cancel_url":                                      callback,
+                "customer_email":                                  payload.email,
+                "client_reference_id":                              reference,
+                "line_items[0][price_data][currency]":              payload.currency.lower(),
+                "line_items[0][price_data][product_data][name]":    payload.description or "Royan Hospital Payment",
+                "line_items[0][price_data][unit_amount]":           str(int(round(payload.amount * 100))),
+                "line_items[0][quantity]":                          "1",
+                "metadata[reference]":                              reference,
+                "metadata[patient_id]":                             str(payload.patient_id or ""),
+                "metadata[encounter_id]":                           str(payload.encounter_id or ""),
+                "metadata[bill_id]":                                str(payload.bill_id or ""),
+            },
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Stripe error: {resp.text}")
+    return resp.json()
+
+
+async def _stripe_verify(session_id: str) -> dict:
+    if _STUB_MODE:
+        return {"payment_status": "paid", "amount_total": 0, "stub": True}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{STRIPE_BASE}/checkout/sessions/{session_id}",
+            headers={"Authorization": f"Bearer {STRIPE_SECRET_KEY}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Stripe verify error: {resp.text}")
+    return resp.json()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -171,6 +226,8 @@ async def initiate_payment(payload: PaymentInitiate, user=Depends(verify_jwt)):
 
     if payload.gateway == "paystack":
         gw_data = await _paystack_initiate(payload, reference)
+    elif payload.gateway == "stripe":
+        gw_data = await _stripe_initiate(payload, reference)
     else:
         gw_data = await _flutterwave_initiate(payload, reference)
 
@@ -212,6 +269,10 @@ async def verify_payment(reference: str, user=Depends(verify_jwt)):
     if gateway == "paystack":
         gw_result = await _paystack_verify(reference)
         new_status = "success" if gw_result.get("status") == "success" else "pending"
+    elif gateway == "stripe":
+        session_id = (record.get("gateway_data") or {}).get("id", reference)
+        gw_result = await _stripe_verify(str(session_id))
+        new_status = "success" if gw_result.get("payment_status") == "paid" else "pending"
     else:
         tx_id = (record.get("gateway_data") or {}).get("id", reference)
         gw_result = await _flutterwave_verify(str(tx_id))
@@ -309,6 +370,43 @@ async def flutterwave_webhook(request: Request, verif_hash: Optional[str] = Head
             "webhook_data": data,
         }).eq("reference", reference).execute()
         audit_event("payment_webhook_success", {"gateway": "flutterwave"},
+                    actor_id="webhook", subject_type="payment", subject_id=reference)
+
+    return {"ok": True}
+
+
+@router.post("/webhook/stripe", status_code=200)
+async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Header(None, alias="Stripe-Signature")):
+    body = await request.body()
+
+    if STRIPE_WEBHOOK_SECRET and stripe_signature:
+        # Stripe-Signature: "t=<timestamp>,v1=<hex hmac>" — verify
+        # hmac_sha256(secret, f"{t}.{body}") matches v1 before trusting the payload.
+        parts = dict(p.split("=", 1) for p in stripe_signature.split(",") if "=" in p)
+        timestamp, v1 = parts.get("t"), parts.get("v1")
+        if not timestamp or not v1:
+            raise HTTPException(status_code=400, detail="Malformed Stripe-Signature header")
+        signed_payload = f"{timestamp}.{body.decode('utf-8')}".encode()
+        expected = hmac.new(STRIPE_WEBHOOK_SECRET.encode(), signed_payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, v1):
+            raise HTTPException(status_code=401, detail="Invalid Stripe signature")
+
+    try:
+        event = (await request.json())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    evt_type = event.get("type", "")
+    session = event.get("data", {}).get("object", {})
+    reference = session.get("client_reference_id") or (session.get("metadata") or {}).get("reference", "")
+
+    if evt_type == "checkout.session.completed" and session.get("payment_status") == "paid" and reference:
+        db.table(TABLE_PAYMENT_TRANSACTIONS).update({
+            "status":       "success",
+            "verified_at":  _now(),
+            "webhook_data": session,
+        }).eq("reference", reference).execute()
+        audit_event("payment_webhook_success", {"gateway": "stripe"},
                     actor_id="webhook", subject_type="payment", subject_id=reference)
 
     return {"ok": True}

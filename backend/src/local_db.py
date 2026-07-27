@@ -26,6 +26,42 @@ class JsonbValue:
         self.value = value
 
 
+class SqlExpr:
+    """Wrap a raw SQL expression for use in update() payloads, e.g.
+    `{"used_count": SqlExpr("used_count + 1")}` emits `used_count = used_count + 1`
+    instead of binding the string as a literal value via a placeholder.
+    Only ever construct this with a fixed, developer-authored string — never
+    with user input, since it is interpolated directly into the SQL text.
+    """
+    __slots__ = ("expr",)
+
+    def __init__(self, expr: str):
+        self.expr = expr
+
+
+class _NotProxy:
+    """Supabase-style `.not_.eq(...)` / `.not_.in_(...)` chaining.
+
+    TableQuery only ever exposed the negated filters as direct methods
+    (`neq`, `not_in`) — there was never an actual `.not_` attribute, so any
+    call site written in the `.not_.eq(...)` / `.not_.in_(...)` style raised
+    AttributeError. Several call sites did exactly that (capability_engine's
+    proposal-dedup check, the weekly report's active-leads query, two lookups
+    in integrations.py) and had the error silently swallowed by a bare
+    `except Exception`, so the bug went unnoticed. This proxy makes that
+    calling style actually work instead of forcing every call site to be
+    rewritten to the direct-method form.
+    """
+    def __init__(self, query: "TableQuery"):
+        self._query = query
+
+    def eq(self, col, val):
+        return self._query.neq(col, val)
+
+    def in_(self, col, values):
+        return self._query.not_in(col, values)
+
+
 class TableQuery:
     def __init__(self, client, table):
         self.client = client
@@ -60,6 +96,10 @@ class TableQuery:
         self._action = "upsert"
         if on_conflict:
             self._upsert_conflict_col = on_conflict
+        return self
+
+    def delete(self):
+        self._action = "delete"
         return self
 
     def eq(self, col, val):
@@ -119,6 +159,11 @@ class TableQuery:
         """NOT IN (...) filter"""
         self._where.append((col, "NOT_IN", list(values)))
         return self
+
+    @property
+    def not_(self) -> "_NotProxy":
+        """Supabase-style negation chaining: `.not_.eq(...)` / `.not_.in_(...)`."""
+        return _NotProxy(self)
 
     def or_(self, conditions_str: str):
         """OR filter using PostgREST-style comma-separated condition string.
@@ -216,7 +261,9 @@ class TableQuery:
                 params = []
                 for c in cols:
                     v = self._payload[c]
-                    if isinstance(v, JsonbValue):
+                    if isinstance(v, SqlExpr):
+                        set_parts.append(f"{c} = {v.expr}")
+                    elif isinstance(v, JsonbValue):
                         import json as _json
                         set_parts.append(f"{c} = %s::jsonb")
                         params.append(_json.dumps(v.value))
@@ -273,6 +320,51 @@ class TableQuery:
                                 params.append(val)
                     where_clause = ' WHERE ' + ' AND '.join(conditions)
                 sql = f"UPDATE public.{self.table} SET {set_clause}{where_clause} RETURNING *"
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                conn.commit()
+                return Result(rows)
+
+            if getattr(self, '_action', None) == 'delete':
+                params = []
+                where_clause = ''
+                if self._where:
+                    conditions = []
+                    for col, op, val in self._where:
+                        if op == "IS":
+                            if val is None:
+                                conditions.append(f"{col} IS NULL")
+                            else:
+                                conditions.append(f"{col} IS NOT NULL")
+                        elif op == "IN":
+                            if not val:
+                                conditions.append("FALSE")
+                            else:
+                                placeholders = ', '.join(['%s'] * len(val))
+                                conditions.append(f"{col} IN ({placeholders})")
+                                params.extend(val)
+                        elif op == "NOT_IN":
+                            if not val:
+                                conditions.append("TRUE")
+                            else:
+                                placeholders = ', '.join(['%s'] * len(val))
+                                conditions.append(f"{col} NOT IN ({placeholders})")
+                                params.extend(val)
+                        else:
+                            if isinstance(val, dict):
+                                import json as _json
+                                conditions.append(f"{col} = %s::jsonb")
+                                params.append(_json.dumps(val))
+                            else:
+                                conditions.append(f"{col} {op} %s")
+                                params.append(val)
+                    where_clause = ' WHERE ' + ' AND '.join(conditions)
+                if not where_clause:
+                    # Every real call site filters by id/fk before deleting —
+                    # a missing WHERE means a bug upstream, not an intentional
+                    # "wipe the table" request. Refuse rather than comply.
+                    raise ValueError(f"delete() on '{self.table}' called with no filters — refusing unconditional DELETE")
+                sql = f"DELETE FROM public.{self.table}{where_clause} RETURNING *"
                 cur.execute(sql, params)
                 rows = cur.fetchall()
                 conn.commit()
@@ -432,7 +524,7 @@ class TableQuery:
             except Exception:
                 pass
             # Mutations must not silently fail — re-raise so callers know data was not saved
-            if getattr(self, '_action', None) in ('insert', 'update', 'upsert'):
+            if getattr(self, '_action', None) in ('insert', 'update', 'upsert', 'delete'):
                 raise
             return Result([])
         finally:
@@ -503,6 +595,56 @@ class RPCQuery:
                 ranked.sort(key=lambda r: r['similarity'], reverse=True)
                 return Result(ranked[:cnt])
 
+            # Special-case: match_agent_memories — same Python-side cosine
+            # similarity approach as match_documents above, scoped to one
+            # agent's own memories (AgentMemory.recall() in agent_memory.py).
+            if self.name == 'match_agent_memories' and isinstance(self.payload, dict):
+                import numpy as np
+
+                agent_name = self.payload.get('p_agent_name')
+                query_vec = self.payload.get('query_embedding')
+                thr = float(self.payload.get('match_threshold') or 0.0)
+                cnt = int(self.payload.get('match_count') or 1)
+
+                if query_vec is None or not agent_name:
+                    return Result([])
+
+                q_arr = np.asarray(query_vec, dtype=np.float32)
+                q_norm = np.linalg.norm(q_arr)
+                if q_norm == 0:
+                    return Result([])
+                q_unit = q_arr / q_norm
+
+                cur.execute(
+                    "SELECT id, content, embedding FROM public.royan_agent_memory "
+                    "WHERE agent_name = %s AND embedding IS NOT NULL",
+                    (agent_name,),
+                )
+                rows = cur.fetchall()
+
+                ranked = []
+                for row in rows:
+                    emb = row.get('embedding')
+                    if emb is None:
+                        continue
+                    try:
+                        d_arr = np.asarray(emb, dtype=np.float32)
+                        d_norm = np.linalg.norm(d_arr)
+                        if d_norm == 0:
+                            continue
+                        sim = float(np.dot(q_unit, d_arr / d_norm))
+                        if sim > thr:
+                            ranked.append({
+                                'id': row['id'],
+                                'content': row['content'],
+                                'similarity': sim,
+                            })
+                    except Exception:
+                        continue
+
+                ranked.sort(key=lambda r: r['similarity'], reverse=True)
+                return Result(ranked[:cnt])
+
             # Generic single-json param RPC
             # Treat None or empty dict as "no arguments" — empty dict is the
             # conventional no-op placeholder used by callers like generate_mrn({}).
@@ -561,3 +703,8 @@ class LocalDBClient:
 
     def rpc(self, name: str, payload=None) -> RPCQuery:
         return RPCQuery(self, name, payload)
+
+    def raw(self, expr: str) -> SqlExpr:
+        """Build a raw SQL expression for an update() payload value, e.g.
+        `db.raw("used_count + 1")`. See SqlExpr for the safety caveat."""
+        return SqlExpr(expr)

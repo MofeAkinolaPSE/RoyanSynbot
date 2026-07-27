@@ -56,6 +56,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 const GATEWAY_BADGE: Record<string, string> = {
   paystack:    "bg-teal-50 text-teal-700 border-teal-200",
   flutterwave: "bg-orange-50 text-orange-700 border-orange-200",
+  stripe:      "bg-purple-50 text-purple-700 border-purple-200",
 };
 
 function KpiCard({ label, value, sub, icon: Icon, color = "blue" }: {
@@ -217,6 +218,7 @@ export default function PaymentGateway() {
             <SelectItem value="all">All gateways</SelectItem>
             <SelectItem value="paystack">Paystack</SelectItem>
             <SelectItem value="flutterwave">Flutterwave</SelectItem>
+            <SelectItem value="stripe">Stripe</SelectItem>
           </SelectContent>
         </Select>
         <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
@@ -291,6 +293,7 @@ export default function PaymentGateway() {
                 <SelectContent>
                   <SelectItem value="paystack">Paystack</SelectItem>
                   <SelectItem value="flutterwave">Flutterwave</SelectItem>
+                  <SelectItem value="stripe">Stripe</SelectItem>
                 </SelectContent>
               </Select>
             </div>

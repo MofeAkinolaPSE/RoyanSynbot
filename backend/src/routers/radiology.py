@@ -26,6 +26,7 @@ from src.db import db, audit_event
 from src.middleware import verify_jwt
 from src.constants import (
     TABLE_RADIOLOGY_ORDERS,
+    TABLE_REPORT_TEMPLATES,
     RADIOLOGY_MODALITIES_ALLOWED,
     RADIOLOGY_STATUS_ALLOWED,
     RADIOLOGY_STATUS_TRANSITIONS,
@@ -254,6 +255,40 @@ async def patient_history(
         query = query.eq("modality", modality.lower())
     result = query.execute()
     return {"history": result.data or [], "count": len(result.data or []), "patient_id": patient_id}
+
+
+@router.get("/templates")
+async def list_report_templates(
+    modality: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Match against variant_name"),
+    limit: int = Query(100, ge=1, le=500),
+    user=Depends(verify_jwt),
+):
+    """List canned-findings report templates, e.g. to populate a study-type
+    picker before the radiologist edits and submits their report."""
+    query = (
+        db.table(TABLE_REPORT_TEMPLATES)
+        .select("id,modality,body_part,variant_name,template_text,source_file")
+        .eq("is_active", True)
+        .order("variant_name")
+        .limit(limit)
+    )
+    if modality:
+        query = query.eq("modality", modality.lower())
+    if search:
+        query = query.ilike("variant_name", f"%{search.strip()}%")
+    result = query.execute()
+    return {"templates": result.data or [], "count": len(result.data or [])}
+
+
+@router.get("/templates/{template_id}")
+async def get_report_template(template_id: int, user=Depends(verify_jwt)):
+    """Fetch one template's full text — the 'load template' action pre-fills
+    the report/impression form fields from this before the radiologist edits."""
+    r = db.table(TABLE_REPORT_TEMPLATES).select("*").eq("id", template_id).execute()
+    if not r.data:
+        raise HTTPException(status_code=404, detail=f"Report template {template_id} not found")
+    return {"template": r.data[0]}
 
 
 @router.get("/stats")

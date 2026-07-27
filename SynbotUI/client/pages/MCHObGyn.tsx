@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import {
   Heart, RefreshCw, Loader2, Plus, Baby, ClipboardList,
-  ActivitySquare, Syringe, CheckCircle2, ChevronRight, Search,
+  ActivitySquare, Syringe, CheckCircle2, ChevronRight, Search, Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -106,6 +107,7 @@ function BoolCheck({ label, checked, onChange }: { label: string; checked: boole
 export default function MCHObGyn() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const [patientSearch, setPatientSearch] = useState("");
   const [lookupId, setLookupId] = useState<number | null>(null);
@@ -128,7 +130,10 @@ export default function MCHObGyn() {
 
   const [immunOpen, setImmunOpen] = useState(false);
   const [immunPatientId, setImmunPatientId] = useState<number | null>(null);
-  const [immunForm, setImmunForm] = useState({ ...emptyImmunisation });
+  const [immunRows, setImmunRows] = useState([{ ...emptyImmunisation }]);
+
+  const [babyResult, setBabyResult] = useState<any | null>(null);
+  const [babyResultOpen, setBabyResultOpen] = useState(false);
 
   const [visitsViewAncId, setVisitsViewAncId] = useState<number | null>(null);
   const [visitsViewOpen, setVisitsViewOpen] = useState(false);
@@ -149,6 +154,28 @@ export default function MCHObGyn() {
     queryFn: () => api.hospital.mch.listVisits(visitsViewAncId!),
     enabled: !!visitsViewAncId,
   });
+
+  const [immunLookupId, setImmunLookupId] = useState<number | null>(null);
+  const { data: vaccineScheduleData, isLoading: scheduleLoading } = useQuery({
+    queryKey: ["vaccine-schedule", immunLookupId],
+    queryFn: () => api.hospital.mch.listVaccineSchedule(immunLookupId ? { patient_id: immunLookupId } : undefined),
+    enabled: !!immunLookupId,
+  });
+  const vaccineSchedule: any[] = vaccineScheduleData?.schedule ?? [];
+
+  const { data: immunHistoryData } = useQuery({
+    queryKey: ["immunisation-history", immunLookupId],
+    queryFn: () => api.hospital.mch.getImmunisationHistory(immunLookupId!),
+    enabled: !!immunLookupId,
+  });
+  const immunHistory: any[] = immunHistoryData?.immunisations ?? [];
+
+  const { data: babiesData } = useQuery({
+    queryKey: ["mch-babies", lookupId],
+    queryFn: () => api.hospital.mch.listBabies(lookupId!),
+    enabled: !!lookupId,
+  });
+  const babies: any[] = babiesData?.babies ?? [];
 
   const stats = statsData?.anc || { total: 0, active: 0, delivered: 0, referred: 0 };
   const deliveryModes = statsData?.delivery_modes || {};
@@ -223,23 +250,31 @@ export default function MCHObGyn() {
       apgar_10min: d.apgar_10min !== "" ? Number(d.apgar_10min) : undefined,
       gestational_age_at_birth: d.gestational_age_at_birth ? Number(d.gestational_age_at_birth) : undefined,
     }),
-    onSuccess: () => {
-      toast({ title: "Newborn assessment saved" });
+    onSuccess: (res: any) => {
+      toast({ title: "Newborn assessment saved", description: res?.baby_patient?.mrn ? `Baby MRN ${res.baby_patient.mrn} created` : undefined });
       setNewbornOpen(false);
       setNewbornForm({ ...emptyNewborn });
+      if (res?.baby_patient) {
+        setBabyResult(res.baby_patient);
+        setBabyResultOpen(true);
+      }
     },
     onError: () => toast({ title: "Failed to save newborn assessment", variant: "destructive" }),
   });
 
   const immunMut = useMutation({
-    mutationFn: (d: typeof immunForm) => api.hospital.mch.logImmunisation(immunPatientId!, {
-      ...d,
-      dose_number: d.dose_number ? Number(d.dose_number) : undefined,
-    }),
-    onSuccess: () => {
-      toast({ title: "Immunisation recorded" });
+    mutationFn: (rows: typeof immunRows) => api.hospital.mch.logImmunisation(
+      immunPatientId!,
+      rows
+        .filter(r => r.vaccine_name.trim())
+        .map(d => ({ ...d, dose_number: d.dose_number ? Number(d.dose_number) : undefined })),
+    ),
+    onSuccess: (res: any) => {
+      toast({ title: `${res?.count ?? "Immunisation"} dose(s) recorded` });
       setImmunOpen(false);
-      setImmunForm({ ...emptyImmunisation });
+      setImmunRows([{ ...emptyImmunisation }]);
+      qc.invalidateQueries({ queryKey: ["immunisation-history"] });
+      qc.invalidateQueries({ queryKey: ["vaccine-schedule"] });
     },
     onError: () => toast({ title: "Failed to log immunisation", variant: "destructive" }),
   });
@@ -374,7 +409,7 @@ export default function MCHObGyn() {
                               </Button>
                             )}
                             <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                              onClick={() => { setImmunPatientId(r.patient_id); setImmunOpen(true); }}>
+                              onClick={() => { setImmunPatientId(r.patient_id); setImmunRows([{ ...emptyImmunisation }]); setImmunOpen(true); }}>
                               <Syringe className="w-3 h-3 mr-1" /> Immun.
                             </Button>
                           </div>
@@ -385,6 +420,23 @@ export default function MCHObGyn() {
               </TableBody>
             </Table>
           </Card>
+
+          {lookupId && babies.length > 0 && (
+            <Card className="border-border bg-muted/20">
+              <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Baby className="w-4 h-4 text-sky-400" /> Babies</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {babies.map((b: any) => (
+                  <div key={b.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-1">
+                    <span>{b.first_name} {b.last_name} · {b.gender ?? "—"} · MRN {b.mrn}</span>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs"
+                      onClick={() => navigate(`/hospital/patients/${b.mrn}`)}>
+                      View Chart <ChevronRight className="w-3 h-3 ml-1" />
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Delivery Stats Tab */}
@@ -436,19 +488,75 @@ export default function MCHObGyn() {
             <div className="relative max-w-xs flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Patient ID"
+                placeholder="Patient ID (patient or baby)"
                 value={patientSearch}
                 onChange={e => setPatientSearch(e.target.value)}
                 className="pl-9 bg-background border-border text-foreground text-sm h-8"
               />
             </div>
-            <Button size="sm" className="bg-blue-700 hover:bg-blue-800 h-8"
+            <Button size="sm" variant="outline" className="border-border h-8"
               disabled={!patientSearch}
-              onClick={() => { setImmunPatientId(Number(patientSearch)); setImmunOpen(true); }}>
-              <Syringe className="w-3 h-3 mr-1" /> Record Dose
+              onClick={() => setImmunLookupId(Number(patientSearch))}>
+              <Search className="w-3 h-3 mr-1" /> Load
+            </Button>
+            <Button size="sm" className="bg-blue-700 hover:bg-blue-800 h-8"
+              disabled={!immunLookupId}
+              onClick={() => { setImmunPatientId(immunLookupId); setImmunRows([{ ...emptyImmunisation }]); setImmunOpen(true); }}>
+              <Syringe className="w-3 h-3 mr-1" /> Record Dose(s)
             </Button>
           </div>
-          <p className="text-muted-foreground text-sm">Enter a patient ID and click Record Dose to log a vaccine administration.</p>
+
+          {!immunLookupId ? (
+            <p className="text-muted-foreground text-sm">Enter a patient ID and click Load to see their immunisation schedule and history.</p>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-4">
+              <Card className="border-border bg-muted/20">
+                <CardHeader><CardTitle className="text-sm">Vaccine Schedule — Patient {immunLookupId}</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  {scheduleLoading ? (
+                    <div className="text-center py-6"><Loader2 className="w-5 h-5 animate-spin inline text-muted-foreground" /></div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border">
+                          <TableHead className="text-xs text-muted-foreground">Age</TableHead>
+                          <TableHead className="text-xs text-muted-foreground">Vaccine</TableHead>
+                          <TableHead className="text-xs text-muted-foreground">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {vaccineSchedule.map((v: any) => (
+                          <TableRow key={v.id} className="border-border/50">
+                            <TableCell className="text-xs text-muted-foreground">{v.age_milestone}</TableCell>
+                            <TableCell className="text-sm">{v.vaccine_name}</TableCell>
+                            <TableCell>
+                              {v.administered
+                                ? <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">Given</Badge>
+                                : <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-300">Due</Badge>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-border bg-muted/20">
+                <CardHeader><CardTitle className="text-sm">Immunisation History</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {immunHistory.length === 0
+                    ? <p className="text-muted-foreground text-sm">No doses recorded yet</p>
+                    : immunHistory.map((h: any) => (
+                      <div key={h.id} className="flex justify-between items-center text-sm border-b border-border/50 pb-1">
+                        <span>{h.vaccine_name} {h.dose_number ? `(dose ${h.dose_number})` : ""}</span>
+                        <span className="text-xs text-muted-foreground">{h.date_given || "—"}</span>
+                      </div>
+                    ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -820,49 +928,112 @@ export default function MCHObGyn() {
 
       {/* ── Immunisation Dialog ─────────────────────────────────────────────── */}
       <Dialog open={immunOpen} onOpenChange={setImmunOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Syringe className="w-5 h-5 text-blue-400" />
               Log Immunisation — Patient {immunPatientId}
             </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-xs">
+              Add one row per dose being given today — submits together in a single call.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Vaccine Name *</Label>
-              <Input value={immunForm.vaccine_name}
-                onChange={e => setImmunForm(p => ({ ...p, vaccine_name: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-8" />
-            </div>
-            {[
-              { key: "dose_number",   label: "Dose No.",     type: "number" },
-              { key: "date_given",    label: "Date Given",   type: "date" },
-              { key: "batch_number",  label: "Batch No." },
-              { key: "site",          label: "Site (LTA/RTA/oral)" },
-              { key: "next_due_date", label: "Next Due",     type: "date" },
-              { key: "reaction",      label: "Reaction" },
-            ].map(f => (
-              <div key={f.key} className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{f.label}</Label>
-                <Input type={f.type || "text"} value={(immunForm as any)[f.key] || ""}
-                  onChange={e => setImmunForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="bg-background border-border text-foreground text-sm h-8" />
+          <div className="space-y-4 mt-2">
+            {immunRows.map((row, i) => (
+              <div key={i} className="rounded border border-border p-3 space-y-2 relative">
+                {immunRows.length > 1 && (
+                  <Button size="icon" variant="ghost" className="absolute top-1 right-1 h-6 w-6"
+                    onClick={() => setImmunRows(rows => rows.filter((_, j) => j !== i))}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Vaccine Name *</Label>
+                    {vaccineSchedule.length > 0 ? (
+                      <Select value={row.vaccine_name}
+                        onValueChange={v => setImmunRows(rows => rows.map((r, j) => j === i ? { ...r, vaccine_name: v } : r))}>
+                        <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm"><SelectValue placeholder="Select vaccine…" /></SelectTrigger>
+                        <SelectContent className="bg-popover border-border">
+                          {Array.from(new Set(vaccineSchedule.map((v: any) => v.vaccine_name))).map((name: any) => (
+                            <SelectItem key={name} value={name}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={row.vaccine_name}
+                        onChange={e => setImmunRows(rows => rows.map((r, j) => j === i ? { ...r, vaccine_name: e.target.value } : r))}
+                        className="bg-background border-border text-foreground text-sm h-8" />
+                    )}
+                  </div>
+                  {[
+                    { key: "dose_number",   label: "Dose No.",     type: "number" },
+                    { key: "date_given",    label: "Date Given",   type: "date" },
+                    { key: "batch_number",  label: "Batch No." },
+                    { key: "site",          label: "Site (LTA/RTA/oral)" },
+                    { key: "next_due_date", label: "Next Due",     type: "date" },
+                    { key: "reaction",      label: "Reaction" },
+                  ].map(f => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">{f.label}</Label>
+                      <Input type={f.type || "text"} value={(row as any)[f.key] || ""}
+                        onChange={e => setImmunRows(rows => rows.map((r, j) => j === i ? { ...r, [f.key]: e.target.value } : r))}
+                        className="bg-background border-border text-foreground text-sm h-8" />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Notes</Label>
-              <Textarea value={immunForm.notes}
-                onChange={e => setImmunForm(p => ({ ...p, notes: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-14 resize-none" />
-            </div>
+            <Button size="sm" variant="outline" className="border-border gap-1"
+              onClick={() => setImmunRows(rows => [...rows, { ...emptyImmunisation }])}>
+              <Plus className="w-3.5 h-3.5" /> Add Dose
+            </Button>
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" className="border-border" onClick={() => setImmunOpen(false)}>Cancel</Button>
             <Button className="bg-blue-700 hover:bg-blue-800"
-              disabled={immunMut.isPending || !immunForm.vaccine_name || !immunPatientId}
-              onClick={() => immunMut.mutate(immunForm)}>
+              disabled={immunMut.isPending || !immunRows.some(r => r.vaccine_name.trim()) || !immunPatientId}
+              onClick={() => immunMut.mutate(immunRows)}>
               {immunMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save
+              Save {immunRows.filter(r => r.vaccine_name.trim()).length || ""} Dose(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Baby Created Dialog (after Newborn Assessment) ───────────────────── */}
+      <Dialog open={babyResultOpen} onOpenChange={setBabyResultOpen}>
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Baby className="w-5 h-5 text-sky-400" /> Baby Record Created
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-sm">
+              A new patient record was created for this newborn.
+            </DialogDescription>
+          </DialogHeader>
+          {babyResult && (
+            <div className="space-y-1 text-sm">
+              <p><span className="text-muted-foreground">Name:</span> {babyResult.first_name} {babyResult.last_name}</p>
+              <p><span className="text-muted-foreground">MRN:</span> {babyResult.mrn}</p>
+              <p><span className="text-muted-foreground">DOB:</span> {babyResult.date_of_birth}</p>
+              <p><span className="text-muted-foreground">Gender:</span> {babyResult.gender ?? "—"}</p>
+            </div>
+          )}
+          <DialogFooter className="mt-4">
+            <Button variant="outline" className="border-border"
+              onClick={() => {
+                setImmunPatientId(babyResult?.id ?? null);
+                setImmunLookupId(babyResult?.id ?? null);
+                setImmunRows([{ ...emptyImmunisation }]);
+                setBabyResultOpen(false);
+                setImmunOpen(true);
+              }}>
+              <Syringe className="w-3.5 h-3.5 mr-1" /> Log Immunisation
+            </Button>
+            <Button className="bg-blue-700 hover:bg-blue-800"
+              onClick={() => { setBabyResultOpen(false); if (babyResult?.mrn) navigate(`/hospital/patients/${babyResult.mrn}`); }}>
+              <ChevronRight className="w-3.5 h-3.5 mr-1" /> View Baby Chart
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -65,6 +65,7 @@ TABLE_LAB_ORDERS            = "royan_lab_orders"
 TABLE_LAB_RESULTS           = "royan_lab_results"
 TABLE_PRESCRIPTIONS         = "royan_prescriptions"
 TABLE_DISPENSING            = "royan_dispensing"
+TABLE_SALES_RETURNS         = "royan_sales_returns"
 TABLE_BILLING               = "royan_billing"
 TABLE_PAYMENTS              = "royan_payments"
 TABLE_INSURANCE_CLAIMS      = "royan_insurance_claims"
@@ -89,6 +90,7 @@ TABLE_INPATIENT_BILL_LINES  = "royan_inpatient_bill_lines"
 
 # --- Hospital Phase 2 additions ---
 TABLE_LAB_REFERENCE_RANGES  = "royan_lab_reference_ranges"
+TABLE_LAB_TEST_TEMPLATES    = "royan_lab_test_templates"
 TABLE_DRUG_INVENTORY        = "royan_drug_inventory"
 TABLE_DRUG_INTERACTIONS     = "royan_drug_interactions"
 TABLE_ALLERGIES             = "royan_allergies"
@@ -104,6 +106,7 @@ MEDICATION_ADMIN_STATUS     = {"given", "refused", "held", "not_available", "omi
 
 # --- Hospital Phase 3 — Radiology ---
 TABLE_RADIOLOGY_ORDERS      = "royan_radiology_orders"
+TABLE_REPORT_TEMPLATES      = "royan_report_templates"
 
 # --- Hospital Phase 4 — Surgical Theatre ---
 TABLE_THEATRE_CASES         = "royan_theatre_cases"
@@ -115,6 +118,7 @@ TABLE_PARTOGRAPH            = "royan_partograph"
 TABLE_DELIVERY_RECORDS      = "royan_delivery_records"
 TABLE_NEWBORN_ASSESSMENT    = "royan_newborn_assessment"
 TABLE_IMMUNISATION          = "royan_immunisation"
+TABLE_VACCINE_SCHEDULE      = "royan_vaccine_schedule"
 
 # --- Hospital Phase 6 — CPRS Cover Sheet support ---
 TABLE_PATIENT_POSTINGS      = "royan_patient_postings"
@@ -180,7 +184,7 @@ TABLE_PAYMENT_TRANSACTIONS   = "royan_payment_transactions"
 TABLE_PACS_STUDIES           = "royan_pacs_studies"
 TABLE_KIOSK_CHECKINS         = "royan_kiosk_checkins"
 
-PAYMENT_GATEWAY_ALLOWED      = {"paystack", "flutterwave"}
+PAYMENT_GATEWAY_ALLOWED      = {"paystack", "flutterwave", "stripe"}
 PAYMENT_TXN_STATUS_ALLOWED   = {"initiated", "pending", "success", "failed", "reversed"}
 PACS_STATUS_ALLOWED          = {"pending", "sent", "available", "error"}
 

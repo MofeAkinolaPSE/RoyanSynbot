@@ -58,6 +58,11 @@ class PatientInsuranceCreate(BaseModel):
     is_primary: bool = True
     source: str = "synbot"
     notes: Optional[str] = None
+    # Flexible bucket for per-HMO identity fields (employer, dependent
+    # relationship, etc.) — exact fields vary by HMO and are still pending
+    # from the client, so this ships now without forcing a schema change
+    # once they arrive.
+    identity_data: Optional[dict] = None
 
 
 class CoverageRuleCreate(BaseModel):

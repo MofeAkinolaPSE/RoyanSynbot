@@ -21,6 +21,7 @@ import {
 import {
   Pill, RefreshCw, Loader2, ClipboardList, CheckCircle2, XCircle,
   AlertTriangle, ShieldAlert, Package, TrendingDown, Plus, ArrowDownUp,
+  PenLine, Undo2, CalendarClock,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,18 @@ export default function PharmacyDispensing() {
   const [adjustForm, setAdjustForm]       = useState({ adjustment: "", reason: "manual_adjustment" });
   const [addItemOpen, setAddItemOpen]     = useState(false);
   const [itemForm, setItemForm]           = useState<Record<string, any>>({ drug_name: "", formulation: "", strength: "", unit: "tablet", stock_quantity: "0", reorder_level: "0" });
+  const [inventoryFilter, setInventoryFilter] = useState<"all" | "expiring" | "expired">("all");
+
+  // Returns (SOR) state
+  const [returnOpen, setReturnOpen]       = useState(false);
+  const [returnForm, setReturnForm]       = useState<Record<string, any>>({ dispensing_id: "", quantity_returned: "", reason: "", restock: false });
+
+  // Signature capture state
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureRx, setSignatureRx]     = useState<Prescription | null>(null);
+  const [signatureDispensing, setSignatureDispensing] = useState<any | null>(null);
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signatureUploading, setSignatureUploading] = useState(false);
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -98,13 +111,24 @@ export default function PharmacyDispensing() {
   const rxList: Prescription[] = Array.isArray(data?.prescriptions) ? data.prescriptions : Array.isArray(data) ? data : [];
 
   const { data: invData, isLoading: invLoading, refetch: refetchInv } = useQuery({
-    queryKey: ["pharmacy-inventory"],
-    queryFn: () => api.hospital.pharmacy.listInventory(),
+    queryKey: ["pharmacy-inventory", inventoryFilter],
+    queryFn: () => inventoryFilter === "expiring" ? api.hospital.pharmacy.listExpiring()
+      : inventoryFilter === "expired" ? api.hospital.pharmacy.listExpired()
+      : api.hospital.pharmacy.listInventory(),
     enabled: tab === "inventory",
     staleTime: 60_000,
   });
   const inventory: any[] = Array.isArray(invData?.inventory) ? invData.inventory : [];
   const lowStockCount = inventory.filter(i => Number(i.stock_quantity ?? 0) <= Number(i.reorder_level ?? 0)).length;
+
+  // Returns (SOR) query
+  const { data: returnsData, isLoading: returnsLoading } = useQuery({
+    queryKey: ["pharmacy-returns"],
+    queryFn: () => api.hospital.pharmacy.listReturns(),
+    enabled: tab === "returns",
+    staleTime: 30_000,
+  });
+  const returnsList: any[] = Array.isArray(returnsData?.returns) ? returnsData.returns : [];
 
   // KPI counts
   const active    = rxList.filter(r => ["active", "pending"].includes(r.status ?? "")).length;
@@ -170,6 +194,52 @@ export default function PharmacyDispensing() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const createReturnMut = useMutation({
+    mutationFn: () => api.hospital.pharmacy.createReturn({
+      dispensing_id: Number(returnForm.dispensing_id),
+      quantity_returned: Number(returnForm.quantity_returned),
+      reason: returnForm.reason || undefined,
+      restock: !!returnForm.restock,
+    }),
+    onSuccess: () => {
+      toast({ title: "Return recorded" });
+      setReturnOpen(false);
+      setReturnForm({ dispensing_id: "", quantity_returned: "", reason: "", restock: false });
+      void qc.invalidateQueries({ queryKey: ["pharmacy-returns"] });
+      void qc.invalidateQueries({ queryKey: ["pharmacy-inventory"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const openSignatureDialog = async (rx: Prescription) => {
+    setSignatureRx(rx);
+    setSignatureFile(null);
+    setSignatureDispensing(null);
+    setSignatureOpen(true);
+    try {
+      const detail: any = await api.hospital.pharmacy.getRx(rx.id);
+      const records: any[] = Array.isArray(detail?.dispensing_records) ? detail.dispensing_records : [];
+      setSignatureDispensing(records[records.length - 1] ?? null);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const uploadSignatureNow = async () => {
+    if (!signatureDispensing || !signatureFile) return;
+    setSignatureUploading(true);
+    try {
+      const res = await api.hospital.pharmacy.uploadSignature(signatureDispensing.id, signatureFile);
+      setSignatureDispensing((d: any) => ({ ...d, signature_url: res.signature_url }));
+      setSignatureFile(null);
+      toast({ title: "Signature captured" });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSignatureUploading(false);
+    }
+  };
+
   return (
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
       <AlertBanner />
@@ -210,6 +280,7 @@ export default function PharmacyDispensing() {
         <TabsList>
           <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
           <TabsTrigger value="inventory">Drug Inventory</TabsTrigger>
+          <TabsTrigger value="returns">Returns</TabsTrigger>
         </TabsList>
 
         {/* ── Prescriptions Tab ─────────────────────────────────────────── */}
@@ -277,6 +348,12 @@ export default function PharmacyDispensing() {
                                 </Button>
                               </>
                             )}
+                            {["dispensed", "partially_dispensed"].includes(rx.status ?? "") && (
+                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1"
+                                onClick={() => openSignatureDialog(rx)}>
+                                <PenLine className="h-3.5 w-3.5" /> Signature
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -290,7 +367,19 @@ export default function PharmacyDispensing() {
 
         {/* ── Inventory Tab ──────────────────────────────────────────────── */}
         <TabsContent value="inventory" className="space-y-4">
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {(["all", "expiring", "expired"] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setInventoryFilter(f)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs capitalize transition-colors",
+                    inventoryFilter === f ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted",
+                  )}
+                >{f === "all" ? "All Stock" : f === "expiring" ? "Expiring Soon" : "Expired"}</button>
+              ))}
+            </div>
             <Button size="sm" className="gap-2" onClick={() => setAddItemOpen(true)}>
               <Plus className="h-3.5 w-3.5" /> Add Drug
             </Button>
@@ -309,20 +398,21 @@ export default function PharmacyDispensing() {
                       <TableHead>Stock</TableHead>
                       <TableHead>Reorder Level</TableHead>
                       <TableHead>Unit Cost</TableHead>
+                      <TableHead>Expiry</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {inventory.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                        <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                           <Package className="mx-auto mb-2 h-6 w-6 opacity-30" />No inventory items found
                         </TableCell>
                       </TableRow>
                     ) : inventory.map((item: any) => {
                       const isLow = Number(item.stock_quantity ?? 0) <= Number(item.reorder_level ?? 0);
                       return (
-                        <TableRow key={item.id} className={isLow ? "bg-red-500/5" : ""}>
+                        <TableRow key={item.id} className={(item.is_out_of_stock || isLow) ? "bg-red-500/5" : ""}>
                           <TableCell className="text-sm font-medium">
                             {item.drug_name}
                             {isLow && <TrendingDown className="ml-1.5 inline h-3.5 w-3.5 text-red-400" />}
@@ -334,6 +424,13 @@ export default function PharmacyDispensing() {
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{item.reorder_level ?? 0}</TableCell>
                           <TableCell className="text-xs font-mono">₦{Number(item.unit_cost ?? 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-muted-foreground">{item.expiry_date ?? "—"}</span>
+                              {item.is_expired && <Badge variant="outline" className="w-fit text-red-500 border-red-300">Expired</Badge>}
+                              {!item.is_expired && item.is_out_of_stock && <Badge variant="outline" className="w-fit text-amber-500 border-amber-300">No Stock</Badge>}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1"
                               onClick={() => { setActiveItem(item); setAdjustOpen(true); }}>
@@ -343,6 +440,59 @@ export default function PharmacyDispensing() {
                         </TableRow>
                       );
                     })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Returns (SOR) Tab ──────────────────────────────────────────── */}
+        <TabsContent value="returns" className="space-y-4">
+          <div className="mt-4 flex justify-end">
+            <Button size="sm" className="gap-2" onClick={() => setReturnOpen(true)}>
+              <Undo2 className="h-3.5 w-3.5" /> New Return
+            </Button>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              {returnsLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dispensing #</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Restocked</TableHead>
+                      <TableHead>Processed By</TableHead>
+                      <TableHead>Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {returnsList.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                          <Undo2 className="mx-auto mb-2 h-6 w-6 opacity-30" />No returns recorded
+                        </TableCell>
+                      </TableRow>
+                    ) : returnsList.map((r: any) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs">{r.dispensing_id}</TableCell>
+                        <TableCell className="text-sm font-semibold">{r.quantity_returned}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.reason ?? "—"}</TableCell>
+                        <TableCell>
+                          {r.restocked
+                            ? <CheckCircle2 className="h-4 w-4 text-green-400" />
+                            : <span className="text-muted-foreground text-xs">—</span>}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.processed_by ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {r.processed_at ? new Date(r.processed_at).toLocaleString() : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               )}
@@ -561,6 +711,93 @@ export default function PharmacyDispensing() {
             <Button variant="outline" onClick={() => setAddItemOpen(false)}>Cancel</Button>
             <Button disabled={!itemForm.drug_name?.trim() || addItemMut.isPending} onClick={() => addItemMut.mutate()}>
               {addItemMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Add Drug
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── New Return (SOR) Dialog ───────────────────────────────────────── */}
+      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Undo2 className="h-4 w-4" /> New Return</DialogTitle>
+            <DialogDescription>Record a drug returned by a patient (Sales on Return).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Dispensing Record ID *</Label>
+              <Input value={returnForm.dispensing_id}
+                onChange={e => setReturnForm(f => ({ ...f, dispensing_id: e.target.value }))}
+                placeholder="e.g. 42" />
+            </div>
+            <div className="space-y-1">
+              <Label>Quantity Returned *</Label>
+              <Input type="number" value={returnForm.quantity_returned}
+                onChange={e => setReturnForm(f => ({ ...f, quantity_returned: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Reason</Label>
+              <Textarea value={returnForm.reason}
+                onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="e.g. adverse reaction, wrong drug dispensed..." rows={2} />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="restock-check" checked={returnForm.restock}
+                onCheckedChange={v => setReturnForm(f => ({ ...f, restock: !!v }))} />
+              <Label htmlFor="restock-check" className="cursor-pointer">Restock this quantity into inventory</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReturnOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!returnForm.dispensing_id.toString().trim() || !returnForm.quantity_returned.toString().trim() || createReturnMut.isPending}
+              onClick={() => createReturnMut.mutate()}
+            >
+              {createReturnMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Record Return
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Signature Capture Dialog ──────────────────────────────────────── */}
+      <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><PenLine className="h-4 w-4" /> Drug Collection Signature</DialogTitle>
+            <DialogDescription>
+              {signatureRx?.drug_name} — confirms the patient collected this prescription.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {!signatureDispensing ? (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <>
+                {signatureDispensing.signature_url && (
+                  <div className="space-y-1">
+                    <Label>Current Signature</Label>
+                    <img
+                      src={api.hospital.pharmacy.signatureUrl(signatureDispensing.signature_url.split("/").pop())}
+                      alt="Captured signature"
+                      className="max-h-32 rounded border bg-white p-2"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label>{signatureDispensing.signature_url ? "Replace with new photo/scan" : "Upload photo/scan of signature"}</Label>
+                  <Input type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={e => setSignatureFile(e.target.files?.[0] ?? null)} />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignatureOpen(false)}>Close</Button>
+            <Button
+              disabled={!signatureFile || !signatureDispensing || signatureUploading}
+              onClick={uploadSignatureNow}
+            >
+              {signatureUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Save Signature
             </Button>
           </DialogFooter>
         </DialogContent>

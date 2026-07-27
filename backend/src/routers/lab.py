@@ -15,7 +15,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import os
 import uuid
@@ -34,6 +34,7 @@ from src.constants import (
     TABLE_LAB_ORDERS,
     TABLE_LAB_RESULTS,
     TABLE_LAB_REFERENCE_RANGES,
+    TABLE_LAB_TEST_TEMPLATES,
     TABLE_PATIENTS,
     TABLE_ENCOUNTERS,
 )
@@ -68,16 +69,49 @@ class SampleCollectedRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class AnalyteValue(BaseModel):
+    """One filled-in row of a structured result pop-up (see AnalyteDef for the
+    template shape this is validated against)."""
+    name: str = Field(..., min_length=1)
+    observed_value: Optional[str] = None
+    unit: Optional[str] = None
+    is_abnormal: Optional[bool] = None     # auto-computed from the template's range if omitted
+    comment: Optional[str] = None
+
+    model_config = {"extra": "ignore"}
+
+
 class LabResultCreate(BaseModel):
     result_data: Optional[dict] = None         # flexible: {"haemoglobin": "12.4 g/dL"}
     result_value: Optional[str] = None
     result_unit: Optional[str] = None
+    analyte_values: Optional[List[AnalyteValue]] = None   # structured, per-test-template entry
     result_summary: Optional[str] = None
     reference_range: Optional[str] = None
     interpretation: Optional[str] = None
     is_critical: bool = False
     resulted_by: Optional[str] = None
     notes: Optional[str] = None
+
+    model_config = {"extra": "ignore"}
+
+
+class AnalyteDef(BaseModel):
+    """One named field in a lab test template, e.g. "Total Bilirubin"."""
+    name: str = Field(..., min_length=1)
+    unit: Optional[str] = None
+    normal_low: Optional[float] = None
+    normal_high: Optional[float] = None
+    critical_low: Optional[float] = None
+    critical_high: Optional[float] = None
+
+    model_config = {"extra": "ignore"}
+
+
+class LabTemplateCreate(BaseModel):
+    test_name: str = Field(..., min_length=1)
+    catalog_id: Optional[int] = None
+    analytes: List[AnalyteDef] = Field(..., min_length=1)
 
     model_config = {"extra": "ignore"}
 
@@ -91,6 +125,74 @@ def _get_order(order_id: int) -> dict:
     if not result.data:
         raise HTTPException(status_code=404, detail=f"Lab order {order_id} not found")
     return result.data[0]
+
+
+def _get_active_template(test_name: str) -> Optional[dict]:
+    result = (
+        db.table(TABLE_LAB_TEST_TEMPLATES)
+        .select("*")
+        .eq("test_name", test_name)
+        .eq("is_active", True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def _apply_template(template: dict, analyte_values: List["AnalyteValue"]) -> tuple[list, bool, bool]:
+    """Validate/enrich submitted analyte values against a template.
+
+    Returns (analytes_out, any_abnormal, any_critical) — analytes_out is what
+    gets stored in result_data; the two flags drive the overall
+    interpretation/is_critical when the caller didn't set them explicitly.
+    """
+    defs_by_name = {d["name"].strip().lower(): d for d in (template.get("analytes") or [])}
+    analytes_out = []
+    any_abnormal = False
+    any_critical = False
+
+    for av in analyte_values:
+        key = av.name.strip().lower()
+        adef = defs_by_name.get(key)
+        if adef is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"'{av.name}' is not a field on the '{template['test_name']}' template (v{template['version']})",
+            )
+        unit = av.unit or adef.get("unit")
+        is_abnormal = av.is_abnormal
+        is_critical_flag = False
+        numeric_value: Optional[float] = None
+        if av.observed_value is not None:
+            try:
+                numeric_value = float(av.observed_value)
+            except ValueError:
+                numeric_value = None
+        if numeric_value is not None:
+            lo, hi = adef.get("normal_low"), adef.get("normal_high")
+            if is_abnormal is None and (lo is not None or hi is not None):
+                is_abnormal = (lo is not None and numeric_value < lo) or (hi is not None and numeric_value > hi)
+            clo, chi = adef.get("critical_low"), adef.get("critical_high")
+            if (clo is not None and numeric_value < clo) or (chi is not None and numeric_value > chi):
+                is_critical_flag = True
+
+        if is_abnormal:
+            any_abnormal = True
+        if is_critical_flag:
+            any_critical = True
+
+        analytes_out.append({
+            "name": adef["name"],
+            "observed_value": av.observed_value,
+            "unit": unit,
+            "normal_low": adef.get("normal_low"),
+            "normal_high": adef.get("normal_high"),
+            "is_abnormal": bool(is_abnormal),
+            "is_critical": is_critical_flag,
+            "comment": av.comment,
+        })
+
+    return analytes_out, any_abnormal, any_critical
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +359,30 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
         raise HTTPException(status_code=422, detail=f"interpretation must be one of {INTERPRETATIONS}")
 
     data = payload.model_dump(exclude_none=True)
-    if payload.result_value or payload.result_unit:
+    data.pop("analyte_values", None)
+
+    if payload.analyte_values:
+        template = _get_active_template(order["test_name"])
+        if template is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No active result template for test '{order['test_name']}' — record a template first or use result_value/result_data instead.",
+            )
+        analytes_out, any_abnormal, any_critical = _apply_template(template, payload.analyte_values)
+        data["result_data"] = {**(payload.result_data or {}), "analytes": analytes_out}
+        data["template_id"] = template["id"]
+        if not payload.result_summary:
+            data["result_summary"] = "; ".join(
+                f"{a['name']}: {a['observed_value']}{(' ' + a['unit']) if a.get('unit') else ''}"
+                for a in analytes_out if a.get("observed_value") is not None
+            )
+        if not payload.interpretation:
+            data["interpretation"] = "critical" if any_critical else ("abnormal" if any_abnormal else "normal")
+        if not payload.is_critical:
+            data["is_critical"] = any_critical
+        data.pop("result_value", None)
+        data.pop("result_unit", None)
+    elif payload.result_value or payload.result_unit:
         data["result_data"] = {
             **(payload.result_data or {}),
             "value": payload.result_value,
@@ -308,6 +433,80 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
         },
     )
     return {"ok": True, "result": res_row}
+
+
+# ─── Lab Test Templates ───────────────────────────────────────────────────────
+# Per-test structured result templates (item 19: attendants manually
+# transcribe Mindray readings into named fields per test, e.g. "Serum
+# Bilirubin" → "Total Bilirubin" / "Direct Bilirubin").
+
+@router.post("/templates", status_code=201)
+async def create_lab_template(payload: LabTemplateCreate, user=Depends(verify_jwt)):
+    """Create a lab test template, or a new version if one is already active
+    for this test_name (the prior version is deactivated, not deleted, so
+    existing results keep resolving to the template they were entered against)."""
+    existing = (
+        db.table(TABLE_LAB_TEST_TEMPLATES)
+        .select("id,version")
+        .eq("test_name", payload.test_name)
+        .eq("is_active", True)
+        .execute()
+    )
+    next_version = 1
+    if existing.data:
+        for row in existing.data:
+            db.table(TABLE_LAB_TEST_TEMPLATES).update({"is_active": False}).eq("id", row["id"]).execute()
+        next_version = max(r["version"] for r in existing.data) + 1
+
+    data = {
+        "test_name": payload.test_name,
+        "catalog_id": payload.catalog_id,
+        "version": next_version,
+        "analytes": [a.model_dump(exclude_none=True) for a in payload.analytes],
+        "created_by": user.get("sub") or "system",
+    }
+    try:
+        result = db.table(TABLE_LAB_TEST_TEMPLATES).insert(data).execute()
+    except Exception as exc:
+        logger.error("Lab template creation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save lab test template")
+
+    template = result.data[0] if result.data else data
+    audit_event(
+        "lab_template_created",
+        {"test_name": payload.test_name, "version": next_version},
+        actor_id=user.get("sub"),
+        subject_type="lab_test_template",
+        subject_id=str(template.get("id") or ""),
+    )
+    return {"ok": True, "template": template}
+
+
+@router.get("/templates")
+async def list_lab_templates(
+    test_name: Optional[str] = Query(None),
+    active_only: bool = Query(True),
+    user=Depends(verify_jwt),
+):
+    """List lab test templates, optionally filtered by test name."""
+    query = db.table(TABLE_LAB_TEST_TEMPLATES).select("*").order("test_name")
+    if test_name:
+        query = query.ilike("test_name", f"%{test_name.strip()}%")
+    if active_only:
+        query = query.eq("is_active", True)
+    result = query.execute()
+    return {"templates": result.data or [], "count": len(result.data or [])}
+
+
+@router.get("/templates/for-test")
+async def get_template_for_test(
+    test_name: str = Query(..., min_length=1),
+    user=Depends(verify_jwt),
+):
+    """Fetch the active analyte template for a test name — this is what
+    drives the per-patient result entry pop-up card."""
+    template = _get_active_template(test_name)
+    return {"template": template}
 
 
 @router.get("/turnaround")

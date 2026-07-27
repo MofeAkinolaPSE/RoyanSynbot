@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from src.db import db, audit_event
 from src.middleware import verify_jwt
+from src.services.clinical_shared import get_patient_allergies
 from src.constants import (
     TABLE_VITALS,
     TABLE_NURSING_CARE_PLANS,
@@ -155,7 +156,12 @@ async def list_vitals(
     if encounter_id:
         query = query.eq("encounter_id", encounter_id)
     result = query.execute()
-    return {"vitals": result.data or [], "count": len(result.data or []), "patient_id": patient_id}
+    return {
+        "vitals": result.data or [],
+        "count": len(result.data or []),
+        "patient_id": patient_id,
+        "allergies": get_patient_allergies(patient_id),
+    }
 
 
 # ---------------------------------------------------------------------------

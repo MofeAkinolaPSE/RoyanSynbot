@@ -50,6 +50,10 @@ class BillItemInput(BaseModel):
     category: str = "misc"
     quantity: float = Field(1.0, gt=0)
     unit_price: float = Field(0.0, ge=0)
+    # payer_type is normally auto-derived from the coverage quote (hmo vs
+    # private); pass "staff" explicitly since nothing in the schema
+    # identifies a patient as hospital staff today.
+    payer_type: Optional[str] = Field(None, pattern="^(hmo|staff|private)$")
 
 
 class BillFromEncounterRequest(BaseModel):
@@ -88,6 +92,21 @@ class ClaimStatusUpdate(BaseModel):
     authorisation_code: Optional[str] = None
     approved_amount: Optional[float] = None
     notes: Optional[str] = None
+
+
+# Maps royan_service_catalog.category -> the department the MD's finance
+# toggle groups by. Only Lab/Pharmacy/Radiology are "their own business" per
+# the client; everything else (consultation/ward/procedure/misc) rolls up
+# under General rather than inventing departments nobody asked for.
+_DEPARTMENT_BY_CATEGORY = {
+    "lab": "Lab",
+    "pharmacy": "Pharmacy",
+    "imaging": "Radiology",
+}
+
+
+def _department_for_category(category: Optional[str]) -> str:
+    return _DEPARTMENT_BY_CATEGORY.get((category or "").lower(), "General")
 
 
 def _num(value, default: float = 0.0) -> float:
@@ -223,6 +242,8 @@ async def create_bill_from_encounter(payload: BillFromEncounterRequest, user=Dep
     item_rows = []
     for item, quote in zip(payload.items, quotes):
         service = quote.get("service") or {}
+        category = service.get("category") or item.category
+        payer_type = item.payer_type or ("hmo" if (quote.get("insurance") or {}).get("active") else "private")
         item_rows.append({
             "billing_id": bill_id,
             "encounter_id": payload.encounter_id,
@@ -230,7 +251,9 @@ async def create_bill_from_encounter(payload: BillFromEncounterRequest, user=Dep
             "service_id": service.get("id"),
             "service_code": service.get("service_code") or item.service_code,
             "description": item.description,
-            "category": service.get("category") or item.category,
+            "category": category,
+            "department": _department_for_category(category),
+            "payer_type": payer_type,
             "quantity": item.quantity,
             "unit_price": item.unit_price,
             "covered_amount": quote.get("covered_amount") or 0,

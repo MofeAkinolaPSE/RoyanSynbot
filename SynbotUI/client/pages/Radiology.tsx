@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,8 @@ export default function Radiology() {
   const [activeOrder, setActiveOrder]     = useState<any | null>(null);
   const [orderForm, setOrderForm]         = useState({ ...EMPTY_ORDER });
   const [reportForm, setReportForm]       = useState({ ...EMPTY_REPORT });
+  const [orderTemplateId, setOrderTemplateId]   = useState<string>("");
+  const [reportTemplateId, setReportTemplateId] = useState<string>("");
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -99,6 +101,22 @@ export default function Radiology() {
     staleTime: 120_000,
   });
   const stats = statsData ?? {};
+
+  const { data: orderTemplatesData } = useQuery({
+    queryKey: ["radiology-templates", orderForm.modality],
+    queryFn: () => api.hospital.radiology.listTemplates({ modality: orderForm.modality }),
+    enabled: orderOpen && !!orderForm.modality,
+    staleTime: 60_000,
+  });
+  const orderTemplates: any[] = Array.isArray(orderTemplatesData?.templates) ? orderTemplatesData.templates : [];
+
+  const { data: reportTemplatesData } = useQuery({
+    queryKey: ["radiology-templates", activeOrder?.modality],
+    queryFn: () => api.hospital.radiology.listTemplates({ modality: activeOrder!.modality }),
+    enabled: reportOpen && !!activeOrder?.modality,
+    staleTime: 60_000,
+  });
+  const reportTemplates: any[] = Array.isArray(reportTemplatesData?.templates) ? reportTemplatesData.templates : [];
 
   // KPI counts
   const pendingCount = orders.filter(o => ["ordered", "scheduled"].includes(o.status)).length;
@@ -153,7 +171,7 @@ export default function Radiology() {
           <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
             <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
           </Button>
-          <Button size="sm" className="gap-2" onClick={() => setOrderOpen(true)}>
+          <Button size="sm" className="gap-2" onClick={() => { setOrderTemplateId(""); setOrderOpen(true); }}>
             <Plus className="h-3.5 w-3.5" /> New Request
           </Button>
         </div>
@@ -274,7 +292,7 @@ export default function Radiology() {
                             )}
                             {order.status === "in_progress" && (
                               <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                                onClick={() => { setActiveOrder(order); setReportOpen(true); }}>
+                                onClick={() => { setActiveOrder(order); setReportTemplateId(""); setReportOpen(true); }}>
                                 <FileText className="mr-1 h-3.5 w-3.5" /> Report
                               </Button>
                             )}
@@ -380,6 +398,27 @@ export default function Radiology() {
                 </Select>
               </div>
             </div>
+            {orderTemplates.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Structured Protocol (optional)</Label>
+                <Select value={orderTemplateId} onValueChange={v => {
+                  setOrderTemplateId(v);
+                  const t = orderTemplates.find((x: any) => String(x.id) === v);
+                  if (t) setOrderForm(f => ({
+                    ...f,
+                    body_part: t.body_part || f.body_part,
+                    clinical_indication: f.clinical_indication || t.variant_name,
+                  }));
+                }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choose a protocol…" /></SelectTrigger>
+                  <SelectContent>
+                    {orderTemplates.map((t: any) => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.variant_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Body Part / Region</Label>
               <Input value={orderForm.body_part} onChange={e => setOrderForm(f => ({ ...f, body_part: e.target.value }))}
@@ -423,6 +462,29 @@ export default function Radiology() {
                 onChange={e => setReportForm(f => ({ ...f, radiologist_id: e.target.value }))}
                 placeholder="Radiologist name / ID" className="h-8 text-sm" />
             </div>
+            {reportTemplates.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Load Template</Label>
+                <div className="flex gap-2">
+                  <Select value={reportTemplateId} onValueChange={setReportTemplateId}>
+                    <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Choose a canned-findings template…" /></SelectTrigger>
+                    <SelectContent>
+                      {reportTemplates.map((t: any) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.variant_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" size="sm" variant="outline" disabled={!reportTemplateId}
+                    onClick={() => {
+                      const t = reportTemplates.find((x: any) => String(x.id) === reportTemplateId);
+                      if (t) setReportForm(f => ({ ...f, report: t.template_text }));
+                    }}>
+                    <FileText className="h-3.5 w-3.5 mr-1" /> Load
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Loads the canned normal-findings text into the Report field below — edit per-patient before submitting.</p>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Report *</Label>
               <Textarea value={reportForm.report}

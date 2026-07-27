@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search, Download } from "lucide-react";
+import { Search, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,6 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useNavigate } from "react-router-dom";
@@ -18,11 +25,47 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 
+const DEPARTMENTS = ["Lab", "Pharmacy", "Radiology", "General"];
+
 const FinanceReports = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [searchAR, setSearchAR] = useState("");
   const [searchInventory, setSearchInventory] = useState("");
+  const [tab, setTab] = useState("ar");
+
+  // Department Summary filters
+  const [deptDateFrom, setDeptDateFrom] = useState("");
+  const [deptDateTo, setDeptDateTo] = useState("");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
+
+  const { data: deptSummaryData, isLoading: deptLoading, error: deptError } = useQuery({
+    queryKey: ["finance-department-summary", deptDateFrom, deptDateTo, deptFilter],
+    queryFn: () => api.finance.departmentSummary({
+      date_from: deptDateFrom || undefined,
+      date_to: deptDateTo || undefined,
+      department: deptFilter !== "all" ? deptFilter : undefined,
+    }),
+    enabled: tab === "department",
+  });
+  const departments: any[] = Array.isArray(deptSummaryData?.departments) ? deptSummaryData.departments : [];
+
+  // HMO Monthly Segregation
+  const [segMonth, setSegMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const { data: segData, isLoading: segLoading, error: segError } = useQuery({
+    queryKey: ["finance-hmo-segregation", segMonth],
+    queryFn: () => api.finance.hmoMonthlySegregation(segMonth),
+    enabled: tab === "hmo-segregation",
+  });
+  const hmoRows: any[] = Array.isArray(segData?.hmos) ? segData.hmos : [];
+
+  const [encounterLookupId, setEncounterLookupId] = useState("");
+  const [encounterDetailOpen, setEncounterDetailOpen] = useState(false);
+  const { data: encounterDetailData, isFetching: encounterDetailLoading } = useQuery({
+    queryKey: ["finance-hmo-encounter-detail", encounterLookupId],
+    queryFn: () => api.finance.hmoEncounterDetail(encounterLookupId),
+    enabled: encounterDetailOpen && !!encounterLookupId,
+  });
   const { data: arAgingRaw, isLoading: arLoading, error: arError } = useQuery({
     queryKey: ["reports-ar-aging"],
     queryFn: () => api.finance.arAging(),
@@ -177,10 +220,12 @@ const FinanceReports = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="ar" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="ar">AR Aging</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="department">Department Summary</TabsTrigger>
+          <TabsTrigger value="hmo-segregation">HMO Segregation</TabsTrigger>
         </TabsList>
 
         {/* AR Aging Tab */}
@@ -478,7 +523,175 @@ const FinanceReports = () => {
             </p>
           </div>
         </TabsContent>
+
+        {/* Department Summary Tab */}
+        <TabsContent value="department" className="space-y-4">
+          <div className="pw-surface-interactive p-6 space-y-4">
+            {deptError && <p className="text-sm text-destructive">Data error: {(deptError as Error).message || "Failed to load department summary."}</p>}
+            <div className="flex gap-2 flex-col sm:flex-row sm:items-end">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">From</label>
+                <Input type="date" value={deptDateFrom} onChange={e => setDeptDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">To</label>
+                <Input type="date" value={deptDateTo} onChange={e => setDeptDateTo(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Department</label>
+                <Select value={deptFilter} onValueChange={setDeptFilter}>
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All departments</SelectItem>
+                    {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {deptLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <div className="space-y-4">
+                {departments.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">No billed line items in this range</p>
+                ) : departments.map((dept: any) => (
+                  <div key={dept.department} className="rounded-xl border border-border/50 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-foreground">{dept.department}</h3>
+                      <span className="font-mono font-semibold">₦{Number(dept.total_gross).toLocaleString()}</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Payer Type</TableHead>
+                          <TableHead className="text-right">Gross</TableHead>
+                          <TableHead className="text-right">Covered</TableHead>
+                          <TableHead className="text-right">Patient Due</TableHead>
+                          <TableHead className="text-right">Lines</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(dept.by_payer ?? []).map((p: any) => (
+                          <TableRow key={p.payer_type}>
+                            <TableCell className="capitalize">
+                              <Badge variant="outline">{p.payer_type}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">₦{Number(p.gross).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">₦{Number(p.covered).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono">₦{Number(p.patient_due).toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{p.line_count}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ))}
+                {departments.length > 0 && (
+                  <p className="text-sm font-semibold text-right">
+                    Grand total: ₦{Number(deptSummaryData?.grand_total_gross ?? 0).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* HMO Monthly Segregation Tab */}
+        <TabsContent value="hmo-segregation" className="space-y-4">
+          <div className="pw-surface-interactive p-6 space-y-4">
+            {segError && <p className="text-sm text-destructive">Data error: {(segError as Error).message || "Failed to load HMO segregation."}</p>}
+            <div className="flex gap-2 flex-col sm:flex-row sm:items-end sm:justify-between">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Month</label>
+                <Input type="month" value={segMonth} onChange={e => setSegMonth(e.target.value)} className="w-40" />
+              </div>
+              <div className="flex gap-2 items-end">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Encounter ID</label>
+                  <Input value={encounterLookupId} onChange={e => setEncounterLookupId(e.target.value)}
+                    placeholder="e.g. 854415" className="w-36" />
+                </div>
+                <Button variant="outline" disabled={!encounterLookupId}
+                  onClick={() => setEncounterDetailOpen(true)}>
+                  View Encounter Detail
+                </Button>
+              </div>
+            </div>
+
+            {segLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>HMO Provider</TableHead>
+                    <TableHead className="text-right">Patients</TableHead>
+                    <TableHead className="text-right">Total Claimed</TableHead>
+                    <TableHead className="text-right">Total Approved</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {hmoRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        No HMO claims for this month
+                      </TableCell>
+                    </TableRow>
+                  ) : hmoRows.map((h: any) => (
+                    <TableRow key={h.hmo_provider}>
+                      <TableCell className="font-medium">{h.hmo_provider}</TableCell>
+                      <TableCell className="text-right">{h.patient_count}</TableCell>
+                      <TableCell className="text-right font-mono">₦{Number(h.total_claimed).toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono">₦{Number(h.total_approved).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
+
+      {/* Encounter Billing Detail Dialog — the per-encounter drug-level popup */}
+      <Dialog open={encounterDetailOpen} onOpenChange={setEncounterDetailOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Encounter #{encounterLookupId} — Billing Detail</DialogTitle>
+          </DialogHeader>
+          {encounterDetailLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : encounterDetailData ? (
+            <div className="space-y-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Dept</TableHead>
+                    <TableHead className="text-right">Gross</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(encounterDetailData.items ?? []).map((item: any) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell><Badge variant="outline">{item.department}</Badge></TableCell>
+                      <TableCell className="text-right font-mono">₦{Number(item.gross_amount).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="text-sm text-right space-y-1">
+                <p>Total gross: <span className="font-mono font-semibold">₦{Number(encounterDetailData.total_gross ?? 0).toLocaleString()}</span></p>
+                <p>Covered: <span className="font-mono">₦{Number(encounterDetailData.total_covered ?? 0).toLocaleString()}</span></p>
+                <p>Patient due: <span className="font-mono">₦{Number(encounterDetailData.total_patient_due ?? 0).toLocaleString()}</span></p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">No billed items found for this encounter.</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

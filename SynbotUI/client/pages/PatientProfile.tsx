@@ -25,7 +25,7 @@ import {
   Receipt, Activity, Plus, CalendarPlus, MessageSquare, UserCheck,
   ChevronRight, FileText, Loader2, ListChecks, ShieldAlert, CheckCircle2,
   XCircle, PenLine, Thermometer, TrendingUp, ClipboardCheck, Upload, Send,
-  Scissors, ScanLine, Eye, NotebookPen, Megaphone, CalendarClock, Bell, Syringe,
+  Scissors, ScanLine, Eye, NotebookPen, Megaphone, CalendarClock, Bell, Syringe, Baby,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api-client";
@@ -174,6 +174,7 @@ export default function PatientProfile() {
   const [encounterOpen, setEncounterOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [rxOpen, setRxOpen] = useState(false);
+  const [duplicateRxAlert, setDuplicateRxAlert] = useState<{ existing: any[]; message: string } | null>(null);
   const [mainTab, setMainTab] = useState<"timeline" | "problems" | "meds" | "orders" | "notes" | "labs" | "surgery" | "consent" | "specialist">("timeline");
   const [vitalsDialogOpen, setVitalsDialogOpen] = useState(false);
   // Generic "view full record" popup shared by every Cover Sheet card —
@@ -281,14 +282,20 @@ export default function PatientProfile() {
 
   // Prescription mutation
   const rxMut = useMutation({
-    mutationFn: () => api.hospital.pharmacy.createRx({
+    mutationFn: (overrideDuplicate = false) => api.hospital.pharmacy.createRx({
       patient_id: Number(patient?.id),
       encounter_id: Number(data?.active_encounter?.id),
       ...rxForm,
+      ...(overrideDuplicate ? { override_duplicate: true } : {}),
     }),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
+      if (res?.ok === false && res.duplicate_alert) {
+        setDuplicateRxAlert({ existing: res.existing_prescriptions ?? [], message: res.message ?? "" });
+        return;
+      }
       toast({ title: "Prescription written" });
       setRxOpen(false);
+      setDuplicateRxAlert(null);
       setRxForm({ drug_name: "", frequency: "twice daily", dosage: "", duration: "5 days", route: "oral" });
       void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
     },
@@ -595,6 +602,15 @@ export default function PatientProfile() {
     staleTime: 60_000,
   });
   const structuredAllergies: any[] = Array.isArray(allergiesData?.allergies) ? allergiesData.allergies : [];
+
+  // ── Babies (mother-baby linkage) ───────────────────────────────────────────
+  const { data: babiesData } = useQuery({
+    queryKey: ["patient-babies", patientNumId],
+    queryFn: () => api.hospital.mch.listBabies(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 60_000,
+  });
+  const babies: any[] = Array.isArray(babiesData?.babies) ? babiesData.babies : [];
 
   const addAllergyMut = useMutation({
     mutationFn: () => api.hospital.pharmacy.addAllergy(patientNumId!, allergyForm),
@@ -995,6 +1011,29 @@ export default function PatientProfile() {
                     ))}
                 </div>
               </CoverSheetWidget>
+
+              {/* Babies (mother-baby linkage) — only shown for patients with recorded deliveries */}
+              {babies.length > 0 && (
+                <CoverSheetWidget
+                  title="Babies" icon={Baby}
+                  count={babies.length}
+                  isEmpty={false}
+                >
+                  <div className="space-y-1.5">
+                    {babies.map((b: any) => (
+                      <div key={b.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="min-w-0 truncate">{b.first_name} {b.last_name} · {b.gender ?? "—"} · {b.date_of_birth}</span>
+                        <button
+                          className="shrink-0 text-primary hover:underline"
+                          onClick={() => navigate(`/hospital/patients/${b.mrn}`)}
+                        >
+                          View
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </CoverSheetWidget>
+              )}
 
               {/* Postings */}
               <CoverSheetWidget
@@ -2554,6 +2593,40 @@ export default function PatientProfile() {
             >
               {rxMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Write Prescription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Duplicate Prescription Alert Dialog ──────────────────────────── */}
+      <Dialog open={!!duplicateRxAlert} onOpenChange={o => { if (!o) setDuplicateRxAlert(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <ShieldAlert className="h-5 w-5" />
+              Duplicate Prescription
+            </DialogTitle>
+            <DialogDescription>{duplicateRxAlert?.message}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {(duplicateRxAlert?.existing ?? []).map((rx: any, i: number) => (
+              <div key={i} className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm">
+                <p className="font-semibold">{rx.drug_name}</p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  Status: {rx.status} — prescribed {rx.prescribed_at ? new Date(rx.prescribed_at).toLocaleDateString() : "—"}
+                </p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateRxAlert(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={rxMut.isPending}
+              onClick={() => rxMut.mutate(true)}
+            >
+              {rxMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertTriangle className="mr-2 h-4 w-4" />}
+              Prescribe Anyway
             </Button>
           </DialogFooter>
         </DialogContent>

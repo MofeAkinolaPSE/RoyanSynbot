@@ -76,6 +76,7 @@ from src.schemas.canonical import (
 )
 from src.services import patient_service, encounter_service, clinical_service
 from src.services import view_model_factory
+from src.services.clinical_shared import get_patient_allergies
 from src.constants import (
     TABLE_ENCOUNTERS,
     TABLE_LAB_ORDERS,
@@ -182,11 +183,11 @@ async def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
     finally:
         _put_conn(conn)
 
-    # Allergies from royan_allergies if exists
+    # Allergies — active only (previously had no status filter, so
+    # resolved/inactive allergies leaked into the CPRS snapshot)
     allergies: List[str] = []
     try:
-        al = db.table("royan_allergies").select("allergen").eq("patient_id", patient_id).execute()
-        allergies = [r["allergen"] for r in (al.data or []) if r.get("allergen")]
+        allergies = [r["allergen"] for r in get_patient_allergies(patient_id) if r.get("allergen")]
     except Exception:
         allergies = pat.get("allergies") or []
 

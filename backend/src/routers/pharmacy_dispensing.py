@@ -14,20 +14,25 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
+import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
 from src.services.event_service import emit_clinical_event
+from src.services.clinical_shared import get_patient_allergies
 from src.constants import (
     PRESCRIPTION_ROUTES_ALLOWED, PRESCRIPTION_STATUS_ALLOWED,
     TABLE_PRESCRIPTIONS, TABLE_DISPENSING,
     TABLE_DRUG_INVENTORY, TABLE_DRUG_INTERACTIONS, TABLE_ALLERGIES,
     TABLE_REPLENISHMENT_REQUESTS, TABLE_MAR_ENTRIES,
     TABLE_MEDICATION_ADMIN, MEDICATION_ADMIN_STATUS,
+    TABLE_SALES_RETURNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +61,7 @@ class PrescriptionCreate(BaseModel):
     unit: str = "tablet"
     special_instructions: Optional[str] = None
     notes: Optional[str] = None
+    override_duplicate: bool = False   # prescriber must explicitly acknowledge an existing active rx for this drug
 
     model_config = {"extra": "ignore"}
 
@@ -105,7 +111,25 @@ async def create_prescription(payload: PrescriptionCreate, user=Depends(verify_j
     if payload.route not in ROUTES:
         raise HTTPException(status_code=422, detail=f"route must be one of {ROUTES}")
 
+    if not payload.override_duplicate:
+        existing = (
+            db.table(TABLE_PRESCRIPTIONS)
+            .select("id,drug_name,status,prescribed_at")
+            .eq("patient_id", payload.patient_id)
+            .ilike("drug_name", payload.drug_name.strip())
+            .not_.in_("status", ["cancelled", "returned"])
+            .execute()
+        )
+        if existing.data:
+            return {
+                "ok": False,
+                "duplicate_alert": True,
+                "existing_prescriptions": existing.data,
+                "message": f"Patient already has an active prescription for '{payload.drug_name}'. Set override_duplicate=true to proceed anyway.",
+            }
+
     data = payload.model_dump(exclude_none=True)
+    data.pop("override_duplicate", None)
     if data.get("dose") and not data.get("dosage"):
         data["dosage"] = data.pop("dose")
     data.pop("dose", None)
@@ -182,9 +206,9 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     patient_id = rx["patient_id"]
 
     # ── Allergy check ────────────────────────────────────────────────────────
-    allergies = db.table(TABLE_ALLERGIES).select("allergen,severity,reaction").eq("patient_id", patient_id).eq("active", True).execute()
+    allergies = get_patient_allergies(patient_id)
     allergy_hits = [
-        a for a in (allergies.data or [])
+        a for a in allergies
         if a.get("allergen", "").lower() in drug_name_lower or drug_name_lower in a.get("allergen", "").lower()
     ]
     if allergy_hits and not payload.override_allergy:
@@ -502,6 +526,20 @@ class StockAdjustRequest(BaseModel):
     notes: Optional[str] = None
 
 
+def _tag_stock_status(item: dict) -> dict:
+    """Derive an is_out_of_stock flag at read time (zero quantity or already
+    expired) rather than storing it — the underlying numbers are the source
+    of truth, this is just a UI signal to prompt a manual correction via
+    POST /inventory/{id}/adjust."""
+    qty = float(item.get("stock_quantity") or 0)
+    expiry = item.get("expiry_date")
+    is_expired = False
+    if expiry:
+        expiry_date = expiry if isinstance(expiry, dt.date) else dt.date.fromisoformat(str(expiry)[:10])
+        is_expired = expiry_date < dt.date.today()
+    return {**item, "is_out_of_stock": qty <= 0 or is_expired, "is_expired": is_expired}
+
+
 @router.get("/inventory")
 async def list_inventory(
     drug_name: Optional[str] = Query(None),
@@ -514,9 +552,44 @@ async def list_inventory(
     if drug_name:
         query = query.ilike("drug_name", f"%{drug_name.strip()}%")
     result = query.execute()
-    items = result.data or []
+    items = [_tag_stock_status(i) for i in (result.data or [])]
     if low_stock:
         items = [i for i in items if float(i.get("stock_quantity") or 0) <= float(i.get("reorder_level") or 0)]
+    return {"inventory": items, "count": len(items)}
+
+
+@router.get("/inventory/expiring")
+async def list_expiring_inventory(
+    within_days: int = Query(30, ge=1, le=365),
+    user=Depends(verify_jwt),
+):
+    """Drugs expiring within N days (not yet expired)."""
+    today = dt.date.today()
+    cutoff = (today + dt.timedelta(days=within_days)).isoformat()
+    result = (
+        db.table(TABLE_DRUG_INVENTORY)
+        .select("*")
+        .gte("expiry_date", today.isoformat())
+        .lte("expiry_date", cutoff)
+        .order("expiry_date")
+        .execute()
+    )
+    items = [_tag_stock_status(i) for i in (result.data or [])]
+    return {"inventory": items, "count": len(items), "within_days": within_days}
+
+
+@router.get("/inventory/expired")
+async def list_expired_inventory(user=Depends(verify_jwt)):
+    """Drugs whose expiry_date has already passed."""
+    today = dt.date.today().isoformat()
+    result = (
+        db.table(TABLE_DRUG_INVENTORY)
+        .select("*")
+        .lt("expiry_date", today)
+        .order("expiry_date", desc=True)
+        .execute()
+    )
+    items = [_tag_stock_status(i) for i in (result.data or [])]
     return {"inventory": items, "count": len(items)}
 
 
@@ -563,6 +636,134 @@ async def adjust_stock(item_id: int, payload: StockAdjustRequest, user=Depends(v
         subject_id=str(item_id),
     )
     return {"ok": True, "item_id": item_id, "previous_qty": current, "new_qty": new_qty}
+
+
+# ─── Sales on Return (SOR) ─────────────────────────────────────────────────────
+
+class SalesReturnCreate(BaseModel):
+    dispensing_id: int
+    quantity_returned: float = Field(..., gt=0)
+    reason: Optional[str] = None
+    restock: bool = False
+
+    model_config = {"extra": "ignore"}
+
+
+@router.post("/returns", status_code=201)
+async def create_sales_return(payload: SalesReturnCreate, user=Depends(verify_jwt)):
+    """Record a drug return. If restock is set, the quantity is added back
+    to the matching royan_drug_inventory row (matched by drug_name)."""
+    dispensing = db.table(TABLE_DISPENSING).select("id,patient_id,drug_name,quantity_dispensed").eq("id", payload.dispensing_id).execute()
+    if not dispensing.data:
+        raise HTTPException(status_code=404, detail=f"Dispensing record {payload.dispensing_id} not found")
+    disp = dispensing.data[0]
+    if payload.quantity_returned > float(disp.get("quantity_dispensed") or 0):
+        raise HTTPException(status_code=422, detail="quantity_returned cannot exceed the quantity originally dispensed")
+
+    data = {
+        "dispensing_id": payload.dispensing_id,
+        "patient_id": disp["patient_id"],
+        "quantity_returned": payload.quantity_returned,
+        "reason": payload.reason,
+        "restocked": payload.restock,
+        "processed_by": user.get("sub") or "system",
+    }
+    try:
+        result = db.table(TABLE_SALES_RETURNS).insert(data).execute()
+    except Exception as exc:
+        logger.error("Sales return insert failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to record sales return")
+
+    if payload.restock:
+        inv = db.table(TABLE_DRUG_INVENTORY).select("id,stock_quantity").ilike("drug_name", disp["drug_name"]).limit(1).execute()
+        if inv.data:
+            item = inv.data[0]
+            new_qty = float(item.get("stock_quantity") or 0) + payload.quantity_returned
+            db.table(TABLE_DRUG_INVENTORY).update({"stock_quantity": new_qty}).eq("id", item["id"]).execute()
+
+    ret = result.data[0] if result.data else data
+    audit_event(
+        "sales_return_recorded",
+        {"dispensing_id": payload.dispensing_id, "quantity": payload.quantity_returned, "restocked": payload.restock},
+        actor_id=user.get("sub"),
+        subject_type="sales_return",
+        subject_id=str(ret.get("id") or ""),
+    )
+    return {"ok": True, "return": ret}
+
+
+@router.get("/returns")
+async def list_sales_returns(
+    patient_id: Optional[int] = Query(None),
+    dispensing_id: Optional[int] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    user=Depends(verify_jwt),
+):
+    query = db.table(TABLE_SALES_RETURNS).select("*").order("processed_at", desc=True).limit(limit)
+    if patient_id:
+        query = query.eq("patient_id", patient_id)
+    if dispensing_id:
+        query = query.eq("dispensing_id", dispensing_id)
+    result = query.execute()
+    return {"returns": result.data or [], "count": len(result.data or [])}
+
+
+# ─── Drug-Collection Signature Capture ─────────────────────────────────────────
+# Confirms a patient actually collected their prescribed drugs. Assumes the
+# signature-pad tablet's own companion app handles the hardware/SDK and just
+# POSTs the resulting image here — same file-storage pattern as lab.py's
+# report-upload endpoint.
+
+SIGNATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "signatures")
+ALLOWED_SIGNATURE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
+@router.post("/dispensing/{dispensing_id}/signature")
+async def upload_dispensing_signature(
+    dispensing_id: int,
+    file: UploadFile = File(...),
+    user=Depends(verify_jwt),
+):
+    """Attach a captured signature image to a dispensing record."""
+    dispensing = db.table(TABLE_DISPENSING).select("id").eq("id", dispensing_id).execute()
+    if not dispensing.data:
+        raise HTTPException(status_code=404, detail=f"Dispensing record {dispensing_id} not found")
+
+    if file.content_type not in ALLOWED_SIGNATURE_TYPES:
+        raise HTTPException(status_code=422, detail=f"File type '{file.content_type}' not allowed. Use PNG/JPEG/WEBP.")
+
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:  # 5 MB limit — a signature image is small
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
+
+    os.makedirs(SIGNATURES_DIR, exist_ok=True)
+    safe_name = f"{dispensing_id}_{uuid.uuid4().hex[:8]}_{file.filename or 'signature'}"
+    safe_name = safe_name.replace("/", "_").replace("\\", "_")
+    storage_path = os.path.join(SIGNATURES_DIR, safe_name)
+    with open(storage_path, "wb") as fh:
+        fh.write(contents)
+
+    signature_url = f"/pharmacy/signatures/{safe_name}"
+    db.table(TABLE_DISPENSING).update({"signature_url": signature_url}).eq("id", dispensing_id).execute()
+
+    audit_event(
+        "dispensing_signature_captured",
+        {"dispensing_id": dispensing_id},
+        actor_id=user.get("sub"),
+        subject_type="dispensing",
+        subject_id=str(dispensing_id),
+    )
+    return {"ok": True, "signature_url": signature_url}
+
+
+@router.get("/signatures/{filename}")
+async def serve_signature(filename: str, user=Depends(verify_jwt)):
+    """Serve a stored signature image to authenticated users."""
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(SIGNATURES_DIR, safe_filename)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Signature file not found")
+    return FileResponse(file_path)
 
 
 # ─── Ward Replenishment Requests ──────────────────────────────────────────────

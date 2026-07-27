@@ -615,6 +615,26 @@ export const api = {
       const q = period ? `?period=${encodeURIComponent(period)}` : "";
       return fetchRaw<any>(`/finance/budget/variance${q}`);
     },
+
+    /** Per-department revenue, broken down by payer type (HMO/Staff/Private). */
+    departmentSummary: (params?: { date_from?: string; date_to?: string; department?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      if (params?.department) q.set("department", params.department);
+      const s = q.toString();
+      return fetchRaw<any>(`/finance/department-summary${s ? "?" + s : ""}`);
+    },
+
+    /** Patients segregated per HMO for a given month, with billing totals. */
+    hmoMonthlySegregation: (month?: string) => {
+      const q = month ? `?month=${encodeURIComponent(month)}` : "";
+      return fetchRaw<any>(`/finance/hmo/monthly-segregation${q}`);
+    },
+
+    /** Full itemized billing detail for one encounter (HMO drill-down popup). */
+    hmoEncounterDetail: (encounterId: number | string) =>
+      fetchRaw<any>(`/finance/hmo/encounter-detail/${encounterId}`),
   },
   intelligence: {
     executiveSummary: () => fetchRaw<ExecutiveSummaryResponse>("/intelligence/executive_summary"),
@@ -1647,6 +1667,7 @@ export const api = {
         if (params?.encounter_id) qs.set('encounter_id', params.encounter_id);
         return fetchRaw<any>('/pharmacy/prescriptions' + (qs.toString() ? '?' + qs : ''));
       },
+      getRx: (id: string | number) => fetchRaw<any>('/pharmacy/prescriptions/' + id),
       dispense: (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/dispense', 'POST',  p),
       cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/cancel',   'POST', p),
       // Allergies
@@ -1670,6 +1691,32 @@ export const api = {
         sendJson<any>('/pharmacy/inventory/' + id, 'PATCH', p),
       adjustStock: (id: number | string, p: Record<string, any>) =>
         sendJson<any>('/pharmacy/inventory/' + id + '/adjust', 'POST', p),
+      listExpiring: (withinDays?: number) =>
+        fetchRaw<any>('/pharmacy/inventory/expiring' + (withinDays ? '?within_days=' + withinDays : '')),
+      listExpired: () => fetchRaw<any>('/pharmacy/inventory/expired'),
+      // Sales on Return (SOR)
+      createReturn: (p: Record<string, any>) => sendJson<any>('/pharmacy/returns', 'POST', p),
+      listReturns: (params?: { patient_id?: number | string; dispensing_id?: number | string }) => {
+        const qs = new URLSearchParams();
+        if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
+        if (params?.dispensing_id) qs.set('dispensing_id', String(params.dispensing_id));
+        const q = qs.toString();
+        return fetchRaw<any>('/pharmacy/returns' + (q ? '?' + q : ''));
+      },
+      // Drug-collection signature capture
+      uploadSignature: async (dispensingId: string | number, file: File): Promise<{ signature_url: string }> => {
+        const token = await getBearerToken();
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(apiUrl('/pharmacy/dispensing/' + dispensingId + '/signature'), {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) throw new ApiError('Upload failed', res.status, 'server');
+        return res.json();
+      },
+      signatureUrl: (filename: string) => apiUrl('/pharmacy/signatures/' + encodeURIComponent(filename)),
       // Replenishment
       listReplenishmentRequests: (params?: { ward?: string; status?: string }) => {
         const qs = new URLSearchParams();
@@ -1751,6 +1798,16 @@ export const api = {
         return res.json();
       },
       reportUrl: (filename: string) => apiUrl('/lab/reports/' + encodeURIComponent(filename)),
+      listTemplates: (params?: { test_name?: string; active_only?: boolean }) => {
+        const qs = new URLSearchParams();
+        if (params?.test_name) qs.set('test_name', params.test_name);
+        if (params?.active_only === false) qs.set('active_only', 'false');
+        const q = qs.toString();
+        return fetchRaw<any>('/lab/templates' + (q ? '?' + q : ''));
+      },
+      createTemplate: (p: Record<string, any>) => sendJson<any>('/lab/templates', 'POST', p),
+      getTemplateForTest: (testName: string) =>
+        fetchRaw<any>('/lab/templates/for-test?test_name=' + encodeURIComponent(testName)),
     },
     // ── Phase 3 — Radiology ───────────────────────────────────────────────
     radiology: {
@@ -1776,6 +1833,14 @@ export const api = {
         return fetchRaw<any>('/radiology/patients/' + patientId + '/history' + qs);
       },
       stats: () => fetchRaw<any>('/radiology/stats'),
+      listTemplates: (params?: { modality?: string; search?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.modality) qs.set('modality', params.modality);
+        if (params?.search) qs.set('search', params.search);
+        const q = qs.toString();
+        return fetchRaw<any>('/radiology/templates' + (q ? '?' + q : ''));
+      },
+      getTemplate: (id: number | string) => fetchRaw<any>('/radiology/templates/' + id),
     },
     // ── Phase 4 — Surgical Theatre ────────────────────────────────────────
     theatre: {
@@ -1844,6 +1909,14 @@ export const api = {
         sendJson<any>('/mch/patients/' + patientId + '/immunisation', 'POST', p),
       getImmunisationHistory: (patientId: number | string) =>
         fetchRaw<any>('/mch/patients/' + patientId + '/immunisation'),
+      // Babies (mother-baby linkage)
+      listBabies: (motherPatientId: number | string) =>
+        fetchRaw<any>('/mch/patients/' + motherPatientId + '/babies'),
+      // Vaccine schedule reference data
+      listVaccineSchedule: (params?: { patient_id?: number | string }) => {
+        const qs = params?.patient_id ? '?patient_id=' + params.patient_id : '';
+        return fetchRaw<any>('/mch/vaccine-schedule' + qs);
+      },
       // Stats
       stats: () => fetchRaw<any>('/mch/stats'),
     },

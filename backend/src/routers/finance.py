@@ -55,10 +55,17 @@ _FINANCE_ROLES = {"admin", "finance", "management"}
 
 
 def _require_finance(request: Request) -> dict:
-    """Decode JWT and enforce finance-tier role."""
+    """Decode JWT and enforce finance-tier role.
+
+    Was checking payload.get("role") (singular) — every token issuance path
+    in this codebase (app.py's /token, src/auth_utils.py's
+    create_access_token) only ever sets a "roles" list, never a singular
+    "role" key, so this always evaluated to "" and 403'd every caller,
+    including admins. Every finance.py endpoint was unreachable.
+    """
     payload = verify_jwt(request)
-    role = (payload.get("role") or "").lower()
-    if role not in _FINANCE_ROLES:
+    roles = {str(r).strip().lower() for r in (payload.get("roles") or payload.get("permissions") or [])}
+    if "admin" not in roles and not (roles & _FINANCE_ROLES):
         raise HTTPException(status_code=403, detail="Finance or management role required")
     return payload
 
@@ -1137,8 +1144,8 @@ async def approve_vendor_payment(
     Requires admin, finance, or management role.
     """
     user = _require_finance(request)
-    role = (user.get("role") or user.get("user_role") or "").lower()
-    if role not in _APPROVE_ROLES:
+    roles = {str(r).strip().lower() for r in (user.get("roles") or user.get("permissions") or [])}
+    if "admin" not in roles and not (roles & _APPROVE_ROLES):
         raise HTTPException(status_code=403, detail="Insufficient role to approve payments")
     return await _transition_payment(payment_id, "approved", user, body.note)
 
@@ -1153,8 +1160,8 @@ async def reject_vendor_payment(
     Reject a pending or approved vendor payment request.
     """
     user = _require_finance(request)
-    role = (user.get("role") or user.get("user_role") or "").lower()
-    if role not in _APPROVE_ROLES:
+    roles = {str(r).strip().lower() for r in (user.get("roles") or user.get("permissions") or [])}
+    if "admin" not in roles and not (roles & _APPROVE_ROLES):
         raise HTTPException(status_code=403, detail="Insufficient role to reject payments")
     return await _transition_payment(payment_id, "rejected", user, body.note)
 
@@ -1475,8 +1482,8 @@ async def upsert_budget_target(request: Request, body: BudgetTargetIn):
 async def delete_budget_target(request: Request, target_id: str):
     """Delete a budget target by ID."""
     user = _require_finance(request)
-    role = (user.get("role") or user.get("user_role") or "").lower()
-    if role not in {"admin", "finance"}:
+    roles = {str(r).strip().lower() for r in (user.get("roles") or user.get("permissions") or [])}
+    if not (roles & {"admin", "finance"}):
         raise HTTPException(status_code=403, detail="Only admin/finance roles can delete budget targets")
     try:
         db.table("fin_budget_targets").delete().eq("id", target_id).execute()
@@ -1593,3 +1600,174 @@ def _next_month_str(period: str) -> str:
     if month == 12:
         return f"{year + 1}-01-01"
     return f"{year}-{month + 1:02d}-01"
+
+
+# ===========================================================================
+# TIER 3 — DEPARTMENT / PAYER-TYPE SEGREGATION (promptplan.md items 15, 21, 22)
+# ===========================================================================
+
+@router.get("/department-summary")
+async def department_summary(
+    request: Request,
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    department: Optional[str] = Query(None, description="Lab | Pharmacy | Radiology | General — omit for all"),
+):
+    """
+    Per-department revenue, toggled by department, broken down by payer type
+    (HMO / Staff / Private). Grain is royan_bill_items so drug/service lines
+    are attributed to the department that actually rendered them, not the
+    encounter's overall category mix.
+    """
+    _require_finance(request)
+    try:
+        query = db.table("royan_bill_items").select(
+            "department,payer_type,gross_amount,covered_amount,patient_amount,created_at"
+        )
+        if date_from:
+            query = query.gte("created_at", date_from)
+        if date_to:
+            query = query.lt("created_at", date_to + "T23:59:59")
+        if department:
+            query = query.eq("department", department)
+        rows = query.limit(50000).execute().data or []
+
+        by_dept: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            dept = r.get("department") or "General"
+            payer = r.get("payer_type") or "private"
+            gross = float(r.get("gross_amount") or 0)
+            covered = float(r.get("covered_amount") or 0)
+            patient_due = float(r.get("patient_amount") or 0)
+
+            d = by_dept.setdefault(dept, {"department": dept, "total_gross": 0.0, "by_payer": {}})
+            d["total_gross"] += gross
+            p = d["by_payer"].setdefault(payer, {"payer_type": payer, "gross": 0.0, "covered": 0.0, "patient_due": 0.0, "line_count": 0})
+            p["gross"] += gross
+            p["covered"] += covered
+            p["patient_due"] += patient_due
+            p["line_count"] += 1
+
+        departments_out = []
+        for dept, d in sorted(by_dept.items()):
+            d["total_gross"] = round(d["total_gross"], 2)
+            d["by_payer"] = [
+                {**p, "gross": round(p["gross"], 2), "covered": round(p["covered"], 2), "patient_due": round(p["patient_due"], 2)}
+                for p in sorted(d["by_payer"].values(), key=lambda x: x["payer_type"])
+            ]
+            departments_out.append(d)
+
+        return {
+            "departments": departments_out,
+            "grand_total_gross": round(sum(d["total_gross"] for d in departments_out), 2),
+            "line_items_processed": len(rows),
+        }
+    except Exception as e:
+        log.error("/finance/department-summary error: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to compute department summary")
+
+
+@router.get("/hmo/monthly-segregation")
+async def hmo_monthly_segregation(
+    request: Request,
+    month: Optional[str] = Query(None, description="YYYY-MM — defaults to current month"),
+):
+    """
+    Patients segregated per HMO for a given month, with per-HMO billing
+    totals — the data behind an "Anchor(HMO) — patients using Anchor this
+    month" style view (promptplan.md item 21).
+    """
+    _require_finance(request)
+    try:
+        if not month:
+            month = datetime.date.today().strftime("%Y-%m")
+        month_start = f"{month}-01"
+        month_end = _next_month_str(month)
+
+        claims = (
+            db.table("royan_insurance_claims")
+            .select("id,billing_id,patient_id,hmo_provider,claim_amount,approved_amount,status,submitted_at")
+            .gte("submitted_at", month_start)
+            .lt("submitted_at", month_end)
+            .limit(20000)
+            .execute()
+            .data
+            or []
+        )
+
+        patient_ids = {c["patient_id"] for c in claims if c.get("patient_id")}
+        patients_by_id: Dict[Any, dict] = {}
+        if patient_ids:
+            prows = db.table("royan_patients").select("id,first_name,last_name,mrn").in_("id", list(patient_ids)).execute().data or []
+            patients_by_id = {p["id"]: p for p in prows}
+
+        by_hmo: Dict[str, Dict[str, Any]] = {}
+        for c in claims:
+            hmo = c.get("hmo_provider") or "Unknown"
+            g = by_hmo.setdefault(hmo, {"hmo_provider": hmo, "patients": {}, "total_claimed": 0.0, "total_approved": 0.0})
+            g["total_claimed"] += float(c.get("claim_amount") or 0)
+            g["total_approved"] += float(c.get("approved_amount") or 0)
+            pid = c.get("patient_id")
+            if pid and pid not in g["patients"]:
+                p = patients_by_id.get(pid, {})
+                g["patients"][pid] = {
+                    "patient_id": pid,
+                    "patient_name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+                    "mrn": p.get("mrn"),
+                }
+
+        out = []
+        for hmo, g in sorted(by_hmo.items()):
+            out.append({
+                "hmo_provider": hmo,
+                "patient_count": len(g["patients"]),
+                "patients": list(g["patients"].values()),
+                "total_claimed": round(g["total_claimed"], 2),
+                "total_approved": round(g["total_approved"], 2),
+            })
+
+        return {"month": month, "hmos": out, "claims_processed": len(claims)}
+    except Exception as e:
+        log.error("/finance/hmo/monthly-segregation error: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to compute monthly HMO segregation")
+
+
+@router.get("/hmo/encounter-detail/{encounter_id}")
+async def hmo_encounter_detail(encounter_id: int, request: Request):
+    """
+    Full billing detail for one encounter, itemized down to individual
+    drugs/services — the data behind the "pop-up per patient encounter
+    showing the details... down to the number of drugs" ask (item 21).
+    """
+    _require_finance(request)
+    try:
+        items = (
+            db.table("royan_bill_items")
+            .select("*")
+            .eq("encounter_id", encounter_id)
+            .order("created_at")
+            .execute()
+            .data
+            or []
+        )
+        if not items:
+            raise HTTPException(status_code=404, detail=f"No billed items for encounter {encounter_id}")
+
+        by_department: Dict[str, List[dict]] = {}
+        for item in items:
+            by_department.setdefault(item.get("department") or "General", []).append(item)
+
+        return {
+            "encounter_id": encounter_id,
+            "items": items,
+            "item_count": len(items),
+            "by_department": {dept: rows for dept, rows in by_department.items()},
+            "total_gross": round(sum(float(i.get("gross_amount") or 0) for i in items), 2),
+            "total_covered": round(sum(float(i.get("covered_amount") or 0) for i in items), 2),
+            "total_patient_due": round(sum(float(i.get("patient_amount") or 0) for i in items), 2),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("/finance/hmo/encounter-detail error: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to compute encounter billing detail")

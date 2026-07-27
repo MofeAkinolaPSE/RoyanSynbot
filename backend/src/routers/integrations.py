@@ -245,10 +245,18 @@ async def kiosk_checkin(payload: KioskCheckin):
 
     record = result.data[0] if result.data else checkin_record
 
-    # Find active encounters to get queue position
-    enc = db.table(TABLE_ENCOUNTERS).select("id,status").eq("patient_id", patient["id"]) \
-            .not_.eq("status", "discharged").order("created_at", desc=True).limit(1).execute()
-    encounter = enc.data[0] if enc.data else None
+    # Find active encounters to get queue position. Live queue = native
+    # encounters only (external_source IS NULL) — Hope historical data must
+    # never surface as an active encounter (see queue_clinical.py's
+    # list_encounters for the same invariant).
+    try:
+        enc = db.table(TABLE_ENCOUNTERS).select("id,status").eq("patient_id", patient["id"]) \
+                .not_.eq("status", "discharged").is_("external_source", None) \
+                .order("created_at", desc=True).limit(1).execute()
+        encounter = enc.data[0] if enc.data else None
+    except Exception as exc:
+        logger.error("Kiosk check-in: active-encounter lookup failed: %s", exc)
+        encounter = None
 
     return {
         "ok":          True,
@@ -269,18 +277,29 @@ async def kiosk_queue_status():
     Live queue status for kiosk display board.
     No JWT required — public display endpoint.
     """
-    enc = db.table(TABLE_ENCOUNTERS).select(
-        "id,status,triage_level,created_at"
-    ).not_.eq("status", "discharged").order("created_at", asc=True).execute()
-    active = enc.data or []
+    try:
+        # Live queue = native encounters only (external_source IS NULL) — see
+        # queue_clinical.py's list_encounters for the same invariant.
+        enc = db.table(TABLE_ENCOUNTERS).select(
+            "id,status,triage_level,created_at"
+        ).not_.eq("status", "discharged").is_("external_source", None) \
+         .order("created_at").execute()
+        active = enc.data or []
+    except Exception as exc:
+        logger.error("Kiosk queue-status: active-encounter lookup failed: %s", exc)
+        active = []
 
     waiting  = [e for e in active if e.get("status") in ("patient_registered", "triaged")]
     in_consult = [e for e in active if e.get("status") == "consulting"]
 
-    checkins_today = db.table(TABLE_KIOSK_CHECKINS).select(
-        "id,checkin_time"
-    ).eq("checkin_date", _today()).execute()
-    today_count = len(checkins_today.data or [])
+    try:
+        checkins_today = db.table(TABLE_KIOSK_CHECKINS).select(
+            "id,checkin_time"
+        ).eq("checkin_date", _today()).execute()
+        today_count = len(checkins_today.data or [])
+    except Exception as exc:
+        logger.error("Kiosk queue-status: today's checkin count failed: %s", exc)
+        today_count = 0
 
     return {
         "queue": {
