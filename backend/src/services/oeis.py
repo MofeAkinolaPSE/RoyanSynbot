@@ -33,12 +33,28 @@ class OeisResult:
     kg_updates: dict[str, int]
 
 
+LEDGER_MAX_LINES = 5000
+
+
 def _append_local_ledger(event: dict[str, Any]) -> None:
+    # DB-insert failure fallback only — should rarely be written to. Capped
+    # so a sustained DB outage can't grow this file unbounded, since every
+    # reader loads it fully into memory on each pass.
     parent = os.path.dirname(LEDGER_PATH)
     if not os.path.exists(parent):
         os.makedirs(parent, exist_ok=True)
     with open(LEDGER_PATH, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(event, default=str) + "\n")
+
+    try:
+        if os.path.getsize(LEDGER_PATH) > 0:
+            with open(LEDGER_PATH, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+            if len(lines) > LEDGER_MAX_LINES:
+                with open(LEDGER_PATH, "w", encoding="utf-8") as fh:
+                    fh.writelines(lines[-LEDGER_MAX_LINES:])
+    except Exception:
+        pass
 
 
 def _compute_version_hash(event: dict[str, Any]) -> str:

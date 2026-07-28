@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from src.schemas.staff_dashboard import StaffDashboard, ActivityItem, PendingApproval, TaskItem, KPIWidget, Badge, AssignedProjectItem
 from src.middleware import verify_jwt, require_role
 from typing import List
-import os, json, logging
+import asyncio, os, json, logging
 import datetime as dt
 from src.db import db
 
@@ -13,7 +13,31 @@ LEDGER_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "event
 TASKS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "staff_tasks.json")
 
 
-def _read_ledger_items():
+def _read_event_ledger_db(limit: int = 500):
+    """Primary ledger source — mirrors workflow_jobs.py's DB-backed reader.
+    Returns None (not []) on a genuine query failure so callers can tell that
+    apart from a real, empty result and fall back to the flat file only then.
+    """
+    try:
+        resp = (
+            db.table("event_ledger")
+            .select("event_id,department,event_type,payload,approval_status,created_by,created_at")
+            .order("created_at", desc=True)
+            .limit(max(1, min(limit, 5000)))
+            .execute()
+        )
+        rows = list(reversed(resp.data or []))
+        for row in rows:
+            row.setdefault("timestamp", row.get("created_at"))
+            if row.get("event_id") is not None:
+                row["event_id"] = str(row["event_id"])
+        return rows
+    except Exception as exc:
+        logger.warning("event_ledger DB query failed; falling back to local file err=%s", exc)
+        return None
+
+
+def _read_ledger_items_file():
     items = []
     if not os.path.exists(LEDGER_PATH):
         return items
@@ -56,7 +80,9 @@ async def get_staff_dashboard(request: Request, user_id: str):
     if not (sub == user_id or "admin" in roles or "manager" in roles or "management" in roles):
         raise HTTPException(status_code=403, detail="Insufficient role to access dashboard")
     # Build activity feed from ledger (most recent 25)
-    ledger = _read_ledger_items()
+    ledger = _read_event_ledger_db()
+    if ledger is None:
+        ledger = await asyncio.to_thread(_read_ledger_items_file)
     activities = []
     pending = []
     for ev in reversed(ledger[-500:]):

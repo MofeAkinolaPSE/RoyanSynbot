@@ -230,7 +230,9 @@ ENCOUNTER_STATUS_TRANSITIONS = {
     "triaged":            {"nurse_assessment", "consulting", "patient_registered"},
     "nurse_assessment":   {"called", "consulting"},
     "called":             {"consulting"},
-    "consulting":         {"lab_ordered", "pharmacy_dispensing", "billing_pending"},
+    # "consulting" self-loop lets /queue/encounters/{id}/consult be re-called on an
+    # already-consulting encounter to (re)assign the doctor without a status change.
+    "consulting":         {"consulting", "lab_ordered", "pharmacy_dispensing", "billing_pending"},
     "lab_ordered":        {"consulting", "pharmacy_dispensing", "billing_pending"},
     "pharmacy_dispensing": {"billing_pending"},
     "billing_pending":    {"discharged", "consulting"},

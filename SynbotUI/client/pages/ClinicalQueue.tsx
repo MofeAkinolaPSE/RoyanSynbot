@@ -149,7 +149,7 @@ export default function ClinicalQueue() {
   const [cprsMrn, setCprsMrn] = useState<string | null>(null);
   const [callRoomEnc, setCallRoomEnc] = useState<Encounter | null>(null);
   const [selectedRoom, setSelectedRoom] = useState("Room 1");
-  const [consultForm, setConsultForm] = useState({ consulting_doctor: "", diagnosis_notes: "", icd10_search: "" });
+  const [consultForm, setConsultForm] = useState({ doctor_id: "", diagnosis_notes: "", icd10_search: "" });
   const [noteForm, setNoteForm] = useState({ note_type: "soap", content: "" });
   const [icd10Search, setIcd10Search] = useState("");
 
@@ -171,6 +171,18 @@ export default function ClinicalQueue() {
     queryFn: () => api.hospital.queue.list(filter !== "all" ? { status: filter } : undefined),
     refetchInterval: 30_000,
   });
+
+  // Doctors for the Start Consultation assignment picker — sourced from
+  // royan_staff (not free text) so the value written to doctor_id actually
+  // matches what the Doctor Dashboard filters by.
+  const { data: staffData } = useQuery({
+    queryKey: ["staff-directory"],
+    queryFn: () => api.staff.list(),
+    staleTime: 5 * 60_000,
+  });
+  const doctorOptions: any[] = (Array.isArray(staffData) ? staffData : []).filter(
+    (s: any) => s.role === "doctor",
+  );
 
   // Real-time: invalidate queue instantly on any encounter event
   useRealtimeChannel("encounter_updates", () => {
@@ -197,13 +209,13 @@ export default function ClinicalQueue() {
 
   const consultMut = useMutation({
     mutationFn: () => activeEnc ? api.hospital.queue.consult(activeEnc.id, {
-      consulting_doctor: consultForm.consulting_doctor || undefined,
+      doctor_id: consultForm.doctor_id || undefined,
       diagnosis_notes: consultForm.diagnosis_notes || undefined,
     }) : Promise.reject(),
     onSuccess: () => {
       toast({ title: "Moved to consulting" });
       setConsultOpen(false);
-      setConsultForm({ consulting_doctor: "", diagnosis_notes: "", icd10_search: "" });
+      setConsultForm({ doctor_id: "", diagnosis_notes: "", icd10_search: "" });
       void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -625,11 +637,25 @@ export default function ClinicalQueue() {
           <div className="space-y-4 py-2">
             <div className="space-y-1">
               <Label>Doctor</Label>
-              <Input
-                value={consultForm.consulting_doctor}
-                onChange={e => setConsultForm(f => ({ ...f, consulting_doctor: e.target.value }))}
-                placeholder="Consulting doctor name"
-              />
+              <Select
+                value={consultForm.doctor_id}
+                onValueChange={v => setConsultForm(f => ({ ...f, doctor_id: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select consulting doctor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {doctorOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No doctors found in staff directory</div>
+                  ) : (
+                    doctorOptions.map((doc: any) => (
+                      <SelectItem key={doc.id} value={doc.id}>
+                        {doc.full_name ?? doc.email}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>ICD-10 Diagnosis (optional)</Label>
@@ -668,7 +694,7 @@ export default function ClinicalQueue() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConsultOpen(false)}>Cancel</Button>
-            <Button disabled={consultMut.isPending} onClick={() => consultMut.mutate()}>
+            <Button disabled={consultMut.isPending || !consultForm.doctor_id} onClick={() => consultMut.mutate()}>
               {consultMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Start Consultation
             </Button>
           </DialogFooter>

@@ -1588,11 +1588,12 @@ export const api = {
       complete: (id: string) => sendJson<any>('/appointments/' + id + '/complete', 'PATCH', {}),
       cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/appointments/' + id + '/cancel', 'PATCH', p),
       // Scheduling Control Center additions
-      calendar: (params?: { date_from?: string; date_to?: string; doctor_name?: string; department?: string }) => {
+      calendar: (params?: { date_from?: string; date_to?: string; doctor_name?: string; doctor_id?: string; department?: string }) => {
         const qs = new URLSearchParams();
         if (params?.date_from)   qs.set('date_from',   params.date_from);
         if (params?.date_to)     qs.set('date_to',     params.date_to);
-        if (params?.doctor_name) qs.set('doctor_name', params.doctor_name);
+        if (params?.doctor_id)   qs.set('doctor_id',   params.doctor_id);
+        else if (params?.doctor_name) qs.set('doctor_name', params.doctor_name);
         if (params?.department)  qs.set('department',  params.department);
         return fetchRaw<any>('/appointments/calendar' + (qs.toString() ? '?' + qs : ''));
       },

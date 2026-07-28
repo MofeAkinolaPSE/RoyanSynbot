@@ -217,6 +217,7 @@ async def calendar_appointments(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     doctor_name: Optional[str] = Query(None),
+    doctor_id: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
     limit: int = Query(500, ge=1, le=1000),
     user=Depends(verify_jwt),
@@ -226,7 +227,12 @@ async def calendar_appointments(
         slots_query = slots_query.gte("slot_date", date_from)
     if date_to:
         slots_query = slots_query.lte("slot_date", date_to)
-    if doctor_name:
+    if doctor_id:
+        # Preferred: royan_staff.id FK (migration 146) — exact match, unlike the
+        # free-text doctor_name below which only works if the caller knows the
+        # exact display string a slot was booked under.
+        slots_query = slots_query.eq("doctor_id", doctor_id)
+    elif doctor_name:
         slots_query = slots_query.eq("doctor_name", doctor_name)
     if department:
         slots_query = slots_query.eq("department", _department(department))

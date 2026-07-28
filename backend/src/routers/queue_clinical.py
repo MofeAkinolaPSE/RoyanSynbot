@@ -20,6 +20,7 @@ from src.constants import (
     TABLE_LAB_ORDERS,
     TABLE_PATIENTS,
     TABLE_PRESCRIPTIONS,
+    TABLE_STAFF,
     TRIAGE_LEVELS,
 )
 from src.cache import invalidate_cache_tags
@@ -65,6 +66,7 @@ class TriageRequest(BaseModel):
 
 
 class ConsultRequest(BaseModel):
+    doctor_id: Optional[str] = None
     consulting_doctor: Optional[str] = None
     diagnosis_codes: Optional[list[str]] = None
     diagnosis_notes: Optional[str] = None
@@ -272,7 +274,10 @@ async def list_encounters(
     if department:
         query = query.eq("department", department)
     if doctor:
-        query = query.eq("consulting_doctor", doctor)
+        # `doctor` is the assigned doctor's royan_staff.id (uuid FK) — the
+        # legacy free-text `consulting_doctor` column is display-only and
+        # never a reliable match target (nurses type arbitrary names into it).
+        query = query.eq("doctor_id", doctor)
     result = query.execute()
     encounters = _enrich_encounters(result.data or [])
     return {"encounters": encounters, "count": len(encounters)}
@@ -354,27 +359,52 @@ async def call_patient(encounter_id: int, payload: CallPatientRequest, user=Depe
 @router.post("/encounters/{encounter_id}/consult")
 async def record_consultation(encounter_id: int, payload: ConsultRequest, user=Depends(verify_jwt)):
     encounter = _get_encounter(encounter_id)
+    # ENCOUNTER_STATUS_TRANSITIONS allows a "consulting" self-loop specifically so
+    # this can be re-called on an already-consulting encounter to (re)assign the
+    # doctor without requiring a status change.
     _assert_transition(encounter["status"], "consulting")
 
-    doctor = payload.consulting_doctor or user.get("sub") or "doctor"
+    # Resolve the doctor as a stable royan_staff.id FK, not a free-text name:
+    # a hand-typed name (or the submitting nurse/receptionist's own JWT sub)
+    # can never match the doctor_id filter the Doctor Dashboard queries by.
+    # Explicit doctor_id from the request (doctor picker) wins; otherwise, if
+    # the caller is themselves a doctor self-assigning from their own
+    # dashboard, fall back to their own staff record.
+    doctor_id = payload.doctor_id
+    if not doctor_id and "doctor" in (user.get("roles") or []):
+        caller_staff = (
+            db.table(TABLE_STAFF).select("id").eq("user_id", user.get("sub")).limit(1).execute()
+        )
+        if caller_staff.data:
+            doctor_id = caller_staff.data[0]["id"]
+
+    doctor_name = payload.consulting_doctor
+    if doctor_id and not doctor_name:
+        staff = db.table(TABLE_STAFF).select("full_name,email").eq("id", doctor_id).limit(1).execute()
+        if staff.data:
+            doctor_name = staff.data[0].get("full_name") or staff.data[0].get("email")
+    doctor_name = doctor_name or "doctor"
+
     updates = {
         "status": "consulting",
-        "consulting_doctor": doctor,
+        "doctor_id": doctor_id,
+        "consulting_doctor": doctor_name,
         "diagnosis_codes": payload.diagnosis_codes or [],
         "diagnosis_notes": payload.diagnosis_notes,
         "consultation_at": datetime.now(timezone.utc).isoformat(),
     }
     db.table(TABLE_ENCOUNTERS).update(updates).eq("id", encounter_id).execute()
     invalidate_cache_tags("hospital", "queue", "patient_flow", "encounters")
-    audit_event("encounter_consulting", {"doctor": doctor}, actor_id=user.get("sub"), subject_type="encounter", subject_id=str(encounter_id))
+    audit_event("encounter_consulting", {"doctor": doctor_name, "doctor_id": doctor_id}, actor_id=user.get("sub"), subject_type="encounter", subject_id=str(encounter_id))
     asyncio.create_task(realtime_hub.broadcast("encounter_updates", {
         "event": "consultation_started",
         "encounter_id": encounter_id,
         "queue_number": encounter.get("queue_number"),
         "department": encounter.get("department"),
-        "doctor": doctor,
+        "doctor": doctor_name,
+        "doctor_id": doctor_id,
     }))
-    return {"ok": True, "encounter_id": encounter_id, "status": "consulting"}
+    return {"ok": True, "encounter_id": encounter_id, "status": "consulting", "doctor_id": doctor_id}
 
 
 @router.post("/encounters/{encounter_id}/advance")

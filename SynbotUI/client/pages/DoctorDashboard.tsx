@@ -61,19 +61,32 @@ export default function DoctorDashboard() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const today = toISO(new Date());
+  // Display/telemedicine identity — telemedicine sessions are still keyed by
+  // whatever free-text "Doctor ID" was typed when the session was scheduled
+  // (see DigitalEngagement.tsx), so this stays as email/sub for now.
   const doctorId = getJwtEmail() ?? authClient.getSubject() ?? "";
 
+  // Encounters and appointments, however, key off the doctor's actual
+  // royan_staff.id (the doctor_id FK both tables use) — not email — so we
+  // need our own staff row, fetched via /staff/me.
+  const { data: meData } = useQuery({
+    queryKey: ["staff-me"],
+    queryFn: () => api.staff.getMe(),
+    staleTime: 5 * 60_000,
+  });
+  const doctorStaffId: string = meData?.data?.id ?? "";
+
   const { data: calData, isLoading: calLoading } = useQuery({
-    queryKey: ["doctor-apts", today, doctorId],
+    queryKey: ["doctor-apts", today, doctorStaffId],
     queryFn: () =>
-      api.hospital.appointments.calendar({ date_from: today, date_to: today, doctor_name: doctorId }),
-    enabled: !!doctorId,
+      api.hospital.appointments.calendar({ date_from: today, date_to: today, doctor_id: doctorStaffId }),
+    enabled: !!doctorStaffId,
   });
 
   const { data: encData, isLoading: encLoading } = useQuery({
-    queryKey: ["doctor-encounters", doctorId],
-    queryFn: () => api.hospital.queue.list({ doctor: doctorId } as any),
-    enabled: !!doctorId,
+    queryKey: ["doctor-encounters", doctorStaffId],
+    queryFn: () => api.hospital.queue.list({ doctor: doctorStaffId } as any),
+    enabled: !!doctorStaffId,
     refetchInterval: 30_000,
   });
 
@@ -89,7 +102,7 @@ export default function DoctorDashboard() {
   // Real-time: re-fetch queue on any encounter event
   useRealtimeChannel("encounter_updates", () => {
     void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });
-    void qc.invalidateQueries({ queryKey: ["doctor-encounters", doctorId] });
+    void qc.invalidateQueries({ queryKey: ["doctor-encounters", doctorStaffId] });
   });
 
   // Call Patient
@@ -104,7 +117,7 @@ export default function DoctorDashboard() {
 
   // Begin Consultation → consult API then navigate to CPRS
   const consultMut = useMutation({
-    mutationFn: (enc: any) => api.hospital.queue.consult(enc.id, { consulting_doctor: doctorId || undefined }),
+    mutationFn: (enc: any) => api.hospital.queue.consult(enc.id, { doctor_id: doctorStaffId || undefined }),
     onSuccess: (_, enc) => {
       toast({ title: "Consultation started" });
       void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });

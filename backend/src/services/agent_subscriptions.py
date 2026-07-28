@@ -22,7 +22,27 @@ class AgentSubscriptionProcessor:
         if not os.path.exists(LEDGER_PATH):
             open(LEDGER_PATH, 'a').close()
 
-    def _read_ledger(self):
+    def _read_event_ledger_db(self, limit: int = 500):
+        """Primary ledger source. Returns None (not []) on a genuine query
+        failure so the caller can tell that apart from a real, empty result
+        and fall back to the flat file only then."""
+        try:
+            resp = (
+                db.table('event_ledger')
+                .select('event_id,department,event_type,payload,approval_status,created_by,created_at')
+                .order('created_at', desc=True)
+                .limit(max(1, min(limit, 5000)))
+                .execute()
+            )
+            rows = list(reversed(resp.data or []))
+            for row in rows:
+                if row.get('event_id') is not None:
+                    row['event_id'] = str(row['event_id'])
+            return rows
+        except Exception:
+            return None
+
+    def _read_ledger_file(self):
         out = []
         try:
             with open(LEDGER_PATH, 'r', encoding='utf-8') as fh:
@@ -61,7 +81,9 @@ class AgentSubscriptionProcessor:
         self._processed.add(ev_id)
 
     def _run_cycle(self):
-        ledger = self._read_ledger()
+        ledger = self._read_event_ledger_db()
+        if ledger is None:
+            ledger = self._read_ledger_file()
         for ev in ledger:
             ev_id = ev.get('event_id') or ev.get('version_hash')
             if not ev_id or ev_id in self._processed:

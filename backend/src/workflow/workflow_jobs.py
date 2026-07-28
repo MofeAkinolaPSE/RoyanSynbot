@@ -52,7 +52,7 @@ class WorkflowJobsEngine:
                     continue
         return items
 
-    def _read_event_ledger_db(self, limit: int = 500) -> List[Dict[str, Any]]:
+    def _read_event_ledger_db(self, limit: int = 500) -> List[Dict[str, Any]] | None:
         try:
             from src.db import db
 
@@ -65,7 +65,7 @@ class WorkflowJobsEngine:
             )
             return list(reversed(resp.data or []))
         except Exception:
-            return []
+            return None
 
     def _compute_escalation_due_at(self, now_iso: str, payload: Dict[str, Any], trigger: str | None = None) -> str | None:
         import datetime as _dt
@@ -94,7 +94,7 @@ class WorkflowJobsEngine:
 
     def discover_and_enqueue(self) -> int:
         ledger = self._read_event_ledger_db()
-        if not ledger:
+        if ledger is None:
             ledger = self._read_ledger()
         jobs = self._load_jobs()
         existing_event_ids = {j.get("event_id") for j in jobs}

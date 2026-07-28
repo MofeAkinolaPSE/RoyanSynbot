@@ -15,6 +15,11 @@ services:
       - "127.0.0.1:6379:6379"
     networks:
       - royan_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   # ── FastAPI Backend ────────────────────────────────────────────────────────
   backend:
@@ -47,6 +52,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 600s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
 
   # ── PostgreSQL + pgvector (official pre-built image — no compilation needed) ─
   db:
@@ -77,6 +87,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
 
   # ── SynbotUI (HMS Staff Dashboard) ───────────────────────────────────────
   frontend:
@@ -88,6 +103,11 @@ services:
     restart: unless-stopped
     networks:
       - royan_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
   # ── Patient Portal PWA ────────────────────────────────────────────────────
   patient_portal:
@@ -100,6 +120,11 @@ services:
       - portal_dist:/usr/share/nginx/portal
     networks:
       - royan_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
   # ── Nginx Reverse Proxy ───────────────────────────────────────────────────
   nginx:
@@ -126,6 +151,11 @@ services:
         condition: service_started
       patient_portal:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
   # ── TLS Certificate Init (one-shot) ──────────────────────────────────────
   certs-init:
@@ -181,6 +211,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - royan_logwatch_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
 
   # ── Log-Tail Watcher ──────────────────────────────────────────────────────
   # Reads backend/nginx/db logs via the socket proxy above, normalizes and
@@ -203,6 +238,11 @@ services:
     depends_on:
       - docker-socket-proxy
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
   # ── GlitchTip (self-hosted, Sentry-compatible error tracker) ─────────────
   # Secondary detection layer: catches genuinely uncaught Python exceptions
@@ -239,6 +279,11 @@ services:
         condition: service_started
       glitchtip-db-init:
         condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
 
   # One-shot: creates the "glitchtip" database on the shared Postgres if it
   # doesn't exist yet. Postgres's docker-entrypoint-initdb.d only runs on a
@@ -272,6 +317,11 @@ services:
     command: redis-server --save ""
     networks:
       - royan_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
 
   # ── Daily Backup Job ──────────────────────────────────────────────────────
   backup:
@@ -296,6 +346,11 @@ services:
     configs:
       - source: backup_cron
         target: /var/spool/cron/crontabs/root
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 configs:
   backup_cron:
