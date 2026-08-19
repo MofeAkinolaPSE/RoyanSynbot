@@ -47,10 +47,12 @@ def require_inventory_write(request: Request) -> Dict[str, Any]:
     return payload
 
 def require_inventory_read(request: Request) -> Dict[str, Any]:
-    """Roles allowed to view inventory: admin, ops, finance, sales."""
+    """Roles allowed to view inventory: admin, ops, finance, sales, plus
+    clinical/pharmacy staff who need to check royan_inventory_events stock
+    levels directly (pharmacist, nurse, doctor)."""
     payload = verify_jwt(request)
     roles = payload.get("roles", [])
-    allowed = {"admin", "ops", "finance", "sales"}
+    allowed = {"admin", "ops", "finance", "sales", "pharmacist", "nurse", "doctor"}
     
     if not any(r in allowed for r in roles):
         raise HTTPException(403, "Insufficient privileges to view inventory")

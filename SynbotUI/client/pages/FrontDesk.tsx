@@ -31,9 +31,9 @@ const ENCOUNTER_TYPES = [
 ];
 
 const PRIORITIES = [
-  { value: "normal",    label: "Normal", color: "text-green-400" },
-  { value: "urgent",    label: "Urgent", color: "text-yellow-400" },
-  { value: "emergency", label: "Emergency", color: "text-red-400" },
+  { value: "normal",    label: "Normal", color: "text-green-700 dark:text-green-400" },
+  { value: "urgent",    label: "Urgent", color: "text-yellow-700 dark:text-yellow-400" },
+  { value: "emergency", label: "Emergency", color: "text-red-700 dark:text-red-400" },
 ];
 
 function ageFromDob(dob?: string): string {
@@ -107,6 +107,16 @@ export default function FrontDesk() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Proactive lock — checked as soon as a patient is selected, so front-desk
+  // staff see the "already on the queue" state before filling out the rest
+  // of the form, not just after clicking submit.
+  const { data: activeEncCheck } = useQuery({
+    queryKey: ["fd-active-encounter-check", selectedPatient?.id],
+    queryFn: () => api.hospital.queue.getActiveEncounter(selectedPatient!.id),
+    enabled: !!selectedPatient?.id && showForm,
+  });
+  const activeEncounter = activeEncCheck?.active_encounter;
+
   const openEncounterMut = useMutation({
     mutationFn: () =>
       api.hospital.queue.open({
@@ -117,10 +127,18 @@ export default function FrontDesk() {
       }),
     onSuccess: (data) => {
       const enc = data?.encounter ?? data;
-      setIssuedTicket({ queue_number: enc?.queue_number, encounter: enc });
       setShowForm(false);
       void qc.invalidateQueries({ queryKey: ["fd-kpis"] });
       void qc.invalidateQueries({ queryKey: ["fd-dept-queue"] });
+      if (data?.already_active) {
+        toast({
+          title: "Patient already on the queue",
+          description: `${enc?.queue_number ?? "Their encounter"} is still active (${String(enc?.status ?? "").replace(/_/g, " ")}) — no new ticket was issued.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      setIssuedTicket({ queue_number: enc?.queue_number, encounter: enc });
       toast({ title: "Encounter registered", description: `Ticket ${enc?.queue_number ?? enc?.id} issued` });
     },
     onError: (e: any) =>
@@ -236,6 +254,12 @@ export default function FrontDesk() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {activeEncounter && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600">
+                    This patient already has an active encounter — <strong>{activeEncounter.queue_number ?? `#${activeEncounter.id}`}</strong>{" "}
+                    ({String(activeEncounter.status).replace(/_/g, " ")}). They must be discharged before a new one can be registered.
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label>Department</Label>
@@ -289,12 +313,12 @@ export default function FrontDesk() {
 
                 <Button
                   className="w-full"
-                  disabled={openEncounterMut.isPending}
+                  disabled={openEncounterMut.isPending || !!activeEncounter}
                   onClick={() => openEncounterMut.mutate()}
                 >
                   {openEncounterMut.isPending
                     ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Registering…</>
-                    : "Register Encounter & Issue Ticket"
+                    : activeEncounter ? "Already on the queue" : "Register Encounter & Issue Ticket"
                   }
                 </Button>
               </CardContent>
@@ -305,11 +329,11 @@ export default function FrontDesk() {
           {issuedTicket && (
             <Card className="border-green-500/30 bg-green-500/5">
               <CardContent className="pt-6 text-center space-y-3">
-                <div className="flex items-center justify-center gap-2 text-green-400">
+                <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
                   <Ticket className="h-5 w-5" />
                   <span className="text-sm font-medium">Ticket Issued</span>
                 </div>
-                <div className="text-5xl font-bold font-mono tracking-widest text-green-400">
+                <div className="text-5xl font-bold font-mono tracking-widest text-green-700 dark:text-green-400">
                   {issuedTicket.queue_number ?? String(issuedTicket.encounter?.id ?? "—")}
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -363,8 +387,8 @@ export default function FrontDesk() {
                 <div key={d.department} className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground truncate max-w-[150px]">{d.department}</span>
                   <div className="flex gap-3 text-xs">
-                    <span className="text-yellow-400">{d.waiting} waiting</span>
-                    <span className="text-blue-400">{d.consulting} consulting</span>
+                    <span className="text-yellow-700 dark:text-yellow-400">{d.waiting} waiting</span>
+                    <span className="text-blue-700 dark:text-blue-400">{d.consulting} consulting</span>
                   </div>
                 </div>
               ))}

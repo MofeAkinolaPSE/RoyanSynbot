@@ -86,8 +86,13 @@ async def list_stock(request: Request):
     return data
 
 
-@router.get('/inventory/summary')
+@router.get('/inventory/stock-summary')
 async def inventory_summary(request: Request):
+    # Renamed from '/inventory/summary' — that path collided with
+    # inventory.py's route of the same name (registered earlier in app.py,
+    # so it always won; this handler was unreachable dead code). No frontend
+    # caller referenced either path under the old name, so this rename is
+    # safe — confirmed via repo-wide grep before renaming.
     verify_jwt(request)
     # totals
     stock_resp = db.table(TABLE_STOCK).select("item_id,quantity").execute()

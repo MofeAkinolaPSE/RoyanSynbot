@@ -13,12 +13,18 @@ from src.constants import (
     PAYMENT_METHODS_ALLOWED,
     TABLE_BILL_ITEMS,
     TABLE_BILLING,
+    TABLE_DISPENSING,
     TABLE_ENCOUNTERS,
+    TABLE_INPATIENT_BILL_LINES,
     TABLE_INSURANCE_CLAIMS,
+    TABLE_LAB_CATALOG,
+    TABLE_LAB_ORDERS,
     TABLE_PATIENTS,
     TABLE_PAYMENTS,
+    TABLE_PRESCRIPTIONS,
 )
 from src.db import audit_event, db
+from src.services.amount_in_words import naira_in_words
 from src.services.event_service import emit_clinical_event
 from src.middleware import require_role, verify_jwt
 from src.services.coverage import CoverageInput, billing_breakdown_from_quotes, calculate_coverage
@@ -277,13 +283,20 @@ async def create_bill_from_encounter(payload: BillFromEncounterRequest, user=Dep
 @router.get("/bills")
 async def list_bills(
     patient_id: Optional[int] = Query(None),
+    encounter_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
-    query = db.table(TABLE_BILLING).select("*").order("billed_at", desc=True).limit(limit)
+    # Live worklist = native bills only (external_source IS NULL). Hope's
+    # historical import (259k+ rows, confirmed) must never crowd out or
+    # masquerade as an actionable bill — same filter queue_clinical.py's
+    # list_encounters already applies for the identical reason.
+    query = db.table(TABLE_BILLING).select("*").is_("external_source", None).order("billed_at", desc=True).limit(limit)
     if patient_id:
         query = query.eq("patient_id", patient_id)
+    if encounter_id:
+        query = query.eq("encounter_id", encounter_id)
     if status:
         if status not in BILL_STATUS_ALLOWED:
             raise HTTPException(status_code=422, detail=f"Unknown status '{status}'")
@@ -405,6 +418,14 @@ async def submit_claim(payload: ClaimCreate, user=Depends(verify_jwt)):
         raise HTTPException(status_code=500, detail="Failed to submit claim")
     claim = (result.data or [data])[0]
     _audit("hmo_claim_submitted", {"hmo": hmo_provider, "amount": payload.claim_amount}, user, "bill", billing_id)
+    emit_clinical_event(
+        event_type="INSURANCE_CLAIM_SUBMITTED",
+        encounter_id=bill.get("encounter_id"),
+        patient_id=data["patient_id"],
+        entity_type="insurance_claim", entity_id=claim.get("id"),
+        performed_by=user.get("sub"),
+        event_data={"hmo_provider": hmo_provider, "claim_amount": payload.claim_amount},
+    )
     return {"ok": True, "claim": {**claim, "insurer_name": hmo_provider, "bill_id": billing_id}}
 
 
@@ -447,6 +468,296 @@ async def update_claim_status(claim_id: int, payload: ClaimStatusUpdate, user=De
     db.table(TABLE_INSURANCE_CLAIMS).update(updates).eq("id", claim_id).execute()
     _audit("hmo_claim_updated", {"status": payload.status}, user, "insurance_claim", claim_id)
     return {"ok": True, "claim_id": claim_id, "status": payload.status}
+
+
+@router.get("/stats")
+async def billing_stats(user=Depends(verify_jwt)):
+    """Server-computed KPI snapshot across ALL bills/claims — not capped by
+    list_bills' limit, and not scoped to whatever bill-status filter pill or
+    tab the frontend currently has active (the two client-side aggregation
+    bugs this replaces)."""
+    open_bills = (
+        db.table(TABLE_BILLING)
+        .select("id,status,patient_balance,consultation_fee,lab_charges,pharmacy_charges,"
+                "ward_charges,procedure_charges,miscellaneous,discount,hmo_covered,subtotal")
+        .is_("external_source", None)
+        .in_("status", ["pending", "partial", "disputed"])
+        .execute().data or []
+    )
+    pending_count  = sum(1 for b in open_bills if b["status"] == "pending")
+    partial_count  = sum(1 for b in open_bills if b["status"] == "partial")
+    disputed_count = sum(1 for b in open_bills if b["status"] == "disputed")
+
+    # record_payment always flips status to "paid"/"partial" the instant any
+    # payment is recorded — a "pending" or "disputed" bill is therefore
+    # guaranteed to have zero payments, so only "partial" bills need a
+    # payments lookup. One batched query, not N+1.
+    partial_ids = [b["id"] for b in open_bills if b["status"] == "partial"]
+    paid_by_bill: dict[int, float] = {}
+    if partial_ids:
+        for p in (db.table(TABLE_PAYMENTS).select("billing_id,amount").in_("billing_id", partial_ids).execute().data or []):
+            paid_by_bill[p["billing_id"]] = paid_by_bill.get(p["billing_id"], 0.0) + _num(p.get("amount"))
+
+    total_outstanding = 0.0
+    for b in open_bills:
+        balance = _num(b.get("patient_balance"), _total_from_bill(b) - _num(b.get("discount")) - _num(b.get("hmo_covered")))
+        total_outstanding += max(balance - paid_by_bill.get(b["id"], 0.0), 0.0)
+
+    hmo_pending_count = (
+        db.table(TABLE_INSURANCE_CLAIMS).select("id", count="exact")
+        .in_("status", ["submitted", "pre_authorised"]).execute().count
+    )
+    return {
+        "pending_count": pending_count,
+        "partial_count": partial_count,
+        "disputed_count": disputed_count,
+        "total_outstanding": round(total_outstanding, 2),
+        "hmo_pending_count": hmo_pending_count,
+    }
+
+
+@router.post("/bills/{bill_id}/write-off")
+async def write_off_bill(bill_id: int, user=Depends(require_role("admin"))):
+    """Administrative write-off for an uncollectable bill — distinct from
+    `waive` (a deliberate no-charge decision). Same irreversible,
+    finance-visible risk profile as waiving, so gated identically."""
+    bill = _get_bill(bill_id)
+    if bill["status"] in ("paid", "waived", "written_off"):
+        raise HTTPException(status_code=409, detail=f"Bill already '{bill['status']}'")
+    db.table(TABLE_BILLING).update({"status": "written_off"}).eq("id", bill_id).execute()
+    _audit("bill_written_off", {}, user, "bill", bill_id)
+    return {"ok": True, "bill_id": bill_id, "status": "written_off"}
+
+
+@router.get("/unbilled-encounters")
+async def unbilled_encounters(limit: int = Query(50, ge=1, le=200), user=Depends(verify_jwt)):
+    """Encounters that reached billing_pending with no royan_billing row yet.
+    royan_billing.encounter_id has an index but no UNIQUE constraint, so this
+    is a two-query diff, mirroring pharmacy_dispensing.py's
+    administration_queue (dispensed prescriptions with zero
+    royan_medication_admin rows yet)."""
+    encounters = (
+        db.table(TABLE_ENCOUNTERS)
+        .select("id,patient_id,queue_number,department,chief_complaint,status,created_at")
+        .eq("status", "billing_pending")
+        .is_("external_source", None)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute().data or []
+    )
+    if not encounters:
+        return {"encounters": [], "count": 0}
+
+    enc_ids = [e["id"] for e in encounters]
+    billed_ids = {
+        r["encounter_id"] for r in
+        (db.table(TABLE_BILLING).select("encounter_id").in_("encounter_id", enc_ids).execute().data or [])
+    }
+    unbilled = [e for e in encounters if e["id"] not in billed_ids]
+
+    if unbilled:
+        patient_ids = list({e["patient_id"] for e in unbilled if e.get("patient_id") is not None})
+        patients = db.table(TABLE_PATIENTS).select("id,first_name,last_name,mrn").in_("id", patient_ids).execute().data or []
+        by_id = {p["id"]: p for p in patients}
+        for e in unbilled:
+            p = by_id.get(e.get("patient_id"))
+            if p:
+                e["patient_name"] = f"{p.get('first_name','')} {p.get('last_name','')}".strip()
+                e["patient_mrn"] = p.get("mrn")
+
+    return {"encounters": unbilled, "count": len(unbilled)}
+
+
+def _encounter_admitted(enc: dict) -> bool:
+    """A patient counts as in-house/admitted if their encounter_type isn't
+    plain outpatient, OR they've actually been assigned a bed — the OR guards
+    both an emergency/maternity encounter that never got a bed, and an
+    outpatient encounter that unexpectedly did."""
+    return (enc.get("encounter_type") or "outpatient") != "outpatient" or bool(enc.get("bed_id"))
+
+
+def _match_lab_catalog(test_name: str, test_code: Optional[str]) -> Optional[dict]:
+    """Best-effort match of a free-text lab order onto the priced catalog.
+    royan_lab_orders.catalog_id exists but is never populated by the order-
+    creation flow today, so this fuzzy match is the only path to a real price."""
+    if test_code:
+        exact = db.table(TABLE_LAB_CATALOG).select("*").eq("is_active", True).eq("code", test_code).limit(1).execute()
+        if exact.data:
+            return exact.data[0]
+    if not test_name:
+        return None
+    term = test_name.strip()
+    for column in ("name", "abbreviation"):
+        match = (
+            db.table(TABLE_LAB_CATALOG)
+            .select("*")
+            .eq("is_active", True)
+            .ilike(column, term)
+            .limit(1)
+            .execute()
+        )
+        if match.data:
+            return match.data[0]
+    return None
+
+
+@router.get("/encounters/{encounter_id}/suggested-items")
+async def suggested_bill_items(encounter_id: int, user=Depends(verify_jwt)):
+    """Best-effort itemized suggestion for /bills/from-encounter, built from
+    what this specific encounter actually incurred — the user's own framing
+    ('only different activities that patient underwent'). Consultation/
+    Procedure/Misc are deliberately NOT suggested here: royan_service_catalog
+    has no per-encounter record of what was actually charged for a visit, so
+    guessing would be worse than leaving it for manual entry."""
+    encounter = db.table(TABLE_ENCOUNTERS).select("*").eq("id", encounter_id).limit(1).execute()
+    if not encounter.data:
+        raise HTTPException(status_code=404, detail=f"Encounter {encounter_id} not found")
+    enc = encounter.data[0]
+    patient_id = enc.get("patient_id")
+
+    patient = db.table(TABLE_PATIENTS).select("*").eq("id", patient_id).limit(1).execute()
+    patient_row = patient.data[0] if patient.data else {}
+
+    suggested_items: list[dict] = []
+
+    # Lab — fuzzy-matched against the priced catalog; unmatched tests are
+    # still surfaced (unit_price 0, matched=False) so staff can price them
+    # manually rather than the line silently vanishing.
+    lab_orders = (
+        db.table(TABLE_LAB_ORDERS)
+        .select("id,test_name,test_code,catalog_id,status")
+        .eq("encounter_id", encounter_id)
+        .is_("external_source", "null")
+        .execute()
+    )
+    for order in (lab_orders.data or []):
+        catalog_row = None
+        if order.get("catalog_id"):
+            found = db.table(TABLE_LAB_CATALOG).select("*").eq("id", order["catalog_id"]).limit(1).execute()
+            catalog_row = found.data[0] if found.data else None
+        if not catalog_row:
+            catalog_row = _match_lab_catalog(order.get("test_name") or "", order.get("test_code"))
+        # NOTE: catalog_row.id/code are royan_lab_catalog's own IDs/codes — a
+        # completely different ID space from royan_service_catalog (which is
+        # what /bills/from-encounter's coverage lookup resolves service_id/
+        # service_code against). Passing the lab catalog's id back as
+        # "service_id" would silently collide with an unrelated
+        # royan_service_catalog row. lab_catalog_id is informational only
+        # (for the frontend to display what matched); service_id/service_code
+        # stay null so the bill item is priced from unit_price directly.
+        suggested_items.append({
+            "source": "lab_order",
+            "source_id": order["id"],
+            "service_id": None,
+            "service_code": None,
+            "lab_catalog_id": (catalog_row or {}).get("id"),
+            "description": order.get("test_name") or "Lab Test",
+            "category": "lab",
+            "quantity": 1,
+            "unit_price": _num((catalog_row or {}).get("base_price"), 0.0),
+            "matched": catalog_row is not None,
+        })
+
+    # Pharmacy — royan_dispensing has no encounter_id directly; join via the
+    # prescription it was dispensed against. Cost is what the pharmacist
+    # actually recorded, not a catalog lookup, so this is always reliable.
+    prescriptions = (
+        db.table(TABLE_PRESCRIPTIONS).select("id").eq("encounter_id", encounter_id).execute()
+    )
+    prescription_ids = [p["id"] for p in (prescriptions.data or [])]
+    dispensed_rows: list[dict] = []
+    if prescription_ids:
+        dispensed = (
+            db.table(TABLE_DISPENSING)
+            .select("id,drug_name,quantity_dispensed,unit_cost,total_cost,prescription_id")
+            .in_("prescription_id", prescription_ids)
+            .execute()
+        )
+        dispensed_rows = dispensed.data or []
+    for row in dispensed_rows:
+        qty = _num(row.get("quantity_dispensed"), 1.0) or 1.0
+        suggested_items.append({
+            "source": "dispensing",
+            "source_id": row["id"],
+            "service_id": None,
+            "service_code": None,
+            "description": row.get("drug_name") or "Dispensed Medication",
+            "category": "pharmacy",
+            "quantity": qty,
+            "unit_price": _num(row.get("unit_cost"), _num(row.get("total_cost")) / qty if qty else 0.0),
+            "matched": True,
+        })
+
+    # Ward/Nursing — the running inpatient bill, only relevant when admitted.
+    admitted = _encounter_admitted(enc)
+    inpatient_lines: list[dict] = []
+    inpatient_running_total = 0.0
+    if admitted:
+        lines = (
+            db.table(TABLE_INPATIENT_BILL_LINES)
+            .select("*")
+            .eq("encounter_id", encounter_id)
+            .order("charged_at")
+            .execute()
+        )
+        inpatient_lines = lines.data or []
+        inpatient_running_total = round(sum(_num(l.get("total")) for l in inpatient_lines), 2)
+
+    return {
+        "encounter": {**enc, "admitted": admitted},
+        "patient": {
+            "id": patient_row.get("id"),
+            "mrn": patient_row.get("mrn"),
+            "first_name": patient_row.get("first_name"),
+            "last_name": patient_row.get("last_name"),
+            "patient_type": patient_row.get("patient_type"),
+            "hmo_provider": patient_row.get("hmo_provider"),
+        },
+        "suggested_items": suggested_items,
+        "inpatient_lines": inpatient_lines,
+        "inpatient_running_total": inpatient_running_total,
+    }
+
+
+@router.get("/bills/{bill_id}/invoice")
+async def get_bill_invoice(bill_id: int, user=Depends(verify_jwt)):
+    """Single-call aggregate powering the printable invoice view — everything
+    the print layout needs in one request rather than the frontend stitching
+    together bill + patient + encounter + payments itself."""
+    bill = _bill_with_amounts(_get_bill(bill_id))
+    items = db.table(TABLE_BILL_ITEMS).select("*").eq("billing_id", bill_id).order("id").execute()
+    payments = db.table(TABLE_PAYMENTS).select("*").eq("billing_id", bill_id).order("received_at").execute()
+
+    patient = db.table(TABLE_PATIENTS).select("*").eq("id", bill.get("patient_id")).limit(1).execute()
+    patient_row = patient.data[0] if patient.data else {}
+
+    encounter_row: dict = {}
+    admitted = False
+    inpatient_lines: list[dict] = []
+    if bill.get("encounter_id"):
+        encounter = db.table(TABLE_ENCOUNTERS).select("*").eq("id", bill["encounter_id"]).limit(1).execute()
+        if encounter.data:
+            encounter_row = encounter.data[0]
+            admitted = _encounter_admitted(encounter_row)
+            if admitted:
+                lines = (
+                    db.table(TABLE_INPATIENT_BILL_LINES)
+                    .select("*")
+                    .eq("encounter_id", bill["encounter_id"])
+                    .order("charged_at")
+                    .execute()
+                )
+                inpatient_lines = lines.data or []
+
+    return {
+        "bill": bill,
+        "items": items.data or [],
+        "payments": payments.data or [],
+        "patient": patient_row,
+        "encounter": {**encounter_row, "admitted": admitted} if encounter_row else None,
+        "inpatient_lines": inpatient_lines,
+        "amount_in_words": naira_in_words(bill.get("patient_due") or 0.0),
+    }
 
 
 # ─── Inpatient Running Bill ───────────────────────────────────────────────────

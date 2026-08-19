@@ -502,9 +502,9 @@ export function ExecutiveDashboard() {
                   <div className="flex items-start justify-between gap-2 rounded-xl border border-border/60 bg-card/40 p-3 transition-colors hover:border-primary/40 hover:bg-card/60">
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-semibold">{r.domain}: {r.risk_type}</div>
-                      <div className="text-[11px] text-muted-foreground leading-tight">{r.signal}</div>
+                      <div className="text-[13px] text-muted-foreground leading-tight">{r.signal}</div>
                     </div>
-                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", severityClass(r.severity))}>
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[12px] font-semibold", severityClass(r.severity))}>
                       {r.severity}
                     </span>
                   </div>
@@ -532,8 +532,8 @@ export function ExecutiveDashboard() {
                   <Link to="/executive/summary" key={`${rec.action}-${i}`} className="block">
                     <div className="rounded-xl border border-border/60 bg-card/40 p-3 transition-all hover:shadow-elevation-lg">
                       <div className="text-xs font-semibold">{rec.action}</div>
-                      <div className="text-[11px] text-muted-foreground">{rec.reason}</div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/60">Source: {rec.data_source} · Confidence: {rec.confidence}</div>
+                      <div className="text-[13px] text-muted-foreground">{rec.reason}</div>
+                      <div className="mt-0.5 text-[12px] text-muted-foreground/60">Source: {rec.data_source} · Confidence: {rec.confidence}</div>
                     </div>
                   </Link>
                 ))
@@ -557,8 +557,8 @@ export function ExecutiveDashboard() {
                   <Link to={getRiskLink(a.domain)} key={`${a.domain}-${i}`} className="block">
                     <div className="rounded-xl border border-border/60 bg-card/40 p-3 transition-all hover:shadow-elevation-lg">
                       <div className="text-xs font-semibold">{a.domain}: {a.signal}</div>
-                      <div className="text-[11px] text-muted-foreground">{a.detail}</div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/60">Z-score: {a.zscore.toFixed(2)} · Source: {a.data_source}</div>
+                      <div className="text-[13px] text-muted-foreground">{a.detail}</div>
+                      <div className="mt-0.5 text-[12px] text-muted-foreground/60">Z-score: {a.zscore.toFixed(2)} · Source: {a.data_source}</div>
                     </div>
                   </Link>
                 ))
@@ -622,7 +622,7 @@ export function ExecutiveDashboard() {
         <div className="grid gap-2 md:grid-cols-3">
           {suggestedActions.map((action, i) => (
             <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{i + 1}</span>
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[12px] font-bold text-primary">{i + 1}</span>
               {action}
             </div>
           ))}

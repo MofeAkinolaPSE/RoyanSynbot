@@ -77,7 +77,7 @@ function KpiCard({ label, value, sub, icon: Icon, color = "blue" }: {
         <div>
           <div className="text-2xl font-bold">{value}</div>
           <div className="text-xs text-muted-foreground">{label}</div>
-          {sub && <div className="text-[11px] text-muted-foreground/70">{sub}</div>}
+          {sub && <div className="text-[13px] text-muted-foreground/70">{sub}</div>}
         </div>
       </CardContent>
     </Card>
@@ -248,7 +248,7 @@ export default function PaymentGateway() {
                     <tr key={t.id} className="border-b hover:bg-muted/20">
                       <td className="px-4 py-2.5 font-mono text-xs">{t.reference}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={`text-[10px] ${GATEWAY_BADGE[t.gateway] ?? ""}`}>
+                        <Badge variant="outline" className={`text-[12px] ${GATEWAY_BADGE[t.gateway] ?? ""}`}>
                           {t.gateway}
                         </Badge>
                       </td>
@@ -256,7 +256,7 @@ export default function PaymentGateway() {
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.email}</td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.patient_id ?? "—"}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={`text-[10px] ${st.className}`}>{st.label}</Badge>
+                        <Badge variant="outline" className={`text-[12px] ${st.className}`}>{st.label}</Badge>
                       </td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">
                         {t.initiated_at ? new Date(t.initiated_at).toLocaleDateString() : "—"}

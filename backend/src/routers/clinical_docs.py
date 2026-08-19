@@ -12,7 +12,10 @@ from src.constants import (
     POSTING_SEVERITY_ALLOWED,
     POSTING_TYPE_ALLOWED,
     TABLE_CLINICAL_REMINDERS,
+    TABLE_DEPARTMENTS,
+    TABLE_DRUG_FORMULARY,
     TABLE_ICD10_CODES,
+    TABLE_NOTE_TITLES,
     TABLE_PATIENT_POSTINGS,
     TABLE_PATIENTS,
     TABLE_PROBLEM_LIST,
@@ -81,6 +84,68 @@ async def search_icd10(
     except Exception as exc:
         logger.error("ICD-10 search failed: %s", exc)
         return {"codes": [], "count": 0}
+
+
+# ─── Note Titles (Notes Master) ───────────────────────────────────────────────
+
+@router.get("/note-titles")
+async def list_note_titles(
+    department: Optional[str] = Query(None, description="Department code, e.g. OPD"),
+    user=Depends(verify_jwt),
+):
+    """Department-scoped note title catalog. Never errors — returns [] so the
+    frontend can gracefully fall back to free-text note entry if unseeded."""
+    try:
+        dept_id = None
+        if department:
+            dept = db.table(TABLE_DEPARTMENTS).select("id").eq("code", department.strip().upper()).execute()
+            if dept.data:
+                dept_id = dept.data[0]["id"]
+
+        query = db.table(TABLE_NOTE_TITLES).select("*").eq("is_active", True)
+        if dept_id is not None:
+            query = query.or_(f"department_id.is.null,department_id.eq.{dept_id}")
+        else:
+            query = query.is_("department_id", None)
+        rows = query.order("sort_order").execute().data or []
+
+        user_roles = set(user.get("roles") or user.get("permissions") or [])
+        visible = [
+            r for r in rows
+            if "admin" in user_roles or not r.get("allowed_roles") or user_roles.intersection(r["allowed_roles"])
+        ]
+        return {"titles": visible, "count": len(visible)}
+    except Exception as exc:
+        logger.error("Note title lookup failed: %s", exc)
+        return {"titles": [], "count": 0}
+
+
+# ─── Drug Formulary Search ─────────────────────────────────────────────────────
+
+@router.get("/drugs")
+async def search_drugs(
+    q: str = Query(..., min_length=2, description="Generic name, brand name, or drug code"),
+    limit: int = Query(20, ge=1, le=50),
+    user=Depends(verify_jwt),
+):
+    """Search the drug formulary. Returns [] until real formulary data is
+    imported — this is prepared search logic, not fake data (the table exists
+    via migration 130 but is not yet seeded)."""
+    q = q.strip()
+    try:
+        results = (
+            db.table(TABLE_DRUG_FORMULARY)
+            .select("id,code,generic_name,brand_name,drug_class,form,strength,unit,route,requires_prescription,is_controlled")
+            .eq("is_active", True)
+            .or_(f"generic_name.ilike.%{q}%,brand_name.ilike.%{q}%,code.ilike.{q}%")
+            .order("generic_name")
+            .limit(limit)
+            .execute()
+        )
+        return {"drugs": results.data or [], "count": len(results.data or [])}
+    except Exception as exc:
+        logger.error("Drug formulary search failed: %s", exc)
+        return {"drugs": [], "count": 0}
 
 
 # ─── Problem List ─────────────────────────────────────────────────────────────

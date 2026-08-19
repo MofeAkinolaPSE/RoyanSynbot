@@ -47,6 +47,15 @@ def _q(conn, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
             return [dict(r) for r in cur.fetchall()]
     except Exception as exc:
         logger.warning("EKE query failed: %s | %.80s", exc, sql)
+        # A failed query aborts the current Postgres transaction — every
+        # subsequent query on this same connection would fail too
+        # ("current transaction is aborted...") until this rolls it back.
+        # Without this, one bad query silently blanks every domain section
+        # assembled after it, not just its own.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return []
 
 
@@ -73,9 +82,9 @@ def _patient(conn, pid: int) -> Optional[Dict]:
 
 def _active_encounter(conn, pid: int) -> Optional[Dict]:
     return _q1(conn, """
-        SELECT e.*, COALESCE(s.first_name || ' ' || s.last_name, e.consulting_doctor) AS doctor_name
+        SELECT e.*, COALESCE(s.full_name, e.consulting_doctor) AS doctor_name
         FROM public.royan_encounters e
-        LEFT JOIN public.royan_staff s ON s.id = e.consulting_doctor_id
+        LEFT JOIN public.royan_staff s ON s.id = e.doctor_id
         WHERE e.patient_id = %s AND e.status NOT IN ('discharged', 'closed')
         ORDER BY e.created_at DESC LIMIT 1
     """, (pid,))
@@ -90,9 +99,9 @@ def _latest_vitals(conn, pid: int) -> List[Dict]:
 
 def _active_diagnoses(conn, pid: int) -> List[Dict]:
     return _q(conn, """
-        SELECT * FROM public.royan_encounter_diagnoses
-        WHERE patient_id = %s AND resolution_date IS NULL
-        ORDER BY created_at DESC LIMIT 20
+        SELECT * FROM public.royan_clinical_diagnoses
+        WHERE patient_id = %s
+        ORDER BY diagnosed_at DESC LIMIT 20
     """, (pid,))
 
 
@@ -100,9 +109,9 @@ def _active_meds(conn, pid: int) -> List[Dict]:
     return _q(conn, """
         SELECT p.*, d.generic_name AS formulary_name
         FROM public.royan_prescriptions p
-        LEFT JOIN public.royan_drug_formulary d ON d.id = p.drug_id
+        LEFT JOIN public.royan_drug_formulary d ON d.id = p.formulary_id
         WHERE p.patient_id = %s AND p.status NOT IN ('cancelled', 'completed')
-        ORDER BY p.created_at DESC LIMIT 20
+        ORDER BY p.prescribed_at DESC LIMIT 20
     """, (pid,))
 
 
@@ -112,37 +121,44 @@ def _pending_labs(conn, pid: int) -> List[Dict]:
         FROM public.royan_lab_orders lo
         LEFT JOIN public.royan_lab_catalog lc ON lc.id = lo.catalog_id
         WHERE lo.patient_id = %s AND lo.status NOT IN ('resulted', 'verified', 'cancelled')
-        ORDER BY lo.created_at DESC LIMIT 10
+        ORDER BY lo.ordered_at DESC LIMIT 10
     """, (pid,))
 
 
 def _recent_results(conn, pid: int) -> List[Dict]:
     return _q(conn, """
-        SELECT lo.*, lr.result_value, lr.interpretation, lr.is_critical, lr.resulted_at,
+        SELECT lo.*, lr.result_summary, lr.interpretation, lr.is_critical, lr.resulted_at,
                lc.name AS catalog_name
         FROM public.royan_lab_orders lo
         LEFT JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
         LEFT JOIN public.royan_lab_catalog lc ON lc.id = lo.catalog_id
         WHERE lo.patient_id = %s AND lo.status IN ('resulted', 'verified')
-        ORDER BY COALESCE(lr.resulted_at, lo.created_at) DESC LIMIT 10
+        ORDER BY COALESCE(lr.resulted_at, lo.ordered_at) DESC LIMIT 10
     """, (pid,))
 
 
 def _billing_summary(conn, pid: int) -> Dict:
-    r = _q1(conn, """
+    # royan_billing has no running paid-amount column — actual payment
+    # records live in the separate royan_payments table.
+    b = _q1(conn, """
         SELECT COUNT(*) AS cnt,
-               COALESCE(SUM(total_amount), 0) AS total_billed,
-               COALESCE(SUM(amount_paid), 0) AS total_paid,
+               COALESCE(SUM(subtotal), 0) AS total_billed,
                COALESCE(SUM(hmo_covered), 0) AS hmo_covered
         FROM public.royan_billing WHERE patient_id = %s
     """, (pid,)) or {}
-    t, p, h = float(r.get("total_billed") or 0), float(r.get("total_paid") or 0), float(r.get("hmo_covered") or 0)
-    return {"total_billed": t, "total_paid": p, "hmo_covered": h,
-            "outstanding_balance": round(t - p - h, 2), "bill_count": int(r.get("cnt") or 0)}
+    p = _q1(conn, """
+        SELECT COALESCE(SUM(amount), 0) AS total_paid
+        FROM public.royan_payments WHERE patient_id = %s
+    """, (pid,)) or {}
+    t = float(b.get("total_billed") or 0)
+    paid = float(p.get("total_paid") or 0)
+    h = float(b.get("hmo_covered") or 0)
+    return {"total_billed": t, "total_paid": paid, "hmo_covered": h,
+            "outstanding_balance": round(t - paid - h, 2), "bill_count": int(b.get("cnt") or 0)}
 
 
 def _allergies(conn, pid: int) -> List[str]:
-    rows = _q(conn, "SELECT allergen FROM public.royan_allergies WHERE patient_id = %s AND is_active = true", (pid,))
+    rows = _q(conn, "SELECT allergen FROM public.royan_allergies WHERE patient_id = %s AND status = 'active'", (pid,))
     return [r["allergen"] for r in rows if r.get("allergen")]
 
 
@@ -150,7 +166,7 @@ def _hmo_name(conn, pid: int) -> Optional[str]:
     r = _q1(conn, """
         SELECT h.name FROM public.royan_patient_insurance pi
         JOIN public.royan_hmos h ON h.id = pi.hmo_id
-        WHERE pi.patient_id = %s AND pi.is_active = true LIMIT 1
+        WHERE pi.patient_id = %s AND pi.status = 'active' LIMIT 1
     """, (pid,))
     return r["name"] if r else None
 
@@ -215,9 +231,9 @@ def assemble_patient_context(conn, patient_id: int) -> Optional[PatientClinicalC
             observation_type="vital",
             name=f"Vitals ({_sd(r.get('recorded_at'))})",
             value=(
-                f"BP {r.get('systolic_bp')}/{r.get('diastolic_bp')}, "
-                f"PR {r.get('pulse_rate')}, Temp {r.get('temperature')}°C, "
-                f"SpO2 {r.get('oxygen_saturation')}%"
+                f"BP {r.get('bp_systolic')}/{r.get('bp_diastolic')}, "
+                f"PR {r.get('pulse')}, Temp {r.get('temperature')}°C, "
+                f"SpO2 {r.get('spo2')}%"
             ),
             recorded_by=r.get("recorded_by"),
             recorded_at=_sd(r.get("recorded_at")),
@@ -234,8 +250,8 @@ def assemble_patient_context(conn, patient_id: int) -> Optional[PatientClinicalC
             onset_date=_sd(r.get("onset_date")),
             resolution_date=_sd(r.get("resolution_date")),
             is_chronic=bool(r.get("is_chronic")),
-            recorded_by=r.get("recorded_by"),
-            recorded_at=_sd(r.get("created_at")),
+            recorded_by=r.get("diagnosed_by"),
+            recorded_at=_sd(r.get("diagnosed_at") or r.get("created_at")),
             encounter_id=r.get("encounter_id"),
         ) for r in diag_rows
     ]
@@ -258,8 +274,8 @@ def assemble_patient_context(conn, patient_id: int) -> Optional[PatientClinicalC
             id=r["id"], test_name=r.get("catalog_name") or r.get("test_name"),
             test_code=r.get("test_code"), urgency=r.get("urgency", "routine"),
             status=r.get("status"), sample_type=r.get("sample_type"),
-            ordered_by=r.get("requested_by"),
-            ordered_at=_sd(r.get("ordered_at") or r.get("created_at")),
+            ordered_by=r.get("ordered_by"),
+            ordered_at=_sd(r.get("ordered_at")),
             encounter_id=r.get("encounter_id"),
         ) for r in _pending_labs(conn, patient_id)
     ]
@@ -268,7 +284,8 @@ def assemble_patient_context(conn, patient_id: int) -> Optional[PatientClinicalC
         LabOrderDetail(
             id=r["id"], test_name=r.get("catalog_name") or r.get("test_name"),
             test_code=r.get("test_code"), status=r.get("status"),
-            result_value=r.get("result_value"), result_summary=r.get("interpretation"),
+            result_value=r.get("result_summary"), result_summary=r.get("result_summary"),
+            interpretation=r.get("interpretation"),
             is_critical=bool(r.get("is_critical")),
             resulted_at=_sd(r.get("resulted_at")),
             encounter_id=r.get("encounter_id"),
@@ -317,20 +334,20 @@ def assemble_encounter_context(conn, encounter_id: int) -> Dict[str, Any]:
         "vitals": _q(conn, "SELECT * FROM public.royan_vitals WHERE encounter_id = %s ORDER BY recorded_at", (encounter_id,)),
         "notes": _q(conn, "SELECT * FROM public.royan_encounter_notes WHERE encounter_id = %s ORDER BY created_at", (encounter_id,)),
         "lab_orders": _q(conn, """
-            SELECT lo.*, lr.result_value, lr.interpretation, lr.is_critical, lr.resulted_at,
+            SELECT lo.*, lr.result_summary, lr.interpretation, lr.is_critical, lr.resulted_at,
                    lc.name AS catalog_name
             FROM public.royan_lab_orders lo
             LEFT JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
             LEFT JOIN public.royan_lab_catalog lc ON lc.id = lo.catalog_id
-            WHERE lo.encounter_id = %s ORDER BY lo.created_at
+            WHERE lo.encounter_id = %s ORDER BY lo.ordered_at
         """, (encounter_id,)),
         "prescriptions": _q(conn, """
             SELECT p.*, d.generic_name AS formulary_name
             FROM public.royan_prescriptions p
-            LEFT JOIN public.royan_drug_formulary d ON d.id = p.drug_id
-            WHERE p.encounter_id = %s ORDER BY p.created_at
+            LEFT JOIN public.royan_drug_formulary d ON d.id = p.formulary_id
+            WHERE p.encounter_id = %s ORDER BY p.prescribed_at
         """, (encounter_id,)),
-        "billing": _q1(conn, "SELECT * FROM public.royan_billing WHERE encounter_id = %s ORDER BY created_at DESC LIMIT 1", (encounter_id,)),
+        "billing": _q1(conn, "SELECT * FROM public.royan_billing WHERE encounter_id = %s ORDER BY billed_at DESC LIMIT 1", (encounter_id,)),
         "workflow_state": _q1(conn, """
             SELECT current_state, is_terminal, last_transitioned_at
             FROM workflow.instances WHERE entity_type = 'encounter' AND entity_id = %s
@@ -345,7 +362,7 @@ def get_patient_timeline(conn, patient_id: int, limit: int = 50) -> List[Dict[st
                e.chief_complaint, e.diagnosis_notes, e.triage_at, e.discharge_at, e.created_at,
                (SELECT COUNT(*) FROM public.royan_lab_orders lo WHERE lo.encounter_id = e.id) AS lab_count,
                (SELECT COUNT(*) FROM public.royan_prescriptions rx WHERE rx.encounter_id = e.id) AS rx_count,
-               (SELECT COALESCE(SUM(b.total_amount), 0) FROM public.royan_billing b WHERE b.encounter_id = e.id) AS total_billed
+               (SELECT COALESCE(SUM(b.subtotal), 0) FROM public.royan_billing b WHERE b.encounter_id = e.id) AS total_billed
         FROM public.royan_encounters e
         WHERE e.patient_id = %s ORDER BY e.created_at DESC LIMIT %s
     """, (patient_id, limit))
@@ -356,9 +373,9 @@ def get_medication_history(conn, patient_id: int) -> List[Dict[str, Any]]:
         SELECT p.*, d.generic_name AS formulary_name, d.drug_class,
                disp.dispensed_at, disp.quantity_dispensed
         FROM public.royan_prescriptions p
-        LEFT JOIN public.royan_drug_formulary d ON d.id = p.drug_id
+        LEFT JOIN public.royan_drug_formulary d ON d.id = p.formulary_id
         LEFT JOIN public.royan_dispensing disp ON disp.prescription_id = p.id
-        WHERE p.patient_id = %s ORDER BY p.created_at DESC
+        WHERE p.patient_id = %s ORDER BY p.prescribed_at DESC
     """, (patient_id,))
 
 
@@ -367,7 +384,7 @@ def get_clinical_risk_profile(conn, patient_id: int) -> Dict[str, Any]:
     diag_rows = _active_diagnoses(conn, patient_id)
     flags = _risk_flags(conn, patient_id, allergy_list, diag_rows)
     critical = _q(conn, """
-        SELECT lo.test_name, lr.result_value, lr.resulted_at
+        SELECT lo.test_name, lr.result_summary, lr.resulted_at
         FROM public.royan_lab_orders lo
         JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
         WHERE lo.patient_id = %s AND lr.is_critical = true

@@ -12,10 +12,15 @@
    * A different format will require also updating the theme in tailwind.config.ts.
   */
   :root {
-    /* ── RoyanHealth Light — Royan Hospital clinical platform ────────────── */
-    /* Brand source: colourscheme.md — Classic hospital: blue-led, cyan highlights, neutral structure */
+    /* ── RoyanHealth Light — "Royal Azure" ────────────────────────────────
+       Blue re-calibrated against real Royan Hospital reference photos (the
+       building's painted exterior + the reception's cyan accent panel) —
+       213° reads closer to the actual building blue than the previous 220°.
+       Gold is a single deliberate flourish (Royan → "royal"), not a fill —
+       it appears only on the sign-in/landing experience, never in the
+       everyday app chrome (sidebar, buttons, nav), per explicit brief. */
 
-    --background: 0 0% 96%;              /* #F6F6F6 — brand main BG */
+    --background: 30 20% 97%;            /* #F8F6F3 — warm-white, echoes the reception's cream ceiling */
     --foreground: 0 0% 9%;               /* #171717 — brand text primary */
 
     --card: 0 0% 100%;                   /* #FFFFFF */
@@ -24,24 +29,27 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    --primary: 220 75% 35%;              /* #17449E — primary brand blue */
+    --primary: 213 73% 37%;              /* #1957A3 — Royal Azure primary (photo-matched building blue) */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 219 71% 38%;            /* #1C4CA5 — support blue */
+    --secondary: 213 68% 44%;            /* #2569BE — brighter support blue, closest match to the painted exterior */
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 0 0% 96%;                   /* #F4F4F4 — neutral section BG */
-    --muted-foreground: 0 0% 55%;        /* #8B8B8B — soft label text */
+    --muted: 30 16% 95%;                 /* #F2F0EC — warm-neutral section BG */
+    --muted-foreground: 0 0% 36%;        /* #5C5C5C — ~6.3:1 on white/muted BG (WCAG AA) */
 
-    --accent: 197 84% 48%;               /* #13A7E0 — cyan medical accent */
+    --accent: 197 84% 48%;               /* #13A7E0 — cyan, matches the reception's accent panel almost exactly */
     --accent-foreground: 0 0% 100%;
+
+    --gold: 42 58% 42%;                  /* #A6832E — restrained champagne-bronze, the one warm flourish */
+    --gold-foreground: 0 0% 100%;
 
     --destructive: 15 100% 35%;          /* #B22D00 — muted danger */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 87%;                  /* #DFDFDF — brand border */
+    --border: 30 12% 88%;                /* #DFDCD6 — warm-tinted brand border */
     --input: 0 0% 100%;
-    --ring: 220 75% 35%;
+    --ring: 213 73% 37%;
 
     --warning: 36 71% 53%;               /* #DD9933 — gold alert */
     --warning-foreground: 0 0% 100%;
@@ -55,89 +63,95 @@
     --radius: 0.5rem;                    /* 8px — brand spec: 6–8px card radius */
 
     --background-0: 0 0% 100%;           /* #FFFFFF */
-    --background-1: 0 0% 96%;            /* #F6F6F6 */
-    --background-2: 0 0% 96%;            /* #F4F4F4 */
-    --background-3: 0 0% 87%;            /* #DFDFDF */
+    --background-1: 30 20% 97%;          /* #F8F6F3 */
+    --background-2: 30 16% 95%;          /* #F2F0EC */
+    --background-3: 30 12% 88%;          /* #DFDCD6 */
 
-    --gradient-primary: linear-gradient(135deg, hsl(220 75% 35%) 0%, hsl(197 84% 48%) 100%);
-    --gradient-soft: linear-gradient(135deg, hsl(220 75% 35% / 0.10) 0%, hsl(197 84% 48% / 0.10) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(213 73% 37%) 0%, hsl(197 84% 48%) 100%);
+    --gradient-soft: linear-gradient(135deg, hsl(213 73% 37% / 0.10) 0%, hsl(197 84% 48% / 0.10) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(42 58% 42%) 0%, hsl(42 45% 32%) 100%);
 
-    --shadow-elevation-1: 0 1px 4px hsl(220 75% 10% / 0.06), 0 2px 8px hsl(220 75% 10% / 0.04);
-    --shadow-elevation-2: 0 4px 16px hsl(220 75% 10% / 0.08), 0 8px 24px hsl(220 75% 10% / 0.05);
-    --shadow-elevation-3: 0 12px 40px hsl(220 75% 10% / 0.12), 0 20px 52px hsl(220 75% 10% / 0.07);
-    --shadow-glow: 0 0 28px hsl(220 75% 35% / 0.28);
+    --shadow-elevation-1: 0 1px 4px hsl(213 73% 10% / 0.06), 0 2px 8px hsl(213 73% 10% / 0.04);
+    --shadow-elevation-2: 0 4px 16px hsl(213 73% 10% / 0.08), 0 8px 24px hsl(213 73% 10% / 0.05);
+    --shadow-elevation-3: 0 12px 40px hsl(213 73% 10% / 0.12), 0 20px 52px hsl(213 73% 10% / 0.07);
+    --shadow-glow: 0 0 28px hsl(213 73% 37% / 0.28);
 
-    /* Sidebar: #17449E primary blue nav */
-    --sidebar-background: 220 75% 35%;   /* #17449E — brand primary nav */
+    /* Sidebar: Royal Azure primary nav */
+    --sidebar-background: 213 73% 37%;   /* #1957A3 — brand primary nav */
     --sidebar-foreground: 0 0% 98%;
     --sidebar-primary: 197 84% 48%;      /* #13A7E0 — cyan for active nav items */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 75% 27%;       /* #113379 — deep blue for hover */
+    --sidebar-accent: 213 73% 29%;       /* #123F79 — deep blue for hover */
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 220 60% 30%;
+    --sidebar-border: 213 60% 32%;
     --sidebar-ring: 197 84% 48%;
   }
 
   .dark {
-    /* ── RoyanHealth Dark — deep navy, Royan Hospital operations platform ── */
-    /* Hues stay locked to brand (220° blue, 197° cyan); only lightness is lifted for readability */
-    --background: 220 40% 10%;
+    /* ── RoyanHealth Dark — "Royal Azure" ──────────────────────────────────
+       Hues stay locked to the light theme (213° blue, 197° cyan, 42° gold);
+       only lightness/saturation lift for dark-background readability. */
+    --background: 216 42% 9%;
     --foreground: 0 0% 95%;
 
-    --card: 220 38% 14%;
+    --card: 216 40% 13%;
     --card-foreground: 0 0% 95%;
 
-    --popover: 220 38% 14%;
+    --popover: 216 40% 13%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 220 75% 58%;              /* #17449E brightened for dark bg */
+    --primary: 213 73% 58%;              /* #1957A3 brightened for dark bg */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 219 71% 55%;            /* #1C4CA5 brightened for dark bg */
+    --secondary: 213 68% 58%;            /* #2569BE brightened for dark bg */
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 220 30% 20%;
+    --muted: 216 30% 19%;
     --muted-foreground: 0 0% 62%;
 
     --accent: 197 84% 58%;               /* #13A7E0 brightened for dark bg */
     --accent-foreground: 0 0% 100%;
 
+    --gold: 42 62% 58%;                  /* #D2A94A — brightened champagne for dark bg */
+    --gold-foreground: 42 45% 12%;
+
     --destructive: 15 100% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 25% 25%;
-    --input: 220 35% 16%;
-    --ring: 220 75% 58%;
+    --border: 216 25% 24%;
+    --input: 216 35% 15%;
+    --ring: 213 73% 58%;
 
     --warning: 36 71% 55%;
-    --warning-foreground: 220 40% 10%;
+    --warning-foreground: 216 40% 10%;
 
     --success: 142 70% 52%;
-    --success-foreground: 220 40% 10%;
+    --success-foreground: 216 40% 10%;
 
     --info: 197 84% 58%;
     --info-foreground: 0 0% 100%;
 
-    --background-0: 220 40% 10%;
-    --background-1: 220 38% 14%;
-    --background-2: 220 32% 18%;
-    --background-3: 220 28% 24%;
+    --background-0: 216 42% 9%;
+    --background-1: 216 40% 13%;
+    --background-2: 216 32% 17%;
+    --background-3: 216 28% 23%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(220 75% 58%) 0%, hsl(197 84% 58%) 100%);
-    --gradient-soft: linear-gradient(135deg, hsl(220 75% 58% / 0.16) 0%, hsl(197 84% 58% / 0.16) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(213 73% 58%) 0%, hsl(197 84% 58%) 100%);
+    --gradient-soft: linear-gradient(135deg, hsl(213 73% 58% / 0.16) 0%, hsl(197 84% 58% / 0.16) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(42 62% 58%) 0%, hsl(42 50% 44%) 100%);
 
-    --shadow-elevation-1: 0 2px 8px hsl(220 60% 2% / 0.25);
-    --shadow-elevation-2: 0 16px 40px hsl(220 60% 2% / 0.38);
-    --shadow-elevation-3: 0 24px 56px hsl(220 60% 2% / 0.48);
-    --shadow-glow: 0 0 24px hsl(220 75% 58% / 0.30);
+    --shadow-elevation-1: 0 2px 8px hsl(216 60% 2% / 0.25);
+    --shadow-elevation-2: 0 16px 40px hsl(216 60% 2% / 0.38);
+    --shadow-elevation-3: 0 24px 56px hsl(216 60% 2% / 0.48);
+    --shadow-glow: 0 0 24px hsl(213 73% 58% / 0.30);
 
-    --sidebar-background: 220 45% 12%;
+    --sidebar-background: 216 45% 11%;
     --sidebar-foreground: 0 0% 95%;
     --sidebar-primary: 197 84% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 35% 22%;
+    --sidebar-accent: 216 35% 21%;
     --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 220 30% 22%;
+    --sidebar-border: 216 30% 21%;
     --sidebar-ring: 197 84% 58%;
   }
 }

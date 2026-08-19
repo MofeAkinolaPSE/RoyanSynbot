@@ -21,55 +21,49 @@ import {
   ShieldCheck, Plus, Loader2, Building2, ListChecks, Tag,
   RefreshCw, CheckCircle2, XCircle, Clock, KeyRound,
   Database, Users, CalendarCheck, FlaskConical, Pill, Receipt, BedDouble,
+  Pencil, Check, X,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { HMO, Service, CoverageRule } from "@/components/hmo/hmo-shared";
+import { AddCoverageRuleDialog } from "@/components/hmo/AddCoverageRuleDialog";
+import { HMOWorkspacePanel } from "@/components/hmo/HMOWorkspacePanel";
+import { PatientHMOWorkspacePanel } from "@/components/hmo/PatientHMOWorkspacePanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface HMO {
-  id: number;
-  name: string;
-  code?: string;
-  contact_phone?: string;
-  contact_email?: string;
-  is_active?: boolean;
-  notes?: string;
-}
+const CATEGORIES = ["consultation", "lab", "pharmacy", "ward", "procedure", "imaging", "misc"] as const;
 
-interface Service {
-  id: number;
-  service_code: string;
-  name: string;
-  category?: string;
-  base_price?: number;
-  is_active?: boolean;
+function ageFromDob(dob?: string | null): string {
+  if (!dob) return "—";
+  const diffMs = Date.now() - new Date(dob).getTime();
+  const years = Math.floor(diffMs / (365.25 * 24 * 3600 * 1000));
+  return `${years}y`;
 }
-
-interface CoverageRule {
-  id: number;
-  hmo_id: number;
-  service_id: number;
-  coverage_type: string;
-  coverage_value: number;
-  requires_approval: boolean;
-  limit_type: string;
-  limit_value?: number;
-  notes?: string;
-}
-
-const COVERAGE_TYPES = ["percentage", "fixed", "none"] as const;
-const LIMIT_TYPES    = ["none", "per_visit", "per_month", "per_year", "lifetime"] as const;
-const CATEGORIES     = ["consultation", "lab", "pharmacy", "ward", "procedure", "imaging", "misc"] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function HMOAdmin() {
   const qc = useQueryClient();
   const { toast } = useToast();
+
+  // ── Patients (HMO Dashboard roster) ─────────────────────────────────────────
+  const [patientHmoFilter, setPatientHmoFilter] = useState("");
+  const [patientSearch, setPatientSearch] = useState("");
+
+  const { data: coveredPatientsData, isLoading: coveredPatientsLoading, refetch: refetchCoveredPatients } = useQuery({
+    queryKey: ["hmo-patients", patientHmoFilter, patientSearch],
+    queryFn: () => api.hospital.coverage.patients({
+      hmo_id: patientHmoFilter || undefined,
+      search: patientSearch || undefined,
+    }),
+    staleTime: 30_000,
+  });
+  const coveredPatients: any[] = coveredPatientsData?.patients ?? [];
+  const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
 
   // ── HMOs ─────────────────────────────────────────────────────────────────────
   const [hmoOpen, setHmoOpen] = useState(false);
@@ -118,19 +112,22 @@ export default function HMOAdmin() {
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  const [editingServiceId, setEditingServiceId] = useState<number | string | null>(null);
+  const [editPrice, setEditPrice] = useState("");
+  const updateServiceMut = useMutation({
+    mutationFn: (id: number | string) => api.hospital.coverage.updateService(id, { base_price: parseFloat(editPrice) || 0 }),
+    onSuccess: () => {
+      toast({ title: "Price updated" });
+      setEditingServiceId(null);
+      void qc.invalidateQueries({ queryKey: ["services-catalog"] });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
   // ── Coverage Rules ────────────────────────────────────────────────────────────
   const [ruleOpen, setRuleOpen] = useState(false);
   const [selectedHmoId, setSelectedHmoId] = useState<string>("");
-  const [ruleForm, setRuleForm] = useState({
-    hmo_id: "",
-    service_id: "",
-    coverage_type: "percentage" as typeof COVERAGE_TYPES[number],
-    coverage_value: "",
-    requires_approval: false,
-    limit_type: "none" as typeof LIMIT_TYPES[number],
-    limit_value: "",
-    notes: "",
-  });
+  const [selectedHmo, setSelectedHmo] = useState<HMO | null>(null);
 
   const { data: rulesData, isLoading: rulesLoading, refetch: refetchRules } = useQuery({
     queryKey: ["coverage-rules", selectedHmoId],
@@ -140,25 +137,8 @@ export default function HMOAdmin() {
   });
   const rules: CoverageRule[] = rulesData?.rules ?? [];
 
-  const ruleMut = useMutation({
-    mutationFn: () => api.hospital.coverage.createRule({
-      ...ruleForm,
-      hmo_id: parseInt(ruleForm.hmo_id),
-      service_id: parseInt(ruleForm.service_id),
-      coverage_value: parseFloat(ruleForm.coverage_value) || 0,
-      limit_value: ruleForm.limit_value ? parseFloat(ruleForm.limit_value) : undefined,
-    }),
-    onSuccess: () => {
-      toast({ title: "Coverage rule created" });
-      setRuleOpen(false);
-      setRuleForm({ hmo_id: "", service_id: "", coverage_type: "percentage", coverage_value: "", requires_approval: false, limit_type: "none", limit_value: "", notes: "" });
-      void qc.invalidateQueries({ queryKey: ["coverage-rules"] });
-    },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
-  });
-
   // ─── Approvals ────────────────────────────────────────────────────────────────
-  const [approvalFilter, setApprovalFilter] = useState("pending");
+  const [approvalFilter, setApprovalFilter] = useState("requested");
   const [resolveOpen, setResolveOpen] = useState(false);
   const [activeAuth, setActiveAuth] = useState<any>(null);
   const [resolveForm, setResolveForm] = useState({ status: "approved", approval_code: "", notes: "" });
@@ -169,6 +149,16 @@ export default function HMOAdmin() {
     staleTime: 30_000,
   });
   const authorizations: any[] = authsData?.authorizations ?? [];
+
+  // Own unfiltered query for the tab badge — `authorizations` above is already
+  // server-scoped to `approvalFilter`, so deriving the badge from it would
+  // always read 0 on every tab except the one it happens to match.
+  const { data: requestedAuthsData } = useQuery({
+    queryKey: ["coverage-authorizations", "requested"],
+    queryFn: () => api.hospital.coverage.listAuthorizations("requested"),
+    staleTime: 30_000,
+  });
+  const requestedCount = requestedAuthsData?.authorizations?.length ?? 0;
 
   const resolveMut = useMutation({
     mutationFn: () => api.hospital.coverage.resolveAuthorization(activeAuth.id, resolveForm),
@@ -229,8 +219,11 @@ export default function HMOAdmin() {
         </p>
       </div>
 
-      <Tabs defaultValue="hmos">
+      <Tabs defaultValue="patients">
         <TabsList className="mb-4">
+          <TabsTrigger value="patients" className="gap-2">
+            <Users className="h-4 w-4" /> Patients
+          </TabsTrigger>
           <TabsTrigger value="hmos" className="gap-2">
             <Building2 className="h-4 w-4" /> HMOs
           </TabsTrigger>
@@ -242,9 +235,9 @@ export default function HMOAdmin() {
           </TabsTrigger>
           <TabsTrigger value="approvals" className="gap-2">
             <KeyRound className="h-4 w-4" /> Approvals
-            {authorizations.filter(a => a.status === "pending").length > 0 && (
-              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {authorizations.filter(a => a.status === "pending").length}
+            {requestedCount > 0 && (
+              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[12px] font-bold text-white">
+                {requestedCount}
               </span>
             )}
           </TabsTrigger>
@@ -252,6 +245,80 @@ export default function HMOAdmin() {
             <Database className="h-4 w-4" /> Hope Sync
           </TabsTrigger>
         </TabsList>
+
+        {/* ── Patients Tab (HMO Dashboard roster) ──────────────────────────────── */}
+        <TabsContent value="patients" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              placeholder="Search patient name or MRN…"
+              value={patientSearch}
+              onChange={e => setPatientSearch(e.target.value)}
+              className="w-64"
+            />
+            <Select value={patientHmoFilter || "__all"} onValueChange={v => setPatientHmoFilter(v === "__all" ? "" : v)}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Filter by HMO…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">All HMOs</SelectItem>
+                {hmos.map(h => <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => void refetchCoveredPatients()} className="gap-2">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+            <p className="text-sm text-muted-foreground ml-auto">{coveredPatients.length} patient{coveredPatients.length !== 1 ? "s" : ""} under cover</p>
+          </div>
+
+          {coveredPatientsLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : coveredPatients.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+              <Users className="mx-auto mb-3 h-8 w-8 opacity-30" />
+              No patients currently attached to an HMO
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date of Registration</TableHead>
+                      <TableHead>Patient Name</TableHead>
+                      <TableHead>MRN</TableHead>
+                      <TableHead>Insurance No.</TableHead>
+                      <TableHead>Age/Gender</TableHead>
+                      <TableHead>HMO</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {coveredPatients.map(p => (
+                      <TableRow key={p.patient_id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedPatient(p)}>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {p.registered_at ? new Date(p.registered_at).toLocaleDateString() : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">{p.patient_name ?? `#${p.patient_id}`}</TableCell>
+                        <TableCell className="font-mono text-xs">{p.mrn ?? "—"}</TableCell>
+                        <TableCell className="text-xs">{p.membership_id ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground capitalize">
+                          {ageFromDob(p.date_of_birth)} / {p.gender ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-sm">{p.hmo_name ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn("text-xs capitalize",
+                            p.status === "active" ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400" : "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-400")}>
+                            {p.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
         {/* ── HMOs Tab ───────────────────────────────────────────────────────── */}
         <TabsContent value="hmos" className="space-y-4">
@@ -289,18 +356,18 @@ export default function HMOAdmin() {
                   </TableHeader>
                   <TableBody>
                     {hmos.map(h => (
-                      <TableRow key={h.id}>
+                      <TableRow key={h.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedHmo(h)}>
                         <TableCell className="font-medium">{h.name}</TableCell>
                         <TableCell className="font-mono text-xs">{h.code ?? "—"}</TableCell>
                         <TableCell className="text-sm">{h.contact_phone ?? "—"}</TableCell>
                         <TableCell className="text-sm">{h.contact_email ?? "—"}</TableCell>
                         <TableCell>
                           {h.is_active !== false ? (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30 text-xs">
                               <CheckCircle2 className="mr-1 h-3 w-3" /> Active
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-slate-500/10 text-slate-400 border-slate-500/30 text-xs">
+                            <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30 text-xs">
                               <XCircle className="mr-1 h-3 w-3" /> Inactive
                             </Badge>
                           )}
@@ -365,7 +432,7 @@ export default function HMOAdmin() {
                           <TableCell className="text-sm">{service?.name ?? `Service ${r.service_id}`}</TableCell>
                           <TableCell className="capitalize text-xs">{r.coverage_type}</TableCell>
                           <TableCell className="text-sm font-medium">
-                            {r.coverage_type === "percentage"
+                            {r.coverage_type === "percent"
                               ? `${r.coverage_value}%`
                               : r.coverage_type === "fixed"
                               ? `₦${Number(r.coverage_value).toLocaleString()}`
@@ -373,7 +440,7 @@ export default function HMOAdmin() {
                           </TableCell>
                           <TableCell>
                             {r.requires_approval ? (
-                              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-400 border-orange-500/30">Required</Badge>
+                              <Badge variant="outline" className="text-[12px] bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30">Required</Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">No</span>
                             )}
@@ -424,6 +491,7 @@ export default function HMOAdmin() {
                       <TableHead>Service Name</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Base Price</TableHead>
+                      <TableHead className="w-16"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -433,7 +501,32 @@ export default function HMOAdmin() {
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell className="capitalize text-xs">{s.category ?? "—"}</TableCell>
                         <TableCell className="text-sm">
-                          {s.base_price ? `₦${Number(s.base_price).toLocaleString()}` : "—"}
+                          {editingServiceId === s.id ? (
+                            <Input type="number" min="0" className="h-7 w-28 text-sm" autoFocus
+                              value={editPrice} onChange={e => setEditPrice(e.target.value)} />
+                          ) : (
+                            <span className={cn(!s.base_price && "text-amber-600")}>
+                              {s.base_price ? `₦${Number(s.base_price).toLocaleString()}` : "Not priced"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingServiceId === s.id ? (
+                            <div className="flex gap-1">
+                              <Button size="icon" variant="ghost" className="h-7 w-7" disabled={updateServiceMut.isPending}
+                                onClick={() => updateServiceMut.mutate(s.id)}>
+                                {updateServiceMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-green-600" />}
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingServiceId(null)}>
+                                <X className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button size="icon" variant="ghost" className="h-7 w-7"
+                              onClick={() => { setEditingServiceId(s.id); setEditPrice(String(s.base_price ?? "")); }}>
+                              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -448,7 +541,7 @@ export default function HMOAdmin() {
         <TabsContent value="approvals" className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex gap-2">
-              {["pending", "approved", "rejected", "all"].map(s => (
+              {["requested", "approved", "rejected", "all"].map(s => (
                 <button key={s} onClick={() => setApprovalFilter(s)}
                   className={cn("rounded-full border px-3 py-1 text-xs capitalize transition-colors",
                     approvalFilter === s ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}>
@@ -468,7 +561,7 @@ export default function HMOAdmin() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Patient ID</TableHead>
+                      <TableHead>Patient</TableHead>
                       <TableHead>Service</TableHead>
                       <TableHead>HMO</TableHead>
                       <TableHead>Requested</TableHead>
@@ -487,23 +580,26 @@ export default function HMOAdmin() {
                       </TableRow>
                     ) : authorizations.map(auth => (
                       <TableRow key={auth.id}>
-                        <TableCell className="font-mono text-xs">{auth.patient_id ?? "—"}</TableCell>
-                        <TableCell className="text-sm">{auth.service_name ?? `Service #${auth.service_id}` ?? "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {auth.patient_name ?? `#${auth.patient_id}`}
+                          {auth.mrn && <span className="text-xs text-muted-foreground font-mono ml-2">{auth.mrn}</span>}
+                        </TableCell>
+                        <TableCell className="text-sm">{auth.service_name ?? `Service #${auth.service_id}`}</TableCell>
                         <TableCell className="text-sm">{auth.hmo_name ?? "—"}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {auth.created_at ? new Date(auth.created_at).toLocaleDateString() : "—"}
+                          {auth.requested_at ? new Date(auth.requested_at).toLocaleDateString() : "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={cn("text-xs capitalize",
-                            auth.status === "approved" ? "border-green-500/30 bg-green-500/10 text-green-400" :
-                            auth.status === "rejected" ? "border-red-500/30 bg-red-500/10 text-red-400" :
-                            "border-orange-500/30 bg-orange-500/10 text-orange-400")}>
+                            auth.status === "approved" ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400" :
+                            auth.status === "rejected" ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400" :
+                            "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-400")}>
                             {auth.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{auth.approval_code ?? "—"}</TableCell>
+                        <TableCell className="font-mono text-xs">{auth.authorization_code ?? "—"}</TableCell>
                         <TableCell>
-                          {auth.status === "pending" && (
+                          {auth.status === "requested" && (
                             <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1"
                               onClick={() => { setActiveAuth(auth); setResolveOpen(true); }}>
                               <KeyRound className="h-3 w-3" /> Resolve
@@ -542,16 +638,16 @@ export default function HMOAdmin() {
                           <p className="text-sm font-semibold">{label}</p>
                           {result ? (
                             result.ok ? (
-                              <p className="text-[11px] text-green-400">
+                              <p className="text-[13px] text-green-700 dark:text-green-400">
                                 {result.synced ?? 0} synced · {result.at}
                               </p>
                             ) : (
-                              <p className="text-[11px] text-red-400 truncate max-w-[120px]">
+                              <p className="text-[13px] text-red-700 dark:text-red-400 truncate max-w-[120px]">
                                 Error: {result.error}
                               </p>
                             )
                           ) : (
-                            <p className="text-[11px] text-muted-foreground">Not synced yet</p>
+                            <p className="text-[13px] text-muted-foreground">Not synced yet</p>
                           )}
                         </div>
                       </div>
@@ -609,7 +705,7 @@ export default function HMOAdmin() {
           <DialogHeader>
             <DialogTitle>Resolve Authorization</DialogTitle>
             <DialogDescription>
-              {activeAuth?.service_name} · Patient {activeAuth?.patient_id}
+              {activeAuth?.service_name} · Patient {activeAuth?.patient_name ?? activeAuth?.patient_id}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -717,99 +813,23 @@ export default function HMOAdmin() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Add Coverage Rule Dialog ───────────────────────────────────────── */}
-      <Dialog open={ruleOpen} onOpenChange={setRuleOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Coverage Rule</DialogTitle>
-            <DialogDescription>Define what an HMO covers for a given service</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label>HMO *</Label>
-              <Select value={ruleForm.hmo_id} onValueChange={v => setRuleForm(f => ({ ...f, hmo_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select HMO" /></SelectTrigger>
-                <SelectContent>
-                  {hmos.map(h => <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Service *</Label>
-              <Select value={ruleForm.service_id} onValueChange={v => setRuleForm(f => ({ ...f, service_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
-                <SelectContent>
-                  {services.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Coverage Type</Label>
-                <Select value={ruleForm.coverage_type} onValueChange={v => setRuleForm(f => ({ ...f, coverage_type: v as any }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {COVERAGE_TYPES.map(t => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  {ruleForm.coverage_type === "percentage" ? "Coverage %" : ruleForm.coverage_type === "fixed" ? "Fixed Amount (₦)" : "Value"}
-                </Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={ruleForm.coverage_type === "percentage" ? 100 : undefined}
-                  value={ruleForm.coverage_value}
-                  onChange={e => setRuleForm(f => ({ ...f, coverage_value: e.target.value }))}
-                  placeholder={ruleForm.coverage_type === "percentage" ? "e.g. 80" : "e.g. 5000"}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                id="requires-approval"
-                type="checkbox"
-                checked={ruleForm.requires_approval}
-                onChange={e => setRuleForm(f => ({ ...f, requires_approval: e.target.checked }))}
-                className="rounded border-border"
-              />
-              <Label htmlFor="requires-approval">Requires pre-authorization</Label>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Limit Type</Label>
-                <Select value={ruleForm.limit_type} onValueChange={v => setRuleForm(f => ({ ...f, limit_type: v as any }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {LIMIT_TYPES.map(t => <SelectItem key={t} value={t} className="capitalize">{t.replace(/_/g, " ")}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              {ruleForm.limit_type !== "none" && (
-                <div className="space-y-1">
-                  <Label>Limit (₦)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={ruleForm.limit_value}
-                    onChange={e => setRuleForm(f => ({ ...f, limit_value: e.target.value }))}
-                    placeholder="e.g. 50000"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRuleOpen(false)}>Cancel</Button>
-            <Button disabled={!ruleForm.hmo_id || !ruleForm.service_id || ruleMut.isPending} onClick={() => ruleMut.mutate()}>
-              {ruleMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Rule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddCoverageRuleDialog open={ruleOpen} onOpenChange={setRuleOpen} hmos={hmos} services={services} />
+
+      {selectedHmo && (
+        <HMOWorkspacePanel hmo={selectedHmo} hmos={hmos} services={services} onClose={() => setSelectedHmo(null)} />
+      )}
+
+      {selectedPatient && (
+        <PatientHMOWorkspacePanel
+          patient={selectedPatient}
+          hmos={hmos}
+          onClose={() => setSelectedPatient(null)}
+          onViewProvider={(hmoId) => {
+            const provider = hmos.find(h => h.id === hmoId);
+            if (provider) { setSelectedPatient(null); setSelectedHmo(provider); }
+          }}
+        />
+      )}
 
       {/* ── Add Service Dialog ─────────────────────────────────────────────── */}
       <Dialog open={serviceOpen} onOpenChange={setServiceOpen}>

@@ -29,8 +29,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.db import db, audit_event
-from src.middleware import verify_jwt
+from src.middleware import require_role
+from src.local_db import JsonbValue
 from src.constants import (
+    TABLE_STAFF,
     TABLE_CLINIC_TEMPLATES,
     TABLE_SPECIALIST_NOTES,
     SPECIALTY_ALLOWED,
@@ -40,9 +42,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/specialist", tags=["Specialist Clinics"])
 
+# Nav gates the whole page to this role set (nav-items.ts) — patient
+# clinical notes, no sub-feature here is more sensitive than another.
+SPECIALIST_ROLES = ("admin", "ops", "nurse", "doctor", "management")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _resolve_staff_id_for_user(user: dict) -> Optional[str]:
+    """Map the acting JWT subject (an auth user id) to their own royan_staff.id,
+    via royan_staff.user_id — the two are different uuid spaces, `sub` is never
+    itself a valid royan_staff.id, so it can't be passed through directly."""
+    sub = user.get("sub")
+    if not sub:
+        return None
+    r = db.table(TABLE_STAFF).select("id").eq("user_id", sub).limit(1).execute()
+    return r.data[0]["id"] if r.data else None
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +376,7 @@ class TemplateUpdate(BaseModel):
 class SpecialistNote(BaseModel):
     patient_id:    int
     encounter_id:  Optional[int]  = None
-    template_id:   Optional[int]  = None
+    template_id:   Optional[str]  = None
     specialty:     str
     note_data:     Dict[str, Any] = Field(default_factory=dict)
     icd10_codes:   Optional[List[str]] = None
@@ -384,13 +401,14 @@ class NoteAmend(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/templates", status_code=201)
-async def create_template(payload: TemplateCreate, user=Depends(verify_jwt)):
+async def create_template(payload: TemplateCreate, user=Depends(require_role(*SPECIALIST_ROLES))):
     if payload.specialty not in SPECIALTY_ALLOWED:
         raise HTTPException(status_code=422, detail=f"specialty must be one of {sorted(SPECIALTY_ALLOWED)}")
     data = payload.model_dump()
-    data["active"]     = True
-    data["created_by"] = user.get("sub") or "system"
-    data["created_at"] = _now()
+    data["fields"]      = JsonbValue(data["fields"])
+    data["active"]      = True
+    data["created_by"]  = _resolve_staff_id_for_user(user)
+    data["created_at"]  = _now()
     try:
         result = db.table(TABLE_CLINIC_TEMPLATES).insert(data).execute()
     except Exception as exc:
@@ -406,7 +424,7 @@ async def create_template(payload: TemplateCreate, user=Depends(verify_jwt)):
 async def list_templates(
     specialty: Optional[str] = Query(None),
     active_only: bool        = Query(True),
-    user=Depends(verify_jwt),
+    user=Depends(require_role(*SPECIALIST_ROLES)),
 ):
     q = db.table(TABLE_CLINIC_TEMPLATES).select(
         "id,specialty,template_name,default_order_sets,active,created_at"
@@ -418,7 +436,7 @@ async def list_templates(
 
 
 @router.get("/templates/{template_id}")
-async def get_template(template_id: int, user=Depends(verify_jwt)):
+async def get_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     r = db.table(TABLE_CLINIC_TEMPLATES).select("*").eq("id", template_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -426,10 +444,12 @@ async def get_template(template_id: int, user=Depends(verify_jwt)):
 
 
 @router.patch("/templates/{template_id}")
-async def update_template(template_id: int, payload: TemplateUpdate, user=Depends(verify_jwt)):
+async def update_template(template_id: str, payload: TemplateUpdate, user=Depends(require_role(*SPECIALIST_ROLES))):
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+    if "fields" in updates:
+        updates["fields"] = JsonbValue(updates["fields"])
     updates["updated_at"] = _now()
     db.table(TABLE_CLINIC_TEMPLATES).update(updates).eq("id", template_id).execute()
     audit_event("clinic_template_updated", {}, actor_id=user.get("sub"),
@@ -438,7 +458,7 @@ async def update_template(template_id: int, payload: TemplateUpdate, user=Depend
 
 
 @router.delete("/templates/{template_id}")
-async def delete_template(template_id: int, user=Depends(verify_jwt)):
+async def delete_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     db.table(TABLE_CLINIC_TEMPLATES).update({"active": False}).eq("id", template_id).execute()
     return {"ok": True, "template_id": template_id}
 
@@ -448,11 +468,13 @@ async def delete_template(template_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/notes", status_code=201)
-async def submit_note(payload: SpecialistNote, user=Depends(verify_jwt)):
+async def submit_note(payload: SpecialistNote, user=Depends(require_role(*SPECIALIST_ROLES))):
     if payload.specialty not in SPECIALTY_ALLOWED:
         raise HTTPException(status_code=422, detail=f"specialty must be one of {sorted(SPECIALTY_ALLOWED)}")
     data = payload.model_dump(exclude_none=True)
-    data["noted_by"]  = payload.noted_by or user.get("sub") or "system"
+    data["noted_by"]  = payload.noted_by or _resolve_staff_id_for_user(user)
+    if not data["noted_by"]:
+        data.pop("noted_by", None)
     data["noted_at"]  = _now()
     try:
         result = db.table(TABLE_SPECIALIST_NOTES).insert(data).execute()
@@ -472,10 +494,10 @@ async def list_notes(
     encounter_id: Optional[int] = Query(None),
     specialty:    Optional[str] = Query(None),
     limit:        int           = Query(50, ge=1, le=200),
-    user=Depends(verify_jwt),
+    user=Depends(require_role(*SPECIALIST_ROLES)),
 ):
     q = db.table(TABLE_SPECIALIST_NOTES).select(
-        "id,patient_id,encounter_id,specialty,assessment,plan,noted_by,noted_at,icd10_codes"
+        "id,patient_id,encounter_id,specialty,note_data,assessment,plan,noted_by,noted_at,amended_at,icd10_codes"
     ).order("noted_at", desc=True).limit(limit)
     if patient_id:   q = q.eq("patient_id",   patient_id)
     if encounter_id: q = q.eq("encounter_id", encounter_id)
@@ -485,7 +507,7 @@ async def list_notes(
 
 
 @router.get("/notes/{note_id}")
-async def get_note(note_id: int, user=Depends(verify_jwt)):
+async def get_note(note_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     r = db.table(TABLE_SPECIALIST_NOTES).select("*").eq("id", note_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -493,12 +515,14 @@ async def get_note(note_id: int, user=Depends(verify_jwt)):
 
 
 @router.patch("/notes/{note_id}")
-async def amend_note(note_id: int, payload: NoteAmend, user=Depends(verify_jwt)):
+async def amend_note(note_id: str, payload: NoteAmend, user=Depends(require_role(*SPECIALIST_ROLES))):
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
     updates["amended_at"] = _now()
-    updates["amended_by"] = user.get("sub") or "system"
+    resolved = _resolve_staff_id_for_user(user)
+    if resolved:
+        updates["amended_by"] = resolved
     db.table(TABLE_SPECIALIST_NOTES).update(updates).eq("id", note_id).execute()
     audit_event("specialist_note_amended", {}, actor_id=user.get("sub"),
                 subject_type="specialist_note", subject_id=str(note_id))
@@ -510,7 +534,7 @@ async def amend_note(note_id: int, payload: NoteAmend, user=Depends(verify_jwt))
 # ---------------------------------------------------------------------------
 
 @router.post("/seed", status_code=201)
-async def seed_templates(user=Depends(verify_jwt)):
+async def seed_templates(user=Depends(require_role(*SPECIALIST_ROLES))):
     """
     Idempotent: inserts the 14 built-in specialty templates.
     Skips any specialty that already has an active template.
@@ -520,6 +544,7 @@ async def seed_templates(user=Depends(verify_jwt)):
 
     inserted = []
     skipped  = []
+    resolved_by = _resolve_staff_id_for_user(user)
 
     for tmpl in BUILTIN_TEMPLATES:
         if tmpl["specialty"] in existing_specs:
@@ -527,8 +552,9 @@ async def seed_templates(user=Depends(verify_jwt)):
             continue
         record = {
             **tmpl,
+            "fields":     JsonbValue(tmpl["fields"]),
             "active":     True,
-            "created_by": user.get("sub") or "seed",
+            "created_by": resolved_by,
             "created_at": _now(),
         }
         try:

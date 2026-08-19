@@ -56,11 +56,30 @@ async function toApiError(res: Response, fallbackMessage: string): Promise<ApiEr
   }
 
   const detailPayload = detail?.detail ?? detail?.error ?? detail;
-  const message =
-    (typeof detailPayload === "string" ? detailPayload : detailPayload?.message) ||
-    res.statusText ||
-    fallbackMessage;
-  const code = typeof detailPayload === "object" ? detailPayload?.code : undefined;
+
+  // FastAPI's own request-validation errors (missing/invalid field, before the
+  // route handler even runs) shape `detail` as an ARRAY of {loc, msg, type}
+  // objects, not a string — the single-string case below never matches it,
+  // so this was silently falling through to the generic fallback message
+  // and hiding the actual reason (e.g. "Discharge Summary is required")
+  // from the user entirely.
+  let message: string | undefined;
+  if (typeof detailPayload === "string") {
+    message = detailPayload;
+  } else if (Array.isArray(detailPayload)) {
+    message = detailPayload
+      .map((e: any) => {
+        const field = Array.isArray(e?.loc) ? e.loc[e.loc.length - 1] : undefined;
+        return field && e?.msg ? `${field}: ${e.msg}` : e?.msg;
+      })
+      .filter(Boolean)
+      .join("; ");
+  } else if (detailPayload?.message) {
+    message = detailPayload.message;
+  }
+  message = message || res.statusText || fallbackMessage;
+
+  const code = typeof detailPayload === "object" && !Array.isArray(detailPayload) ? detailPayload?.code : undefined;
 
   return new ApiError(message, res.status, classifyApiErrorKind(res.status), code, detailPayload);
 }
@@ -187,6 +206,58 @@ async function sendJson<T>(
   return res.json();
 }
 
+/** Like sendJson, but for endpoints that stream a file (e.g. .docx) instead of
+ * JSON — returns the raw blob plus the filename from Content-Disposition. */
+async function sendJsonForDownload(
+  endpoint: string,
+  method: "POST" | "PUT" | "PATCH",
+  body: Record<string, any>,
+): Promise<{ blob: Blob; filename: string }> {
+  let token = await getBearerToken();
+  const doFetch = () => fetch(apiUrl(endpoint), {
+    method,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  let res = await doFetch();
+
+  if (res.status === 401) {
+    const refreshed = await authClient.refresh();
+    if (!refreshed) {
+      redirectToLoginIfNeeded();
+      throw new ApiError("Session expired", 401, "session");
+    }
+    token = await getBearerToken();
+    res = await doFetch();
+  }
+
+  if (!res.ok) {
+    const apiError = await toApiError(res, `Request failed for ${method} ${endpoint}`);
+    console.error(`API Error ${method} ${endpoint}:`, apiError.message);
+    throw apiError;
+  }
+
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : "download";
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function fetchPublicJson<T>(endpoint: string): Promise<T> {
   const res = await fetch(apiUrl(endpoint), { cache: "no-store" });
   if (!res.ok) {
@@ -311,6 +382,9 @@ export const api = {
     // short-lived, single-use ticket so the raw access token never has to
     // travel in a WebSocket URL (and therefore never lands in proxy logs).
     getWsTicket: () => sendJson<{ ticket: string; expires_in: number }>("/realtime/ws-ticket", "POST", {}),
+  },
+  presence: {
+    summary: () => fetchRaw<{ count: number; staff: any[] }>("/realtime/presence/summary"),
   },
   capability: {
     proposals: (limit = 50) =>
@@ -995,6 +1069,34 @@ export const api = {
       return fetchRaw<{ data: any[] }>(`/documents/archive${q}`);
     },
   },
+  // ── Phase 12 — Facility Audits & Equipment Maintenance (hospital-native;
+  // distinct from the pharma `compliance` namespace above) ─────────────────
+  facility: {
+    listAudits: (params?: { status?: string; department?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.status)     qs.set('status', params.status);
+      if (params?.department) qs.set('department', params.department);
+      return fetchRaw<any>('/facility/audits?' + qs);
+    },
+    createAudit: (payload: { audit_title: string; department: string; scheduled_date: string; risk_level?: string }) =>
+      sendJson<any>('/facility/audits', 'POST', payload),
+    getAudit: (id: string) => fetchRaw<any>('/facility/audits/' + id),
+    startAudit: (id: string) => sendJson<any>(`/facility/audits/${id}/start`, 'PATCH', {}),
+    completeAudit: (id: string, payload: { findings?: string; recommendations?: string; score?: number }) =>
+      sendJson<any>(`/facility/audits/${id}/complete`, 'PATCH', payload),
+    listMaintenance: (statusFilter?: 'all' | 'overdue' | 'upcoming') => {
+      const qs = statusFilter && statusFilter !== 'all' ? '?status_filter=' + statusFilter : '';
+      return fetchRaw<any>('/facility/maintenance' + qs);
+    },
+    createMaintenance: (payload: {
+      equipment_name: string; equipment_type?: string; location?: string;
+      maintenance_type?: string; description?: string; due_date: string;
+    }) => sendJson<any>('/facility/maintenance', 'POST', payload),
+    getMaintenance: (id: string) => fetchRaw<any>('/facility/maintenance/' + id),
+    completeMaintenance: (id: string, payload: { completion_notes?: string; next_due_date?: string }) =>
+      sendJson<any>(`/facility/maintenance/${id}/complete`, 'PATCH', payload),
+    stats: () => fetchRaw<any>('/facility/stats'),
+  },
   knowledge: {
     getDocuments: (docType?: string, department?: string, page = 1) => {
       const params = new URLSearchParams();
@@ -1441,12 +1543,15 @@ export const api = {
         status: string;
       }>("/reports/generate", "POST", payload),
 
-    /** URL for downloading a report as a Word document (.docx). Requires auth header. */
-    generateDocxUrl: () => "/reports/generate/docx",
-
-    /** Run the agent and download the result as a .docx — returns URL for fetch-with-auth. */
-    generateDocx: (payload: { report_type?: string; intent_text?: string }) =>
-      sendJson<Blob>("/reports/generate/docx", "POST", payload),
+    /** Run the agent and stream the result as a branded .docx, triggering a
+     * browser download. `entity_id` scopes the report to one specific record
+     * (only honored by report types that define id_column, e.g. facility_audit,
+     * equipment_maintenance) instead of the usual aggregate-across-recent-rows
+     * narrative. */
+    generateDocx: async (payload: { report_type?: string; intent_text?: string; entity_id?: string }) => {
+      const { blob, filename } = await sendJsonForDownload("/reports/generate/docx", "POST", payload);
+      triggerBlobDownload(blob, filename);
+    },
 
     /** List recently stored reports (optionally filtered by type). */
     history: (report_type?: string, limit = 10) => {
@@ -1500,11 +1605,15 @@ export const api = {
     queue: {
       open: (payload: Record<string, any>) =>
         sendJson<any>('/queue/encounters', 'POST', payload),
-      list: (params?: { status?: string; department?: string; doctor?: string }) => {
+      getActiveEncounter: (patientId: string | number) =>
+        fetchRaw<{ active_encounter: any | null }>('/queue/patients/' + patientId + '/active-encounter'),
+      list: (params?: { status?: string; department?: string; doctor?: string; patient_id?: number; active_only?: boolean }) => {
         const qs = new URLSearchParams();
-        if (params?.status)     qs.set('status', params.status);
-        if (params?.department) qs.set('department', params.department);
-        if (params?.doctor)     qs.set('doctor', params.doctor);
+        if (params?.status)      qs.set('status', params.status);
+        if (params?.department)  qs.set('department', params.department);
+        if (params?.doctor)      qs.set('doctor', params.doctor);
+        if (params?.patient_id)  qs.set('patient_id', String(params.patient_id));
+        if (params?.active_only) qs.set('active_only', 'true');
         return fetchRaw<any>('/queue/encounters' + (qs.toString() ? '?' + qs : ''));
       },
       get:       (id: string) => fetchRaw<any>('/queue/encounters/' + id),
@@ -1517,8 +1626,12 @@ export const api = {
       discharge:    (id: string, p: Record<string, any>) => sendJson<any>('/queue/encounters/' + id + '/discharge', 'POST', p),
       nursingDone:  (id: string | number) => sendJson<any>('/queue/encounters/' + id + '/nurse-done', 'POST', {}),
       callPatient:  (id: string | number, room?: string) => sendJson<any>('/queue/encounters/' + id + '/call', 'POST', { room }),
+      assignNurse:  (id: string | number, nurseId: string | null) => sendJson<any>('/queue/encounters/' + id + '/assign-nurse', 'PATCH', { nurse_id: nurseId }),
       listNotes:    (id: string) => fetchRaw<any>('/queue/encounters/' + id + '/notes'),
       addNote:      (id: string, p: Record<string, any>) => sendJson<any>('/queue/encounters/' + id + '/notes', 'POST', p),
+      pauseConsultation:  (id: string | number, reason?: string) => sendJson<any>('/queue/encounters/' + id + '/pause', 'POST', { reason }),
+      resumeConsultation: (id: string | number) => sendJson<any>('/queue/encounters/' + id + '/resume', 'POST', {}),
+      endConsultation:    (id: string | number, p?: Record<string, any>) => sendJson<any>('/queue/encounters/' + id + '/end-consultation', 'POST', p ?? {}),
     },
     display: {
       getQueue: (department?: string) =>
@@ -1533,17 +1646,24 @@ export const api = {
         sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/admit', 'POST', p),
       freeBed: (wardId: string, bedId: string) =>
         sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/discharge', 'POST', {}),
+      updateBedStatus: (wardId: string, bedId: string, p: { status: string; notes?: string }) =>
+        sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/status', 'PATCH', p),
     },
     billing: {
       createBill: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills', 'POST', p),
       createBillFromEncounter: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills/from-encounter', 'POST', p),
-      listBills: (params?: { status?: string; patient_id?: number }) => {
+      listBills: (params?: { status?: string; patient_id?: number; encounter_id?: number }) => {
         const qs = new URLSearchParams();
-        if (params?.status)     qs.set('status', params.status);
-        if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
+        if (params?.status)      qs.set('status', params.status);
+        if (params?.patient_id)  qs.set('patient_id', String(params.patient_id));
+        if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
         return fetchRaw<any>('/billing_hospital/bills' + (qs.toString() ? '?' + qs : ''));
       },
       getBill: (id: string) => fetchRaw<any>('/billing_hospital/bills/' + id),
+      getSuggestedItems: (encounterId: string | number) =>
+        fetchRaw<any>('/billing_hospital/encounters/' + encounterId + '/suggested-items'),
+      getInvoice: (billId: string | number) =>
+        fetchRaw<any>('/billing_hospital/bills/' + billId + '/invoice'),
       recordPayment: (id: string, p: Record<string, any>) => sendJson<any>('/billing_hospital/bills/' + id + '/payment', 'POST', {
         ...p,
         reference: p.reference ?? p.reference_number,
@@ -1560,6 +1680,11 @@ export const api = {
         return fetchRaw<any>('/billing_hospital/claims' + (qs.toString() ? '?' + qs : ''));
       },
       updateClaim: (id: string, p: Record<string, any>) => sendJson<any>('/billing_hospital/claims/' + id, 'PATCH', p),
+      getStats: () => fetchRaw<any>('/billing_hospital/stats'),
+      writeOffBill: (id: string, p: Record<string, any> = {}) =>
+        sendJson<any>('/billing_hospital/bills/' + id + '/write-off', 'POST', p),
+      listUnbilledEncounters: (limit?: number) =>
+        fetchRaw<any>('/billing_hospital/unbilled-encounters' + (limit ? '?limit=' + limit : '')),
     },
     appointments: {
       createSlot: (p: Record<string, any>) => sendJson<any>('/appointments/slots', 'POST', {
@@ -1570,23 +1695,26 @@ export const api = {
         max_patients: p.max_patients ?? p.capacity,
         department: p.department === 'General OPD' ? 'OPD' : p.department,
       }),
-      listSlots: (params?: { date?: string; provider?: string }) => {
+      listSlots: (params?: { date?: string; provider?: string; availableOnly?: boolean }) => {
         const qs = new URLSearchParams();
         if (params?.date)     qs.set('slot_date', params.date);
         if (params?.provider) qs.set('doctor_name', params.provider);
+        if (params?.availableOnly === false) qs.set('available_only', 'false');
         return fetchRaw<any>('/appointments/slots' + (qs.toString() ? '?' + qs : ''));
       },
       deleteSlot: (id: string) => sendDelete<any>('/appointments/slots/' + id),
       book: (p: Record<string, any>) => sendJson<any>('/appointments/book', 'POST', p),
-      list: (params?: { date?: string; status?: string }) => {
+      list: (params?: { date?: string; date_to?: string; status?: string }) => {
         const qs = new URLSearchParams();
-        if (params?.date)   qs.set('date',   params.date);
-        if (params?.status) qs.set('status', params.status === 'scheduled' ? 'booked' : params.status);
+        if (params?.date)    qs.set('date',    params.date);
+        if (params?.date_to) qs.set('date_to', params.date_to);
+        if (params?.status)  qs.set('status',  params.status === 'scheduled' ? 'booked' : params.status);
         return fetchRaw<any>('/appointments' + (qs.toString() ? '?' + qs : ''));
       },
       arrive:   (id: string) => sendJson<any>('/appointments/' + id + '/arrive',   'PATCH', {}),
       complete: (id: string) => sendJson<any>('/appointments/' + id + '/complete', 'PATCH', {}),
       cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/appointments/' + id + '/cancel', 'PATCH', p),
+      noShow:   (id: string) => sendJson<any>('/appointments/' + id + '/no-show', 'PATCH', {}),
       // Scheduling Control Center additions
       calendar: (params?: { date_from?: string; date_to?: string; doctor_name?: string; doctor_id?: string; department?: string }) => {
         const qs = new URLSearchParams();
@@ -1608,13 +1736,40 @@ export const api = {
     },
     coverage: {
       quote: (p: Record<string, any>) => sendJson<any>('/coverage/quote', 'POST', p),
+      estimateBill: (p: Record<string, any>) => sendJson<any>('/coverage/estimate-bill', 'POST', p),
+      patients: (params?: { hmo_id?: string | number; search?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.hmo_id) qs.set('hmo_id', String(params.hmo_id));
+        if (params?.search) qs.set('search', params.search);
+        return fetchRaw<any>('/coverage/patients' + (qs.toString() ? '?' + qs : ''));
+      },
       hmos: () => fetchRaw<any>('/coverage/hmos'),
       createHmo: (p: Record<string, any>) => sendJson<any>('/coverage/hmos', 'POST', p),
+      updateHmo: (id: number | string, p: Record<string, any>) => sendJson<any>('/coverage/hmos/' + id, 'PATCH', p),
+      listPlans: (hmo_id: number | string, activeOnly = true) =>
+        fetchRaw<any>('/coverage/hmos/' + hmo_id + '/plans' + (activeOnly ? '' : '?active_only=false')),
+      createPlan: (hmo_id: number | string, p: Record<string, any>) =>
+        sendJson<any>('/coverage/hmos/' + hmo_id + '/plans', 'POST', p),
       services: (category?: string) => fetchRaw<any>('/coverage/services' + (category ? '?category=' + encodeURIComponent(category) : '')),
       createService: (p: Record<string, any>) => sendJson<any>('/coverage/services', 'POST', p),
+      updateService: (id: string | number, p: Record<string, any>) => sendJson<any>('/coverage/services/' + id, 'PATCH', p),
       listRules: (hmo_id?: string) => fetchRaw<any>('/coverage/rules' + (hmo_id ? '?hmo_id=' + encodeURIComponent(hmo_id) : '')),
       createRule: (p: Record<string, any>) => sendJson<any>('/coverage/rules', 'POST', p),
+      updateRule: (id: number | string, p: Record<string, any>) => sendJson<any>('/coverage/rules/' + id, 'PATCH', p),
+      listPatientInsurance: (patientId: number | string) =>
+        fetchRaw<any>('/coverage/patient-insurance?patient_id=' + patientId),
       createPatientInsurance: (p: Record<string, any>) => sendJson<any>('/coverage/patient-insurance', 'POST', p),
+      updatePatientInsurance: (id: number | string, p: Record<string, any>) =>
+        sendJson<any>('/coverage/patient-insurance/' + id, 'PATCH', p),
+      listClaims: (params?: { patient_id?: number | string; status?: string; hmo_provider_id?: number | string }) => {
+        const qs = new URLSearchParams();
+        if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
+        if (params?.status) qs.set('status', params.status);
+        if (params?.hmo_provider_id) qs.set('hmo_provider_id', String(params.hmo_provider_id));
+        const q = qs.toString();
+        return fetchRaw<any>('/coverage/claims' + (q ? '?' + q : ''));
+      },
+      updateClaim: (id: number | string, p: Record<string, any>) => sendJson<any>('/coverage/claims/' + id, 'PATCH', p),
       requestAuthorization: (p: Record<string, any>) => sendJson<any>('/coverage/authorizations', 'POST', p),
       listAuthorizations: (status?: string) => fetchRaw<any>('/coverage/authorizations' + (status ? '?status=' + encodeURIComponent(status) : '')),
       resolveAuthorization: (id: number, p: Record<string, any>) => sendJson<any>('/coverage/authorizations/' + id, 'PATCH', p),
@@ -1625,6 +1780,9 @@ export const api = {
     },
     clinical: {
       searchIcd10: (q: string) => fetchRaw<any>('/clinical/icd10?q=' + encodeURIComponent(q)),
+      listNoteTitles: (department?: string) =>
+        fetchRaw<any>('/clinical/note-titles' + (department ? '?department=' + encodeURIComponent(department) : '')),
+      searchDrugs: (q: string) => fetchRaw<any>('/clinical/drugs?q=' + encodeURIComponent(q)),
       listProblems: (patientId: number | string, status?: string) =>
         fetchRaw<any>('/clinical/patients/' + patientId + '/problems' + (status ? '?status=' + encodeURIComponent(status) : '')),
       addProblem: (patientId: number | string, p: Record<string, any>) =>
@@ -1661,16 +1819,26 @@ export const api = {
     pharmacy: {
       // Prescriptions (consolidated here to avoid duplicate key override —
       // see the `lab` block below for the same pattern)
+      stats: () => fetchRaw<any>('/pharmacy/stats'),
+      administrationQueue: (params?: { encounter_id?: number | string }) => {
+        const qs = params?.encounter_id ? '?encounter_id=' + params.encounter_id : '';
+        return fetchRaw<any>('/pharmacy/administration-queue' + qs);
+      },
       createRx: (p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions', 'POST', p),
-      listRx: (params?: { status?: string; encounter_id?: string }) => {
+      listRx: (params?: { status?: string; encounter_id?: string | number; patient_id?: string | number }) => {
+        // Real backend status values only (pending|partially_dispensed|
+        // dispensed|cancelled|returned) — the old active/partial alias-remap
+        // shim is gone now that the panel replaces the pill-filtered page.
         const qs = new URLSearchParams();
-        if (params?.status)       qs.set('status',       params.status === 'active' ? 'pending' : params.status === 'partial' ? 'partially_dispensed' : params.status);
-        if (params?.encounter_id) qs.set('encounter_id', params.encounter_id);
+        if (params?.status) qs.set('status', params.status);
+        if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
+        if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
         return fetchRaw<any>('/pharmacy/prescriptions' + (qs.toString() ? '?' + qs : ''));
       },
       getRx: (id: string | number) => fetchRaw<any>('/pharmacy/prescriptions/' + id),
-      dispense: (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/dispense', 'POST',  p),
-      cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/cancel',   'POST', p),
+      dispense: (id: string | number, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/dispense', 'POST',  p),
+      cancel:   (id: string | number, p: Record<string, any> = {}) => sendJson<any>('/pharmacy/prescriptions/' + id + '/cancel',   'POST', p),
+      administer: (id: string | number, p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions/' + id + '/administer', 'POST', p),
       // Allergies
       listAllergies: (patientId: number | string) =>
         fetchRaw<any>('/pharmacy/allergies/' + patientId),
@@ -1695,6 +1863,41 @@ export const api = {
       listExpiring: (withinDays?: number) =>
         fetchRaw<any>('/pharmacy/inventory/expiring' + (withinDays ? '?within_days=' + withinDays : '')),
       listExpired: () => fetchRaw<any>('/pharmacy/inventory/expired'),
+      // Pharmacy Inventory workspace — batch/lot-aware stock, risk tiers, trends
+      inventory: {
+        cards: (params?: { category?: string; risk_tier?: string; search?: string }) => {
+          const qs = new URLSearchParams();
+          if (params?.category) qs.set('category', params.category);
+          if (params?.risk_tier) qs.set('risk_tier', params.risk_tier);
+          if (params?.search) qs.set('search', params.search);
+          const q = qs.toString();
+          return fetchRaw<any>('/pharmacy/inventory/cards' + (q ? '?' + q : ''));
+        },
+        drugs: (params?: { search?: string; category?: string; limit?: number }) => {
+          const qs = new URLSearchParams();
+          if (params?.search) qs.set('search', params.search);
+          if (params?.category) qs.set('category', params.category);
+          if (params?.limit) qs.set('limit', String(params.limit));
+          const q = qs.toString();
+          return fetchRaw<any>('/pharmacy/inventory/drugs' + (q ? '?' + q : ''));
+        },
+        drug: (formularyId: number | string) => fetchRaw<any>('/pharmacy/inventory/drugs/' + formularyId),
+        addDrug: (p: Record<string, any>) => sendJson<any>('/pharmacy/inventory/drugs', 'POST', p),
+        receiveBatch: (formularyId: number | string, p: Record<string, any>) =>
+          sendJson<any>('/pharmacy/inventory/drugs/' + formularyId + '/receive', 'POST', p),
+        adjustBatch: (batchId: number | string, p: { adjustment: number; reason?: string; notes?: string }) =>
+          sendJson<any>('/pharmacy/inventory/batches/' + batchId + '/adjust', 'POST', p),
+        summary: () => fetchRaw<any>('/pharmacy/inventory/summary'),
+        trendsMostPrescribed: (params?: { window_days?: number; limit?: number }) => {
+          const qs = new URLSearchParams();
+          if (params?.window_days) qs.set('window_days', String(params.window_days));
+          if (params?.limit) qs.set('limit', String(params.limit));
+          const q = qs.toString();
+          return fetchRaw<any>('/pharmacy/inventory/trends/most-prescribed' + (q ? '?' + q : ''));
+        },
+        trendsRecentlyDispensed: (limit?: number) =>
+          fetchRaw<any>('/pharmacy/inventory/trends/recently-dispensed' + (limit ? '?limit=' + limit : '')),
+      },
       // Sales on Return (SOR)
       createReturn: (p: Record<string, any>) => sendJson<any>('/pharmacy/returns', 'POST', p),
       listReturns: (params?: { patient_id?: number | string; dispensing_id?: number | string }) => {
@@ -1718,15 +1921,15 @@ export const api = {
         return res.json();
       },
       signatureUrl: (filename: string) => apiUrl('/pharmacy/signatures/' + encodeURIComponent(filename)),
-      // Replenishment
-      listReplenishmentRequests: (params?: { ward?: string; status?: string }) => {
+      // Replenishment — sku maps from drug_name; status ∈ recommended|approved|ordered|received|cancelled
+      listReplenishmentRequests: (params?: { sku?: string; status?: string }) => {
         const qs = new URLSearchParams();
-        if (params?.ward) qs.set('ward', params.ward);
+        if (params?.sku) qs.set('sku', params.sku);
         if (params?.status) qs.set('status', params.status);
         const q = qs.toString();
         return fetchRaw<any>('/pharmacy/replenishment-requests' + (q ? '?' + q : ''));
       },
-      createReplenishmentRequest: (p: Record<string, any>) =>
+      createReplenishmentRequest: (p: { formulary_id?: number | string; drug_name?: string; requested_qty?: number; ward?: string; urgency?: string; unit?: string; notes?: string }) =>
         sendJson<any>('/pharmacy/replenishment-request', 'POST', p),
       updateReplenishmentStatus: (id: number | string, status: string) =>
         sendJson<any>('/pharmacy/replenishment-requests/' + id + '/status?status=' + encodeURIComponent(status), 'PATCH', {}),
@@ -1759,15 +1962,24 @@ export const api = {
       // Core lab methods (consolidated here to avoid duplicate key override)
       stats: () => fetchRaw<any>('/lab/stats'),
       placeOrder: (p: Record<string, any>) => sendJson<any>('/lab/orders', 'POST', p),
-      listOrders: (params?: { status?: string; urgency?: string; patient_id?: number }) => {
+      listOrders: (params?: { status?: string; urgency?: string; patient_id?: number; ordered_by?: string }) => {
         const qs = new URLSearchParams();
         if (params?.status)     qs.set('status',     params.status);
         if (params?.urgency)    qs.set('urgency',    params.urgency);
         if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
+        if (params?.ordered_by) qs.set('ordered_by', params.ordered_by);
         return fetchRaw<any>('/lab/orders' + (qs.toString() ? '?' + qs : ''));
       },
-      collect: (id: string | number) => sendJson<any>('/lab/orders/' + id + '/collect', 'POST', {}),
+      getOrder: (id: string | number) => fetchRaw<any>('/lab/orders/' + id),
+      collect: (id: string | number, p: Record<string, any> = {}) => sendJson<any>('/lab/orders/' + id + '/collect', 'POST', p),
+      receive: (id: string | number, p: Record<string, any> = {}) => sendJson<any>('/lab/orders/' + id + '/receive', 'POST', p),
+      reject: (id: string | number, p: Record<string, any>) => sendJson<any>('/lab/orders/' + id + '/reject', 'POST', p),
       recordResult: (id: string | number, p: Record<string, any>) => sendJson<any>('/lab/orders/' + id + '/result', 'POST', p),
+      verify: (id: string | number, p: Record<string, any> = {}) => sendJson<any>('/lab/orders/' + id + '/verify', 'POST', p),
+      amendResult: (id: string | number, p: Record<string, any>) => sendJson<any>('/lab/orders/' + id + '/result/amend', 'POST', p),
+      getResultVersions: (id: string | number) => fetchRaw<any>('/lab/orders/' + id + '/results'),
+      searchCatalog: (q: string, limit = 20) =>
+        fetchRaw<any>('/lab/catalog/search?q=' + encodeURIComponent(q) + '&limit=' + limit),
       turnaround: () => fetchRaw<any>('/lab/turnaround'),
       critical:   () => fetchRaw<any>('/lab/critical'),
       listReferenceRanges: (testName?: string) => {
@@ -1813,7 +2025,7 @@ export const api = {
     // ── Phase 3 — Radiology ───────────────────────────────────────────────
     radiology: {
       createOrder: (p: Record<string, any>) => sendJson<any>('/radiology/orders', 'POST', p),
-      listOrders: (params?: { status?: string; modality?: string; patient_id?: number; encounter_id?: number; urgency?: string; date?: string }) => {
+      listOrders: (params?: { status?: string; modality?: string; patient_id?: number; encounter_id?: number; urgency?: string; date?: string; ordered_by?: string }) => {
         const qs = new URLSearchParams();
         if (params?.status) qs.set('status', params.status);
         if (params?.modality) qs.set('modality', params.modality);
@@ -1821,12 +2033,17 @@ export const api = {
         if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
         if (params?.urgency) qs.set('urgency', params.urgency);
         if (params?.date) qs.set('date', params.date);
+        if (params?.ordered_by) qs.set('ordered_by', params.ordered_by);
         const q = qs.toString();
         return fetchRaw<any>('/radiology/orders' + (q ? '?' + q : ''));
       },
       getOrder: (id: number | string) => fetchRaw<any>('/radiology/orders/' + id),
       submitReport: (id: number | string, p: Record<string, any>) =>
         sendJson<any>('/radiology/orders/' + id + '/report', 'PATCH', p),
+      amendReport: (id: number | string, p: Record<string, any>) =>
+        sendJson<any>('/radiology/orders/' + id + '/report/amend', 'PATCH', p),
+      verify: (id: number | string, p: Record<string, any> = {}) =>
+        sendJson<any>('/radiology/orders/' + id + '/verify', 'POST', p),
       advanceStatus: (id: number | string, p: Record<string, any>) =>
         sendJson<any>('/radiology/orders/' + id + '/status', 'PATCH', p),
       patientHistory: (patientId: number | string, modality?: string) => {
@@ -1871,6 +2088,11 @@ export const api = {
         const qs = '?date=' + encodeURIComponent(date) + (theatreName ? '&theatre_name=' + encodeURIComponent(theatreName) : '');
         return fetchRaw<any>('/theatre/schedule' + qs);
       },
+      stats: () => fetchRaw<any>('/theatre/stats'),
+      verifyOperativeNotes: (id: number | string, p: Record<string, any> = {}) =>
+        sendJson<any>('/theatre/cases/' + id + '/operative-notes/verify', 'POST', p),
+      amendOperativeNotes: (id: number | string, p: Record<string, any>) =>
+        sendJson<any>('/theatre/cases/' + id + '/operative-notes/amend', 'PATCH', p),
     },
     // ── Phase 5 — MCH / OB-GYN ───────────────────────────────────────────
     mch: {
@@ -1913,6 +2135,17 @@ export const api = {
       // Babies (mother-baby linkage)
       listBabies: (motherPatientId: number | string) =>
         fetchRaw<any>('/mch/patients/' + motherPatientId + '/babies'),
+      // Babies roster (hospital-wide, not scoped to one mother) + detail
+      listBabiesRoster: (params?: { search?: string; status?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.search) qs.set('search', params.search);
+        if (params?.status) qs.set('status', params.status);
+        if (params?.limit)  qs.set('limit', String(params.limit));
+        const s = qs.toString();
+        return fetchRaw<any>('/mch/babies' + (s ? '?' + s : ''));
+      },
+      getBaby: (patientId: number | string) => fetchRaw<any>('/mch/babies/' + patientId),
+      registerBaby: (payload: Record<string, any>) => sendJson<any>('/mch/babies/register', 'POST', payload),
       // Vaccine schedule reference data
       listVaccineSchedule: (params?: { patient_id?: number | string }) => {
         const qs = params?.patient_id ? '?patient_id=' + params.patient_id : '';
@@ -1985,10 +2218,10 @@ export const api = {
     submitInvestigation: (id: number | string, p: Record<string, any>) =>
       sendJson<any>('/quality/incidents/' + id + '/investigation', 'PATCH', p),
     logInfection: (p: Record<string, any>) => sendJson<any>('/quality/infection-control', 'POST', p),
-    listInfections: (params?: { ward?: string; infection_type?: string }) => {
+    listInfections: (params?: { ward?: string; event_type?: string }) => {
       const qs = new URLSearchParams();
-      if (params?.ward)           qs.set('ward', params.ward);
-      if (params?.infection_type) qs.set('infection_type', params.infection_type);
+      if (params?.ward)       qs.set('ward', params.ward);
+      if (params?.event_type) qs.set('event_type', params.event_type);
       return fetchRaw<any>('/quality/infection-control?' + qs);
     },
     infectionStats: () => fetchRaw<any>('/quality/infection-control/stats'),
@@ -2030,11 +2263,10 @@ export const api = {
     updateLeaveStatus: (id: number | string, p: Record<string, any>) =>
       sendJson<any>('/hr/leave/' + id + '/status', 'PATCH', p),
     createPayroll: (p: Record<string, any>) => sendJson<any>('/hr/payroll', 'POST', p),
-    listPayroll: (params?: { staff_id?: string; department?: string; payment_status?: string }) => {
+    listPayroll: (params?: { staff_id?: string; status?: string }) => {
       const qs = new URLSearchParams();
-      if (params?.staff_id)       qs.set('staff_id', params.staff_id);
-      if (params?.department)     qs.set('department', params.department);
-      if (params?.payment_status) qs.set('payment_status', params.payment_status);
+      if (params?.staff_id) qs.set('staff_id', params.staff_id);
+      if (params?.status)   qs.set('status', params.status);
       return fetchRaw<any>('/hr/payroll?' + qs);
     },
     payrollSummary: (staffId: string) => fetchRaw<any>('/hr/payroll/' + staffId + '/summary'),

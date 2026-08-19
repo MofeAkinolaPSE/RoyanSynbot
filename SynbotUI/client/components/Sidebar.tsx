@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { api } from "@/lib/api-client";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav-items";
+import { canViewByRoles } from "@/lib/nav-access";
 import {
   Collapsible,
   CollapsibleContent,
@@ -72,11 +73,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
     return item;
   });
 
-  const canView = (allowed?: string[]) => {
-    if (authLoading) return true;
-    if (!allowed || allowed.length === 0) return true;
-    return roles.some((role) => allowed.includes(role));
-  };
+  const canView = (allowed?: string[]) => authLoading || canViewByRoles(roles, allowed);
 
   const visibleNavItems = navItems.filter((item) => canView(item.roles));
 
@@ -111,9 +108,9 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
           <div
             className="relative overflow-hidden rounded-xl px-3 py-2"
             style={{
-              background: "linear-gradient(135deg, rgba(0,200,220,0.07) 0%, rgba(0,90,200,0.05) 100%)",
-              border: "1px solid rgba(0,200,220,0.15)",
-              boxShadow: "0 0 18px rgba(0,200,220,0.08), inset 0 1px 0 rgba(255,255,255,0.06)",
+              background: "linear-gradient(135deg, rgba(19,167,224,0.07) 0%, rgba(201,162,75,0.05) 100%)",
+              border: "1px solid rgba(201,162,75,0.22)",
+              boxShadow: "0 0 18px rgba(19,167,224,0.06), 0 0 22px rgba(201,162,75,0.06), inset 0 1px 0 rgba(255,255,255,0.06)",
             }}
           >
             {/* Radial highlight shimmer */}
@@ -130,9 +127,11 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
               className="relative w-full h-auto object-contain"
               style={{
                 maxHeight: "48px",
-                filter: "drop-shadow(0 2px 8px rgba(0,200,220,0.28)) drop-shadow(0 0 2px rgba(255,255,255,0.15))",
+                filter: "drop-shadow(0 2px 8px rgba(19,167,224,0.24)) drop-shadow(0 0 2px rgba(255,255,255,0.15))",
               }}
             />
+            {/* Thin gold rule — the app's one everyday gold touch, kept small */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px]" style={{ background: "linear-gradient(90deg, transparent, #C9A24B 50%, transparent)" }} />
           </div>
         </div>
 
@@ -220,7 +219,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
                   )}
                   {item.badge && !item.aiPulse && (
                     <span className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                      "rounded-full px-2 py-0.5 text-[12px] font-semibold",
                       item.badge === "AI"
                         ? "bg-gradient-primary text-primary-foreground"
                         : "bg-orange-500 text-white",
@@ -246,7 +245,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
               <span className="truncate text-sm font-medium leading-tight">
                 Roy
               </span>
-              <span className="truncate text-[11px] capitalize text-sidebar-foreground/50 leading-tight">
+              <span className="truncate text-[13px] capitalize text-sidebar-foreground/50 leading-tight">
                 {userRole}
               </span>
             </div>

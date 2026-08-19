@@ -17,12 +17,12 @@ import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const EVENT_CLASS_COLORS: Record<string, string> = {
-  security:       "bg-red-500/20 text-red-400 border-red-500/30",
-  data_ingestion: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  identity:       "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  workflow:       "bg-green-500/20 text-green-400 border-green-500/30",
-  analytics:      "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  system:         "bg-slate-500/20 text-slate-400 border-slate-500/30",
+  security:       "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+  data_ingestion: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  identity:       "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
+  workflow:       "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  analytics:      "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  system:         "bg-slate-500/20 text-slate-700 dark:text-slate-400 border-slate-500/30",
 };
 
 function fmtDateTime(ts?: string) {
@@ -140,7 +140,7 @@ export default function AuditLog() {
                     </TableCell>
                     <TableCell className="font-mono text-xs">{log.event_type ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px] capitalize", EVENT_CLASS_COLORS[log.event_class ?? "system"] ?? "")}>
+                      <Badge variant="outline" className={cn("text-[12px] capitalize", EVENT_CLASS_COLORS[log.event_class ?? "system"] ?? "")}>
                         {(log.event_class ?? "system").replace(/_/g, " ")}
                       </Badge>
                     </TableCell>
@@ -151,10 +151,10 @@ export default function AuditLog() {
                       {!log.subject_type && "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px]",
-                        log.outcome === "success" ? "border-green-500/30 text-green-400 bg-green-500/10" :
-                        log.outcome === "failure" ? "border-red-500/30 text-red-400 bg-red-500/10" :
-                        "border-slate-500/30 text-slate-400"
+                      <Badge variant="outline" className={cn("text-[12px]",
+                        log.outcome === "success" ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" :
+                        log.outcome === "failure" ? "border-red-500/30 text-red-700 dark:text-red-400 bg-red-500/10" :
+                        "border-slate-500/30 text-slate-700 dark:text-slate-400"
                       )}>
                         {log.outcome ?? "—"}
                       </Badge>

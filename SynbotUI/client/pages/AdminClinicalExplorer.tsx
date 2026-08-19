@@ -180,7 +180,7 @@ function SearchTab({ onSelectMrn }: { onSelectMrn: (mrn: string) => void }) {
                   <TableCell className="text-xs text-muted-foreground">{p.date_of_birth ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.phone ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.hmo_provider ?? "—"}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px] capitalize">{p.current_status ?? "—"}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-[12px] capitalize">{p.current_status ?? "—"}</Badge></TableCell>
                   <TableCell>
                     <Button
                       size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1"
@@ -365,7 +365,7 @@ function DataQualityTab() {
                     <TableCell className="text-xs font-mono">{c.referenced_table}</TableCell>
                     <TableCell className="text-xs tabular-nums">{c.linked_rows ?? "—"} / {c.total_rows ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px]", coverageBadgeClass(c.coverage_pct))}>
+                      <Badge variant="outline" className={cn("text-[12px]", coverageBadgeClass(c.coverage_pct))}>
                         {c.coverage_pct !== null ? `${c.coverage_pct}%` : "n/a"}
                       </Badge>
                     </TableCell>
@@ -398,7 +398,7 @@ function DataQualityTab() {
                   <TableRow key={v.table}>
                     <TableCell className="text-xs font-mono">{v.table}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px]", v.patient_encounter_mismatches ? "text-red-700 bg-red-50 border-red-300" : "text-emerald-700 bg-emerald-50 border-emerald-300")}>
+                      <Badge variant="outline" className={cn("text-[12px]", v.patient_encounter_mismatches ? "text-red-700 bg-red-50 border-red-300" : "text-emerald-700 bg-emerald-50 border-emerald-300")}>
                         {v.patient_encounter_mismatches ?? 0}
                       </Badge>
                     </TableCell>

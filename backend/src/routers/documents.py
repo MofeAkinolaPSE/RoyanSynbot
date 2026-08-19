@@ -266,19 +266,20 @@ async def generate_referral_letter(request: Request, encounter_id: str, payload:
         f"Royan Hospital\n"
     )
 
-    # Persist as encounter note
+    # Persist as encounter note — urgency/referring_to are already captured
+    # inline in letter_body's text, so no dedicated columns are needed for them.
     doc_id = str(uuid.uuid4())
     try:
-        db.table("royan_encounter_notes").insert({
-            "id": doc_id,
+        result = db.table("royan_encounter_notes").insert({
             "encounter_id": encounter_id,
             "patient_id": enc.get("patient_id"),
             "note_type": "referral_letter",
             "content": letter_body,
-            "created_by": user.get("sub") or "system",
-            "referring_to": payload.referring_to,
-            "urgency": payload.urgency,
+            "author_id": user.get("sub"),
+            "author_name": payload.referring_doctor,
         }).execute()
+        if result.data:
+            doc_id = str(result.data[0]["id"])
     except Exception:
         pass  # If note insert fails, still return the letter
 

@@ -13,6 +13,7 @@ from .hospital_ops import (
     get_pending_lab_orders,
     get_pending_prescriptions,
     get_bed_status,
+    get_patient_record,
 )
 from .sage_adapter.service import (
     kpis as finance_kpis,
@@ -382,6 +383,18 @@ def build_default_tool_registry() -> ToolRegistry:
             allowed_modes={"assistant", "executive"},
         ),
         get_pending_prescriptions,
+    )
+
+    registry.register(
+        ToolMetadata(
+            name="getPatientRecord",
+            description="Look up a specific patient by MRN or name and return their demographics, active encounter, clinical note count, active prescriptions, and pending lab orders.",
+            department="clinical",
+            source="services.hospital_ops.get_patient_record",
+            required_roles={"doctor", "nurse", "pharmacist", "lab", "radiology", "admin", "management", "receptionist"},
+            allowed_modes={"assistant", "executive"},
+        ),
+        get_patient_record,
     )
 
     registry.register(

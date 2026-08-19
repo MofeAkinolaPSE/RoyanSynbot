@@ -13,6 +13,16 @@ export default {
   		}
   	},
   	extend: {
+  		fontSize: {
+  			// Bumped ~1px over Tailwind defaults across the board for legibility
+  			// (clinical UI complaint: small/grey text hard to read). Token-level
+  			// so it applies to every text-xs/sm/base/lg/xl usage app-wide.
+  			xs:   ['0.8125rem', { lineHeight: '1.125rem' }],  // 13px (was 12px)
+  			sm:   ['0.9375rem', { lineHeight: '1.375rem' }],  // 15px (was 14px)
+  			base: ['1.0625rem', { lineHeight: '1.625rem' }],  // 17px (was 16px)
+  			lg:   ['1.1875rem', { lineHeight: '1.75rem'  }],  // 19px (was 18px)
+  			xl:   ['1.3125rem', { lineHeight: '1.875rem' }],  // 21px (was 20px)
+  		},
   		colors: {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
@@ -70,6 +80,10 @@ export default {
   			info: {
   				DEFAULT: 'hsl(var(--info))',
   				foreground: 'hsl(var(--info-foreground))'
+  			},
+  			gold: {
+  				DEFAULT: 'hsl(var(--gold))',
+  				foreground: 'hsl(var(--gold-foreground))'
   			},
   			surface: {
   				'0': 'hsl(var(--background-0))',

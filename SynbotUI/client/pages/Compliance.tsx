@@ -65,18 +65,18 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
-    completed: "bg-green-500/20 text-green-400 border-green-500/30",
-    in_progress: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    scheduled: "bg-slate-500/20 text-slate-300 border-slate-500/30",
-    overdue: "bg-red-500/20 text-red-400 border-red-500/30",
-    open: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    closed: "bg-green-500/20 text-green-400 border-green-500/30",
-    active: "bg-red-500/20 text-red-400 border-red-500/30",
-    resolved: "bg-green-500/20 text-green-400 border-green-500/30",
-    draft: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    pending: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    completed: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+    in_progress: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+    scheduled: "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30",
+    overdue: "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+    open: "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30",
+    closed: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+    active: "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+    resolved: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+    draft: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+    pending: "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
   };
-  const cls = map[status?.toLowerCase()] ?? "bg-slate-500/20 text-slate-300 border-slate-500/30";
+  const cls = map[status?.toLowerCase()] ?? "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30";
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold", cls)}>
       {status?.replace(/_/g, " ")}
@@ -86,12 +86,12 @@ function statusBadge(status: string) {
 
 function severityBadge(severity: string) {
   const map: Record<string, string> = {
-    critical: "bg-red-600/25 text-red-300 border-red-600/40",
-    major: "bg-orange-500/25 text-orange-300 border-orange-500/40",
-    minor: "bg-yellow-500/25 text-yellow-300 border-yellow-500/40",
-    low: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+    critical: "bg-red-600/25 text-red-700 dark:text-red-300 border-red-600/40",
+    major: "bg-orange-500/25 text-orange-700 dark:text-orange-300 border-orange-500/40",
+    minor: "bg-yellow-500/25 text-yellow-700 dark:text-yellow-300 border-yellow-500/40",
+    low: "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30",
   };
-  const cls = map[severity?.toLowerCase()] ?? "bg-slate-500/20 text-slate-300 border-slate-500/30";
+  const cls = map[severity?.toLowerCase()] ?? "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30";
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold", cls)}>
       {severity}
@@ -253,7 +253,7 @@ function DocumentsTab() {
                     <p className="text-xs text-muted-foreground shrink-0">{formatDate(doc.created_at)}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-blue-500/15 text-blue-300 border-blue-500/30">
+                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30">
                       {(doc.document_type ?? "—").replace(/_/g, " ")}
                     </span>
                     <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs uppercase text-muted-foreground border-border/60">
@@ -263,8 +263,8 @@ function DocumentsTab() {
                       className={cn(
                         "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
                         doc.source === "generated"
-                          ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
-                          : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                          : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                       )}
                     >
                       {doc.source ?? "—"}
@@ -305,7 +305,7 @@ function DocumentsTab() {
                         {doc.title ?? "—"}
                       </TableCell>
                       <TableCell>
-                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-blue-500/15 text-blue-300 border-blue-500/30">
+                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30">
                           {(doc.document_type ?? "—").replace(/_/g, " ")}
                         </span>
                       </TableCell>
@@ -315,8 +315,8 @@ function DocumentsTab() {
                           className={cn(
                             "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
                             doc.source === "generated"
-                              ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
-                              : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                              ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                              : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                           )}
                         >
                           {doc.source ?? "—"}
@@ -433,7 +433,7 @@ function OverviewTab() {
   }
 
   const score = status?.overall_compliance_score ?? status?.compliance_score ?? 0;
-  const scoreColor = score >= 80 ? "text-green-400" : score >= 60 ? "text-yellow-400" : "text-red-400";
+  const scoreColor = score >= 80 ? "text-green-700 dark:text-green-400" : score >= 60 ? "text-yellow-700 dark:text-yellow-400" : "text-red-700 dark:text-red-400";
   const scoreGradient =
     score >= 80
       ? "from-green-500/20 to-emerald-500/10"
@@ -448,28 +448,28 @@ function OverviewTab() {
       label: "Audits Overdue",
       value: summary.audits_overdue ?? status?.audits_overdue ?? "—",
       icon: ClipboardList,
-      color: "text-orange-400",
+      color: "text-orange-700 dark:text-orange-400",
       bg: "bg-orange-500/10",
     },
     {
       label: "Open Deviations",
       value: summary.open_deviations ?? status?.open_deviations ?? "—",
       icon: AlertTriangle,
-      color: "text-yellow-400",
+      color: "text-yellow-700 dark:text-yellow-400",
       bg: "bg-yellow-500/10",
     },
     {
       label: "Maintenance Overdue",
       value: summary.maintenance_overdue ?? status?.maintenance_overdue ?? "—",
       icon: Wrench,
-      color: "text-blue-400",
+      color: "text-blue-700 dark:text-blue-400",
       bg: "bg-blue-500/10",
     },
     {
       label: "Active Recalls",
       value: summary.active_recalls ?? status?.active_recalls ?? "—",
       icon: PackageX,
-      color: "text-red-400",
+      color: "text-red-700 dark:text-red-400",
       bg: "bg-red-500/10",
     },
   ];
@@ -530,7 +530,7 @@ function OverviewTab() {
               {deductions.map((d: any, i: number) => (
                 <div key={i} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
                   <span className="text-muted-foreground">{d.reason ?? d.label}</span>
-                  <span className="font-semibold text-red-400">-{d.points ?? d.deduction} pts</span>
+                  <span className="font-semibold text-red-700 dark:text-red-400">-{d.points ?? d.deduction} pts</span>
                 </div>
               ))}
             </div>
@@ -1159,7 +1159,7 @@ function DeviationsTab() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium leading-tight">{d.title}</p>
-                        <p className="mt-1 font-mono text-[11px] text-muted-foreground">{d.deviation_id}</p>
+                        <p className="mt-1 font-mono text-[13px] text-muted-foreground">{d.deviation_id}</p>
                       </div>
                       {statusBadge(d.status)}
                     </div>
@@ -1635,7 +1635,7 @@ function RecallsTab() {
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-red-400">
+                <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
                   <AlertTriangle className="h-5 w-5" /> Initiate Product Recall
                 </DialogTitle>
                 <DialogDescription>
@@ -1716,7 +1716,7 @@ function RecallsTab() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium leading-tight">{r.product_name}</p>
-                        <p className="mt-1 font-mono text-[11px] text-muted-foreground">{r.recall_id}</p>
+                        <p className="mt-1 font-mono text-[13px] text-muted-foreground">{r.recall_id}</p>
                       </div>
                       {statusBadge(r.status)}
                     </div>
@@ -1918,7 +1918,7 @@ function SopTab() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium leading-tight">{s.title}</p>
-                        <p className="mt-1 font-mono text-[11px] text-muted-foreground">{s.sop_code}</p>
+                        <p className="mt-1 font-mono text-[13px] text-muted-foreground">{s.sop_code}</p>
                       </div>
                       {statusBadge(s.status ?? "active")}
                     </div>

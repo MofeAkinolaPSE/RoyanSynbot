@@ -279,6 +279,114 @@ def calculate_coverage(payload: CoverageInput) -> dict[str, Any]:
     }
 
 
+_CATEGORY_BILL_FIELDS: dict[str, list[str]] = {
+    "consultation_fee": ["consultation"],
+    "lab_charges": ["lab"],
+    "pharmacy_charges": ["pharmacy"],
+    "ward_charges": ["ward"],
+    "procedure_charges": ["procedure", "imaging"],
+    "miscellaneous": ["misc"],
+}
+
+
+def _rule_for_category(hmo_id: int | None, plan_id: int | None, categories: list[str]) -> dict[str, Any] | None:
+    """Best coverage rule matching ANY active service in the given category
+    bucket — a category-level approximation of _coverage_rule (which needs a
+    specific service_id), used when a bill is entered as flat category
+    totals rather than individual service line items."""
+    if not hmo_id:
+        return None
+    services = _rows(
+        db.table(TABLE_SERVICE_CATALOG).select("id").eq("is_active", True).in_("category", categories).execute()
+    )
+    service_ids = [s["id"] for s in services]
+    if not service_ids:
+        return None
+
+    if plan_id:
+        exact = _first(
+            db.table(TABLE_COVERAGE_RULES).select("*")
+            .eq("hmo_id", hmo_id).eq("plan_id", plan_id)
+            .in_("service_id", service_ids).eq("is_active", True).limit(1).execute()
+        )
+        if exact:
+            return exact
+
+    try:
+        return _first(
+            db.table(TABLE_COVERAGE_RULES).select("*")
+            .eq("hmo_id", hmo_id).is_("plan_id", "null")
+            .in_("service_id", service_ids).eq("is_active", True).limit(1).execute()
+        )
+    except Exception:
+        return _first(
+            db.table(TABLE_COVERAGE_RULES).select("*")
+            .eq("hmo_id", hmo_id)
+            .in_("service_id", service_ids).eq("is_active", True).limit(1).execute()
+        )
+
+
+def estimate_bill_coverage(patient_id: int, category_amounts: dict[str, float]) -> dict[str, Any]:
+    """Category-level coverage estimate for the flat-total bill-generation
+    form (GenerateBillPanel) — the per-service calculate_coverage() above
+    needs a specific service_id, which this simpler form never collects.
+    Conservative by construction: any category with no matching rule
+    contributes 0 covered, never a guessed number."""
+    insurance = get_active_patient_insurance(patient_id)
+    if not insurance:
+        return {
+            "insured": False,
+            "hmo_name": None,
+            "hmo_covered": 0.0,
+            "breakdown": {k: 0.0 for k in category_amounts},
+            "warnings": ["no_active_insurance"],
+        }
+
+    breakdown: dict[str, float] = {}
+    warnings: list[str] = []
+    total_covered = 0.0
+    for field, raw_amount in category_amounts.items():
+        amount = _num(raw_amount, 0.0)
+        if amount <= 0:
+            breakdown[field] = 0.0
+            continue
+        categories = _CATEGORY_BILL_FIELDS.get(field, ["misc"])
+        rule = _rule_for_category(insurance.get("hmo_id"), insurance.get("plan_id"), categories)
+        if not rule:
+            breakdown[field] = 0.0
+            warnings.append(f"no_rule_for_{field}")
+            continue
+
+        coverage_type = str(rule.get("coverage_type") or "none")
+        coverage_value = _num(rule.get("coverage_value"), 0.0)
+        if coverage_type == "percent":
+            covered = amount * min(max(coverage_value, 0.0), 100.0) / 100.0
+        elif coverage_type == "fixed":
+            covered = min(coverage_value, amount)
+        elif coverage_type == "capitation":
+            covered = amount
+        else:
+            covered = 0.0
+
+        limit_type = str(rule.get("limit_type") or "none")
+        limit_value = rule.get("limit_value")
+        if limit_type != "none" and limit_value is not None and covered > _num(limit_value):
+            covered = _num(limit_value)
+            warnings.append(f"coverage_limit_applied_{field}")
+
+        covered = round(max(0.0, min(covered, amount)), 2)
+        breakdown[field] = covered
+        total_covered += covered
+
+    return {
+        "insured": True,
+        "hmo_name": insurance.get("hmo_name"),
+        "hmo_covered": round(total_covered, 2),
+        "breakdown": breakdown,
+        "warnings": warnings,
+    }
+
+
 def billing_breakdown_from_quotes(quotes: list[dict[str, Any]]) -> dict[str, float]:
     totals = {
         "consultation_fee": 0.0,

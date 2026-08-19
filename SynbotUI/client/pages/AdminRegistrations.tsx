@@ -96,7 +96,7 @@ function PendingRegistrationsTab() {
                 <TableRow key={r.id}>
                   <TableCell className="text-sm font-medium">{r.full_name}</TableCell>
                   <TableCell className="text-sm">{r.email}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px] capitalize">{r.role}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-[12px] capitalize">{r.role}</Badge></TableCell>
                   <TableCell className="text-sm">{r.department ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
@@ -197,13 +197,13 @@ function UserRoleRow({ user, onSaved }: { user: any; onSaved: () => void }) {
       <TableCell>
         <div className="flex flex-wrap gap-1">
           {currentRoles.map((r: string) => (
-            <Badge key={r} variant="outline" className="text-[10px] capitalize">{r}</Badge>
+            <Badge key={r} variant="outline" className="text-[12px] capitalize">{r}</Badge>
           ))}
           {currentRoles.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant="outline" className={cn("text-[10px]", user.is_active ? "text-green-700 bg-green-50 border-green-300" : "text-slate-500")}>
+        <Badge variant="outline" className={cn("text-[12px]", user.is_active ? "text-green-700 bg-green-50 border-green-300" : "text-slate-500")}>
           {user.is_active ? "Active" : "Inactive"}
         </Badge>
       </TableCell>

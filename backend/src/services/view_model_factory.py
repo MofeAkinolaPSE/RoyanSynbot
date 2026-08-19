@@ -45,6 +45,13 @@ def _q(conn, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
             return [dict(r) for r in cur.fetchall()]
     except Exception as exc:
         logger.warning("ViewModelFactory query failed: %s | %.80s", exc, sql)
+        # A failed query aborts the current Postgres transaction — every
+        # subsequent query on this same connection would fail too until
+        # this rolls it back (see eke_service._q for the same fix).
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return []
 
 
@@ -63,9 +70,9 @@ def _sd(val: Any) -> Optional[str]:
 
 def _load_encounter_and_patient(conn, encounter_id: int):
     enc = _q1(conn, """
-        SELECT e.*, COALESCE(s.first_name || ' ' || s.last_name, e.consulting_doctor) AS doctor_name
+        SELECT e.*, COALESCE(s.full_name, e.consulting_doctor) AS doctor_name
         FROM public.royan_encounters e
-        LEFT JOIN public.royan_staff s ON s.id = e.consulting_doctor_id
+        LEFT JOIN public.royan_staff s ON s.id = e.doctor_id
         WHERE e.id = %s
     """, (encounter_id,))
     if not enc:
@@ -191,9 +198,9 @@ def nurse_workspace(conn, encounter_id: int) -> Optional[NurseWorkspace]:
             observation_type="vital",
             name=f"Vitals ({_sd(r.get('recorded_at'))})",
             value=(
-                f"BP {r.get('systolic_bp')}/{r.get('diastolic_bp')}, "
-                f"PR {r.get('pulse_rate')}, Temp {r.get('temperature')}°C, "
-                f"SpO2 {r.get('oxygen_saturation')}%"
+                f"BP {r.get('bp_systolic')}/{r.get('bp_diastolic')}, "
+                f"PR {r.get('pulse')}, Temp {r.get('temperature')}°C, "
+                f"SpO2 {r.get('spo2')}%"
             ),
             recorded_by=r.get("recorded_by"),
             recorded_at=_sd(r.get("recorded_at")),
@@ -227,7 +234,7 @@ def billing_workspace(conn, encounter_id: int) -> Optional[BillingWorkspace]:
     pid = patient["id"]
     billing_row = _q1(conn, """
         SELECT * FROM public.royan_billing
-        WHERE encounter_id = %s ORDER BY created_at DESC LIMIT 1
+        WHERE encounter_id = %s ORDER BY billed_at DESC LIMIT 1
     """, (encounter_id,))
 
     bill_items = _q(conn, """
@@ -237,35 +244,38 @@ def billing_workspace(conn, encounter_id: int) -> Optional[BillingWorkspace]:
 
     payments = _q(conn, """
         SELECT * FROM public.royan_payments
-        WHERE billing_id = %s ORDER BY payment_date DESC
+        WHERE billing_id = %s ORDER BY received_at DESC
     """, (billing_row["id"],) if billing_row else (0,))
 
     hmo_row = _q1(conn, """
         SELECT h.name FROM public.royan_patient_insurance pi
         JOIN public.royan_hmos h ON h.id = pi.hmo_id
-        WHERE pi.patient_id = %s AND pi.is_active = true LIMIT 1
+        WHERE pi.patient_id = %s AND pi.status = 'active' LIMIT 1
     """, (pid,))
     hmo_name = hmo_row["name"] if hmo_row else None
 
     claim_row = _q1(conn, """
         SELECT status FROM public.royan_insurance_claims
-        WHERE encounter_id = %s ORDER BY created_at DESC LIMIT 1
-    """, (encounter_id,))
+        WHERE billing_id = %s ORDER BY submitted_at DESC LIMIT 1
+    """, (billing_row["id"],) if billing_row else (0,))
 
     workflow = _q1(conn, """
         SELECT current_state FROM workflow.instances
         WHERE entity_type = 'encounter' AND entity_id = %s
     """, (encounter_id,))
 
+    # royan_billing has no running paid-amount column — payments are summed
+    # from the separate royan_payments table (already fetched above).
     b = billing_row or {}
-    total = float(b.get("total_amount") or 0)
-    paid = float(b.get("amount_paid") or 0)
+    total = float(b.get("subtotal") or 0)
     hmo_cov = float(b.get("hmo_covered") or 0)
+    paid = sum(float(p.get("amount") or 0) for p in payments)
+    last_payment = max((p.get("received_at") for p in payments if p.get("received_at")), default=None)
     billing_summary = BillingSummary(
         patient_mrn=patient["mrn"],
         total_billed=total, total_paid=paid, outstanding_balance=round(total - paid - hmo_cov, 2),
         hmo_covered=hmo_cov,
-        last_payment_date=_sd(b.get("payment_date")),
+        last_payment_date=_sd(last_payment),
         payment_method=b.get("payment_method"),
         bill_count=1 if billing_row else 0,
     )
@@ -294,12 +304,12 @@ def patient_portal(conn, patient_id: int) -> Optional[PatientPortalView]:
         return None
 
     upcoming_appts = _q(conn, """
-        SELECT a.*, s.first_name || ' ' || s.last_name AS doctor_name
+        SELECT a.*, sl.doctor_name, sl.slot_date, sl.slot_time, sl.department
         FROM public.royan_appointments a
-        LEFT JOIN public.royan_staff s ON s.id = a.doctor_id
-        WHERE a.patient_id = %s AND a.appointment_date >= CURRENT_DATE
+        JOIN public.royan_appointment_slots sl ON sl.id = a.slot_id
+        WHERE a.patient_id = %s AND sl.slot_date >= CURRENT_DATE
           AND a.status NOT IN ('cancelled', 'no_show')
-        ORDER BY a.appointment_date ASC LIMIT 5
+        ORDER BY sl.slot_date ASC, sl.slot_time ASC LIMIT 5
     """, (patient_id,))
 
     timeline_rows = eke_service.get_patient_timeline(conn, patient_id, limit=10)

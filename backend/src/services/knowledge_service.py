@@ -317,6 +317,7 @@ class KnowledgeService:
         document_type: str | None = None,
         agent: str | None = None,
         top_k: int = FINAL_TOP_K,
+        precomputed_embedding: list[float] | None = None,
     ) -> SearchResult:
         """Run the full multi-stage retrieval pipeline.
 
@@ -326,6 +327,12 @@ class KnowledgeService:
             document_type: Optional filter (e.g. 'audit_report').
             agent:         Name of the calling agent (for gap logging).
             top_k:         Number of final chunks to return.
+            precomputed_embedding: Reuse an embedding the caller already computed
+                for this exact `query` text (e.g. /chat computes one for its own
+                vector-doc retrieval before calling here too) — skips a second,
+                redundant embedding call on the hot path. Ignored if query
+                rewrite changes the text, since the embedding would then be for
+                the wrong string.
 
         Returns:
             SearchResult with .chunks, .context, .gap_logged, .memory_hit
@@ -345,7 +352,10 @@ class KnowledgeService:
         result.query_used = rewritten
 
         # ── Stage 3: Embed rewritten query ────────────────────────────────
-        embedding = get_embedding(rewritten)
+        if precomputed_embedding is not None and rewritten == query:
+            embedding = precomputed_embedding
+        else:
+            embedding = get_embedding(rewritten)
         if embedding is None:
             logger.error("Embedding failed for query; aborting retrieval.")
             return result

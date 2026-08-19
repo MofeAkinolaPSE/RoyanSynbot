@@ -1,21 +1,33 @@
-"""Extract dispensing events from Hope pharmacy/prescription rows → royan_dispensing.
+"""Extract real per-line dispensing events from Hope's
+`pharmacy_sales_bill_details` table (staged as `hope_dispensing_lines`)
+-> royan_dispensing.
 
-A dispensing record is only emitted when the prescription status indicates the
-drug was actually dispensed (dispensed / partially_dispensed / issued / given).
+This REPLACES the earlier design that tried to derive dispensing from
+`raw_pharmacy` (pharmacy_sales_bills) rows -- that table is the SALE
+HEADER (bill_code, total, payment_mode) with no drug/quantity/batch
+fields at all, so that path always emitted zero rows.
+`pharmacy_sales_bill_details` is the real per-item line table, linked
+back to the header via `pharmacy_sales_bill_id` -- which is exactly the
+Hope id already loaded as royan_prescriptions.external_id (see
+transformers/pharmacy.py). So each detail line maps to the prescription
+built from its parent header.
 
-Payloads are keyed by `_hope_rx_ext_id` (the Hope prescription external_id) so
-the loader can look up royan_prescriptions.id.
+item_id resolves to a real drug name via the `pharmacy_items` catalog
+(staged as `hope_pharmacy_catalog`, passed in as `item_catalog`) -- when
+unavailable, falls back to the placeholder used for the parent
+prescription rather than inventing a different one, keeping partial data
+honestly labelled instead of a discrepant guess.
+
+Each row gets its own external_id (the Hope pharmacy_sales_bill_details.id),
+so the loader can do a normal ON CONFLICT upsert instead of the old
+one-line-per-prescription restriction -- a sale legitimately has 1..N
+dispensed items (~2.4 lines/bill on average in this dataset).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from transformers._helpers import safe_date, safe_str, utcnow
-
-_DISPENSED_STATUSES = {
-    "dispensed", "partially_dispensed", "issued", "given",
-    "collected", "sold", "complete", "completed",
-}
+from transformers._helpers import EXTERNAL_SOURCE, safe_date, safe_str, utcnow
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -26,66 +38,48 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def transform(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def transform(
+    raw_rows: List[Dict[str, Any]],
+    item_catalog: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
+    item_catalog = item_catalog or {}
     out = []
-    seen_ext_ids: set = set()
 
     for row in raw_rows:
         raw = {k.lower(): v for k, v in row.items()}
 
-        stat_raw = str(raw.get("status") or "").strip().lower().replace("-", "_").replace(" ", "_")
-        if stat_raw not in _DISPENSED_STATUSES:
+        ext_id = safe_str(raw.get("id"))
+        rx_ext_id = safe_str(raw.get("pharmacy_sales_bill_id"))
+        if not ext_id or not rx_ext_id:
             continue
 
-        ext_id = safe_str(
-            raw.get("order_id") or raw.get("prescription_id") or raw.get("dispense_id") or raw.get("id")
-        )
-        hope_pid = safe_str(raw.get("patient_id") or raw.get("patientid"))
-        if not ext_id or not hope_pid:
-            continue
-        if ext_id in seen_ext_ids:
-            continue
-        seen_ext_ids.add(ext_id)
-
-        # Quantity dispensed — prefer qty_dispensed, fall back to quantity / qty
-        qty = _to_float(
-            raw.get("qty_dispensed") or raw.get("quantity_dispensed")
-            or raw.get("quantity") or raw.get("qty"),
-            default=1.0,
-        )
+        qty = _to_float(raw.get("qty"), default=0.0)
         if qty <= 0:
-            qty = 1.0
+            continue  # CHECK constraint requires quantity_dispensed > 0
 
-        drug_name = (
-            safe_str(raw.get("drug_name"))
-            or safe_str(raw.get("drug"))
-            or safe_str(raw.get("medication"))
-            or safe_str(raw.get("item_name"))
-            or "Imported dispensing"
-        )
+        item_id = safe_str(raw.get("item_id"))
+        drug_name = (item_catalog.get(item_id) if item_id else None) or "Imported prescription"
 
-        # Dispensed-at: updated_at is most likely to reflect actual dispense time
-        dispensed_at = (
-            safe_date(raw.get("dispensed_at"))
-            or safe_date(raw.get("updated_at"))
-            or safe_date(raw.get("modify_time"))
-            or safe_date(raw.get("created_at"))
-            or safe_date(raw.get("create_time"))
-        )
+        unit_cost = _to_float(raw.get("sale_price")) or _to_float(raw.get("mrp"))
 
         out.append({
-            "_hope_patient_id": hope_pid,
-            "_hope_rx_ext_id":  ext_id,
-            "drug_name":        drug_name,
-            "batch_number":     safe_str(raw.get("batch_no") or raw.get("batch_number") or raw.get("batch")),
-            "expiry_date":      safe_date(raw.get("expiry_date") or raw.get("expiry") or raw.get("exp_date")),
+            "_hope_rx_ext_id":    rx_ext_id,
+            # Same id space as pharmacy_items.id -- the source pharmacy_catalog.py
+            # used for royan_drug_formulary.external_id -- lets the loader link
+            # this real transaction price back to its formulary row.
+            "_hope_item_id":      item_id,
+            "drug_name":          drug_name,
+            "batch_number":       safe_str(raw.get("batch_number")),
+            "expiry_date":        safe_date(raw.get("expiry_date")),
             "quantity_dispensed": qty,
-            "unit":             safe_str(raw.get("unit") or raw.get("unit_of_measure") or raw.get("form")) or "tablet",
-            "dispensed_by":     safe_str(raw.get("dispensed_by") or raw.get("pharmacist") or raw.get("user_id")) or "hope_ingest",
-            "dispensed_at":     dispensed_at or utcnow(),
-            "unit_cost":        _to_float(raw.get("unit_cost") or raw.get("unit_price") or raw.get("price")),
-            "counselling_given": False,
-            "notes":            None,
+            "unit":               "unit",
+            "dispensed_by":       "hope_ingest",
+            "unit_cost":          unit_cost,
+            "counselling_given":  False,
+            "notes":              None,
+            "external_source":    EXTERNAL_SOURCE,
+            "external_id":        ext_id,
+            "external_updated_at": utcnow(),
         })
 
     return out

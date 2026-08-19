@@ -27,21 +27,22 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { StaffPicker } from "@/components/shared/StaffPicker";
 
 const SEVERITY_COLORS: Record<string, string> = {
-  near_miss: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  minor:     "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  moderate:  "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  major:     "bg-red-500/20 text-red-400 border-red-500/30",
-  sentinel:  "bg-red-700/30 text-red-300 border-red-700/50",
+  near_miss: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  minor:     "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  moderate:  "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30",
+  major:     "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+  sentinel:  "bg-red-700/30 text-red-700 dark:text-red-300 border-red-700/50",
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  reported:      "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  under_review:  "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  investigated:  "bg-sky-500/20 text-sky-400 border-sky-500/30",
-  closed:        "bg-green-500/20 text-green-400 border-green-500/30",
-  escalated:     "bg-red-500/20 text-red-400 border-red-500/30",
+  reported:      "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  under_review:  "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  investigated:  "bg-sky-500/20 text-sky-700 dark:text-sky-400 border-sky-500/30",
+  closed:        "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  escalated:     "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
 };
 
 const STATUS_NEXT: Record<string, string> = {
@@ -122,10 +123,10 @@ const emptyIncident = {
 };
 
 const emptyInfection = {
-  infection_type: "", pathogen: "", specimen_type: "", ward: "",
-  patient_id: "", onset_date: "", culture_result: "",
+  event_type: "", pathogen: "", specimen_type: "", ward: "",
+  patient_id: "", encounter_id: "", onset_date: "", culture_result: "",
   healthcare_associated: true, antibiotic_resistant: false,
-  antibiotics_prescribed: "", isolation_precautions: "", notes: "",
+  antibiotics_prescribed: "", isolation_precautions: "", outcome: "", notes: "",
 };
 
 const emptyHefamaa = Object.fromEntries(
@@ -147,12 +148,12 @@ export default function QualitySafety() {
 
   const [hefamaaOpen, setHefamaaOpen] = useState(false);
   const [hefamaaForm, setHefamaaForm] = useState({
-    ...emptyHefamaa, inspector_name: "", department: "", inspection_date: "",
+    ...emptyHefamaa, assessor: "", department: "", assessment_date: "",
     observations: "", recommendations: "", follow_up_date: "",
   });
 
   const [investigateOpen, setInvestigateOpen] = useState(false);
-  const [investigateId, setInvestigateId] = useState<number | null>(null);
+  const [investigateId, setInvestigateId] = useState<string | null>(null);
   const [investigateForm, setInvestigateForm] = useState({
     root_cause: "", contributing_factors: "", corrective_actions: "",
     preventive_actions: "", investigated_by: "", outcome: "",
@@ -206,7 +207,7 @@ export default function QualitySafety() {
   });
 
   const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.quality.updateIncidentStatus(id, { status }),
     onSuccess: () => {
       toast({ title: "Status updated" });
@@ -230,6 +231,7 @@ export default function QualitySafety() {
     mutationFn: () => api.quality.logInfection({
       ...infectionForm,
       patient_id: infectionForm.patient_id ? Number(infectionForm.patient_id) : undefined,
+      encounter_id: infectionForm.encounter_id ? Number(infectionForm.encounter_id) : undefined,
     }),
     onSuccess: () => {
       toast({ title: "Infection event logged" });
@@ -246,7 +248,7 @@ export default function QualitySafety() {
     onSuccess: (d) => {
       toast({ title: `HEFAMAA submitted — Score: ${d.score}%` });
       setHefamaaOpen(false);
-      setHefamaaForm({ ...emptyHefamaa, inspector_name: "", department: "", inspection_date: "", observations: "", recommendations: "", follow_up_date: "" });
+      setHefamaaForm({ ...emptyHefamaa, assessor: "", department: "", assessment_date: "", observations: "", recommendations: "", follow_up_date: "" });
       refetchHefamaa();
       qc.invalidateQueries({ queryKey: ["quality-stats"] });
     },
@@ -272,11 +274,11 @@ export default function QualitySafety() {
           <Button variant="outline" size="sm" className="border-border" onClick={() => refetchInc()}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
-          <Button size="sm" variant="outline" className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
+          <Button size="sm" variant="outline" className="border-orange-500/40 text-orange-700 dark:text-orange-400 hover:bg-orange-500/10"
             onClick={() => setInfectionOpen(true)}>
             <Bug className="w-4 h-4 mr-1" /> Log Infection
           </Button>
-          <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+          <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
             onClick={() => setHefamaaOpen(true)}>
             <ClipboardList className="w-4 h-4 mr-1" /> HEFAMAA
           </Button>
@@ -292,8 +294,8 @@ export default function QualitySafety() {
         {[
           { label: "Total Incidents",  value: stats.total,          color: "text-foreground",  bg: "bg-muted/30" },
           { label: "Open",             value: stats.open,           color: stats.open > 0 ? "text-red-700" : "text-green-700", bg: stats.open > 0 ? "bg-red-50" : "bg-green-50" },
-          { label: "HAI Events",       value: infStats.hai_count,   color: "text-orange-400",  bg: "bg-orange-500/10" },
-          { label: "AMR Cases",        value: infStats.amr_count,   color: "text-red-400",     bg: "bg-red-500/10" },
+          { label: "HAI Events",       value: infStats.hai_count,   color: "text-orange-700 dark:text-orange-400",  bg: "bg-orange-500/10" },
+          { label: "AMR Cases",        value: infStats.amr_count,   color: "text-red-700 dark:text-red-400",     bg: "bg-red-500/10" },
           { label: "HEFAMAA Avg Score",value: `${hefStats.avg_score}%`, color: hefStats.avg_score >= 80 ? "text-green-700" : "text-yellow-700", bg: "bg-muted/30" },
         ].map(k => (
           <Card key={k.label} className={cn("border-border", k.bg)}>
@@ -453,12 +455,12 @@ export default function QualitySafety() {
                   : hefamaas.map((h: any) => (
                     <TableRow key={h.id} className="border-border hover:bg-muted">
                       <TableCell className="font-mono text-xs text-muted-foreground">{h.id}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{h.inspection_date}</TableCell>
-                      <TableCell className="text-sm text-foreground">{h.inspector_name || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{h.assessment_date}</TableCell>
+                      <TableCell className="text-sm text-foreground">{h.assessor_name || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{h.department || "—"}</TableCell>
                       <TableCell>
                         <span className={cn("text-sm font-bold",
-                          h.overall_score >= 80 ? "text-green-400" : h.overall_score >= 60 ? "text-yellow-400" : "text-red-400"
+                          h.overall_score >= 80 ? "text-green-700 dark:text-green-400" : h.overall_score >= 60 ? "text-yellow-700 dark:text-yellow-400" : "text-red-700 dark:text-red-400"
                         )}>{h.overall_score}%</span>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{h.follow_up_date || "—"}</TableCell>
@@ -503,6 +505,7 @@ export default function QualitySafety() {
             {[
               { key: "ward",          label: "Ward / Location" },
               { key: "patient_id",    label: "Patient ID",    type: "number" },
+              { key: "encounter_id",  label: "Encounter ID",  type: "number" },
               { key: "incident_date", label: "Incident Date", type: "date" },
               { key: "incident_time", label: "Incident Time", type: "time" },
             ].map(f => (
@@ -517,7 +520,8 @@ export default function QualitySafety() {
               { key: "description",            label: "Description *", colSpan: 2 },
               { key: "immediate_action_taken", label: "Immediate Action Taken", colSpan: 2 },
               { key: "witnesses",              label: "Witnesses" },
-              { key: "contributing_factors",   label: "Contributing Factors" },
+              { key: "equipment_involved",     label: "Equipment Involved" },
+              { key: "contributing_factors",   label: "Contributing Factors", colSpan: 2 },
             ].map(f => (
               <div key={f.key} className={cn("space-y-1", (f as any).colSpan === 2 ? "col-span-2" : "")}>
                 <Label className="text-xs text-muted-foreground">{f.label}</Label>
@@ -562,9 +566,8 @@ export default function QualitySafety() {
             ))}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Investigated By</Label>
-              <Input value={investigateForm.investigated_by}
-                onChange={e => setInvestigateForm(p => ({ ...p, investigated_by: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-8" />
+              <StaffPicker value={investigateForm.investigated_by}
+                onChange={id => setInvestigateForm(p => ({ ...p, investigated_by: id }))} />
             </div>
           </div>
           <DialogFooter className="mt-4">
@@ -589,15 +592,17 @@ export default function QualitySafety() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 mt-2">
             {[
-              { key: "infection_type",   label: "Infection Type *",  colSpan: 2 },
+              { key: "event_type",       label: "Infection Type *",  colSpan: 2 },
               { key: "pathogen",         label: "Pathogen" },
               { key: "specimen_type",    label: "Specimen Type" },
               { key: "ward",             label: "Ward" },
               { key: "patient_id",       label: "Patient ID",     type: "number" },
+              { key: "encounter_id",     label: "Encounter ID",   type: "number" },
               { key: "onset_date",       label: "Onset Date",     type: "date" },
               { key: "culture_result",   label: "Culture Result", colSpan: 2 },
               { key: "antibiotics_prescribed", label: "Antibiotics Prescribed", colSpan: 2 },
               { key: "isolation_precautions",  label: "Isolation Precautions" },
+              { key: "outcome",          label: "Outcome" },
               { key: "notes",            label: "Notes",          colSpan: 2 },
             ].map(f => (
               <div key={f.key} className={cn("space-y-1", (f as any).colSpan === 2 ? "col-span-2" : "")}>
@@ -619,7 +624,7 @@ export default function QualitySafety() {
           <DialogFooter className="mt-4">
             <Button variant="outline" className="border-border" onClick={() => setInfectionOpen(false)}>Cancel</Button>
             <Button className="bg-orange-600 hover:bg-orange-700"
-              disabled={infectionMut.isPending || !infectionForm.infection_type}
+              disabled={infectionMut.isPending || !infectionForm.event_type}
               onClick={() => infectionMut.mutate()}>
               {infectionMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Log Event
@@ -639,10 +644,14 @@ export default function QualitySafety() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Inspector</Label>
+                <StaffPicker value={hefamaaForm.assessor}
+                  onChange={id => setHefamaaForm(p => ({ ...p, assessor: id }))} />
+              </div>
               {[
-                { key: "inspector_name",  label: "Inspector Name" },
-                { key: "department",      label: "Department" },
-                { key: "inspection_date", label: "Date", type: "date" },
+                { key: "department",       label: "Department" },
+                { key: "assessment_date",  label: "Date", type: "date" },
               ].map(f => (
                 <div key={f.key} className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{f.label}</Label>
@@ -654,7 +663,7 @@ export default function QualitySafety() {
             </div>
             {HEFAMAA_SECTIONS.map(section => (
               <div key={section.title} className="space-y-2">
-                <p className="text-xs font-semibold text-sky-400 uppercase tracking-wide">{section.title}</p>
+                <p className="text-xs font-semibold text-sky-700 dark:text-sky-400 uppercase tracking-wide">{section.title}</p>
                 <div className="grid grid-cols-2 gap-2 pl-2">
                   {section.fields.map(([key, label]) => (
                     <BoolCheck key={key} label={label}

@@ -1,18 +1,26 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, X, Send, Minimize2, Maximize2, Loader2 } from "lucide-react";
+import { MessageSquare, X, Send, Minimize2, Maximize2, Loader2, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiUrl } from "@/lib/api-base";
 import { authClient } from "@/lib/auth-client";
 import { useAuth } from "@/components/AuthProvider";
+import { isReportContent, ReportRenderer, ChatText } from "@/components/chat/ChatReport";
+
+interface ChatLink {
+  label: string;
+  url: string;
+}
 
 interface Message {
   id: number;
   type: "user" | "bot";
   content: string;
   timestamp: string;
+  links?: ChatLink[];
 }
 
 const ROLE_GREETINGS: Record<string, string> = {
@@ -27,6 +35,7 @@ const ROLE_GREETINGS: Record<string, string> = {
 };
 
 const FloatingChat = () => {
+  const navigate = useNavigate();
   const { roles } = useAuth();
   const chatMode = roles.some((r) => ["admin", "management"].includes(r)) ? "executive" : "assistant";
   const greeting =
@@ -113,12 +122,14 @@ const FloatingChat = () => {
 
       const data = await res.json();
       const answer = data.answer?.trim() || "Sorry, I couldn't process that request.";
+      const links: ChatLink[] = (data.links || []).map((l: any) => ({ label: l.label, url: l.url }));
 
       const botMsg: Message = {
         id: userMsg.id + 1,
         type: "bot",
         content: answer,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        links,
       };
       setMessages((prev) => [...prev, botMsg]);
     } catch (e: any) {
@@ -221,13 +232,34 @@ const FloatingChat = () => {
                         className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                          className={`rounded-2xl px-4 py-2 ${
+                            msg.type === "bot" && isReportContent(msg.content) ? "max-w-full w-full" : "max-w-[80%]"
+                          } ${
                             msg.type === "user"
                               ? "bg-primary text-primary-foreground rounded-br-md"
                               : "bg-muted text-foreground rounded-bl-md"
                           }`}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                          {msg.type === "bot" && isReportContent(msg.content) ? (
+                            <ReportRenderer content={msg.content} />
+                          ) : (
+                            <ChatText content={msg.content} className="text-sm whitespace-pre-wrap" />
+                          )}
+                          {msg.type === "bot" && msg.links && msg.links.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {msg.links.map((link, idx) => (
+                                <Button
+                                  key={idx}
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1 h-6 text-xs bg-background"
+                                  onClick={() => navigate(link.url)}
+                                >
+                                  {link.label} <ArrowUpRight className="h-3 w-3" />
+                                </Button>
+                              ))}
+                            </div>
+                          )}
                           <p className={`text-xs mt-1 ${msg.type === "user" ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
                             {msg.timestamp}
                           </p>

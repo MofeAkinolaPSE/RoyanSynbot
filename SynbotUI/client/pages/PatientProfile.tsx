@@ -20,14 +20,16 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, User, Phone, MapPin, Heart, Droplets, AlertTriangle,
+  User, Phone, MapPin, Heart, Droplets, AlertTriangle,
   ShieldCheck, ShieldOff, Clock, Stethoscope, FlaskConical, Pill,
   Receipt, Activity, Plus, CalendarPlus, MessageSquare, UserCheck,
   ChevronRight, FileText, Loader2, ListChecks, ShieldAlert, CheckCircle2,
   XCircle, PenLine, Thermometer, TrendingUp, ClipboardCheck, Upload, Send,
   Scissors, ScanLine, Eye, NotebookPen, Megaphone, CalendarClock, Bell, Syringe, Baby,
 } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { useAuth } from "@/components/AuthProvider";
+import { EncounterStoryPanel } from "@/components/patient/EncounterStoryPanel";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { CoverageQuote } from "@/components/CoverageQuote";
@@ -37,6 +39,7 @@ import { CoverSheetWidget } from "@/components/patient/CoverSheetWidget";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { FREQUENCY_OPTIONS, ROUTE_OPTIONS } from "@/lib/clinical-options";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +135,42 @@ function fmtDate(ts?: string): string {
   return new Date(ts).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// Builds the recordDetail payload for a prescription row — shared by the
+// Active and Past Medications lists so dispensing history (added once here)
+// shows up consistently in both instead of drifting between two copies.
+function rxRecordDetail(rx: any, noDetail: boolean): { title: string; subtitle?: string; rows: [string, any][] } {
+  if (noDetail) {
+    return {
+      title: "Prescription",
+      subtitle: `${new Date(rx.prescribed_at ?? "").toLocaleDateString("en-NG")}`,
+      rows: [
+        ["Status", "No drug detail captured"],
+        ["Notes", "Legacy billing record only — the source system didn't record a medication name or dosage."],
+      ],
+    };
+  }
+  const dispensing: any[] = Array.isArray(rx.dispensing) ? rx.dispensing : [];
+  return {
+    title: rx.drug_name ?? "Prescription",
+    subtitle: `${rx.dosage ?? "—"} · ${rx.frequency ?? "—"}`,
+    rows: [
+      ["Duration", rx.duration],
+      ["Route", rx.route],
+      ["Quantity", rx.quantity != null ? `${rx.quantity} ${rx.unit ?? ""}`.trim() : null],
+      ["Special instructions", rx.special_instructions],
+      ["Status", rx.status?.replace(/_/g, " ")],
+      ["Prescribed by", formatAttribution(rx.prescribed_by)],
+      ["Prescribed at", rx.prescribed_at ? fmtDateTime(rx.prescribed_at) : null],
+      ...(dispensing.length > 0
+        ? dispensing.map((d, i): [string, any] => [
+            dispensing.length > 1 ? `Dispensed (${i + 1}/${dispensing.length})` : "Dispensed",
+            `${d.quantity_dispensed ?? "—"} ${d.unit ?? ""} · ${formatAttribution(d.dispensed_by) ?? "—"} · ${d.dispensed_at ? fmtDateTime(d.dispensed_at) : "—"}${d.batch_number ? ` · Batch ${d.batch_number}` : ""}`,
+          ])
+        : [["Dispensed", rx.status === "pending" ? "Not yet dispensed" : null]]),
+    ],
+  };
+}
+
 function fmtDateTime(ts?: string): string {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("en-NG", {
@@ -182,6 +221,7 @@ export default function PatientProfile() {
   // dialog covers appointments/visits, meds, labs, reminders, and
   // immunizations without repeating the same dialog shell 5 times.
   const [recordDetail, setRecordDetail] = useState<{ title: string; subtitle?: string; rows: [string, any][] } | null>(null);
+  const [storyEncounterId, setStoryEncounterId] = useState<number | null>(null);
   const [postingOpen, setPostingOpen] = useState(false);
   const [postingForm, setPostingForm] = useState({ posting_type: "alert", message: "", severity: "info" });
   const [immunisationOpen, setImmunisationOpen] = useState(false);
@@ -192,13 +232,15 @@ export default function PatientProfile() {
   const [editPatientForm, setEditPatientForm] = useState({
     phone: "", address: "", next_of_kin_name: "", next_of_kin_phone: "",
     blood_group: "", genotype: "", allergies: "",
+    father_name: "", place_of_birth: "",
   });
   const [noteOpen, setNoteOpen] = useState(false);
-  const [noteForm, setNoteForm] = useState({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "" });
+  const [noteForm, setNoteForm] = useState({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "", icd10: "" });
   const [problemOpen, setProblemOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [problemForm, setProblemForm] = useState({ description: "", icd10_code: "", status: "active", onset_date: "" });
   const [icd10Search, setIcd10Search] = useState("");
+  const [drugSearch, setDrugSearch] = useState("");
   const [consentForm, setConsentForm] = useState({ consent_type: "general_treatment", consented: true, notes: "", witness_name: "" });
   const [encounterForm, setEncounterForm] = useState({
     encounter_type: "outpatient", department: "OPD", chief_complaint: "",
@@ -339,8 +381,15 @@ export default function PatientProfile() {
       toast({ title: "Follow-up scheduled" });
       setFollowUpOpen(false);
       setFollowUpForm({ slot_date: new Date().toISOString().split("T")[0], slot_id: "", appointment_type: "follow_up", notes: "" });
+      // Every surface that lists appointments keeps its own React Query
+      // cache under a different key (see CalendarTaskManager.tsx /
+      // HospitalAppointments.tsx) — invalidate all of them so a follow-up
+      // booked here shows up everywhere without a manual refresh.
       void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["appointments-day"] });
       void qc.invalidateQueries({ queryKey: ["appointments-calendar"] });
+      void qc.invalidateQueries({ queryKey: ["appointment-slots"] });
+      void qc.invalidateQueries({ queryKey: ["sched-appointments"] });
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
@@ -400,6 +449,14 @@ export default function PatientProfile() {
     staleTime: 300_000,
   });
   const icd10Results: any[] = Array.isArray(icd10Data?.codes) ? icd10Data.codes : [];
+
+  const { data: drugData } = useQuery({
+    queryKey: ["patient-profile-drug-search", drugSearch],
+    queryFn: () => api.hospital.clinical.searchDrugs(drugSearch),
+    enabled: drugSearch.length >= 2,
+    staleTime: 300_000,
+  });
+  const drugResults: any[] = Array.isArray(drugData?.drugs) ? drugData.drugs : [];
 
   const addProblemMut = useMutation({
     mutationFn: () => api.hospital.clinical.addProblem(patientNumId!, {
@@ -493,24 +550,10 @@ export default function PatientProfile() {
   });
   const refRanges: any[] = Array.isArray(refRangesData?.ranges) ? refRangesData.ranges : [];
 
-  // ── Encounter notes (batch fetch — lazy, only on Notes tab) ──────────────────
+  // ── Encounter notes — full patient-level history from build_patient_context,
+  // not a per-encounter fetch capped to the 10 most recent encounters. ──────────
   const encounters: any[] = Array.isArray(data?.encounters) ? data.encounters : [];
-  const { data: notesData } = useQuery({
-    queryKey: ["patient-enc-notes", patientNumId],
-    queryFn: async () => {
-      const encIds = encounters.slice(0, 10).map((e: any) => String(e.id));
-      const results = await Promise.allSettled(
-        encIds.map(id => api.hospital.queue.listNotes(id))
-      );
-      return results
-        .filter(r => r.status === "fulfilled")
-        .flatMap((r: any) => r.value?.notes ?? [])
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    },
-    enabled: !!patientNumId && mainTab === "notes" && encounters.length > 0,
-    staleTime: 60_000,
-  });
-  const encNotes: any[] = Array.isArray(notesData) ? notesData : [];
+  const encNotes: any[] = Array.isArray(data?.clinical_notes) ? data.clinical_notes : [];
 
   // ── Roles (for notes write access) ───────────────────────────────────────────
   const { roles } = useAuth();
@@ -633,6 +676,8 @@ export default function PatientProfile() {
       blood_group: patient.blood_group ?? "",
       genotype: patient.genotype ?? "",
       allergies: (patient.allergies ?? []).join(", "),
+      father_name: patient.father_name ?? "",
+      place_of_birth: patient.place_of_birth ?? "",
     });
     setEditPatientOpen(true);
   };
@@ -654,6 +699,8 @@ export default function PatientProfile() {
       allergies: editPatientForm.allergies
         ? editPatientForm.allergies.split(",").map(s => s.trim()).filter(Boolean)
         : null,
+      father_name: editPatientForm.father_name || null,
+      place_of_birth: editPatientForm.place_of_birth || null,
     }),
     onSuccess: () => {
       toast({ title: "Patient information updated" });
@@ -695,19 +742,20 @@ export default function PatientProfile() {
       if (!data?.active_encounter?.id) throw new Error("No active encounter — open one first");
       return api.hospital.queue.addNote(String(data.active_encounter.id), {
         note_type: noteForm.note_type,
-        content: JSON.stringify({
-          subjective: noteForm.subjective,
-          objective: noteForm.objective,
-          assessment: noteForm.assessment,
-          plan: noteForm.plan,
-        }),
+        subjective: noteForm.subjective || undefined,
+        objective: noteForm.objective || undefined,
+        assessment: noteForm.assessment || undefined,
+        plan: noteForm.plan || undefined,
+        icd10_codes: noteForm.icd10
+          ? noteForm.icd10.split(",").map(s => s.trim()).filter(Boolean)
+          : undefined,
       });
     },
     onSuccess: () => {
       toast({ title: "Progress note saved" });
       setNoteOpen(false);
-      setNoteForm({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "" });
-      void qc.invalidateQueries({ queryKey: ["patient-enc-notes", patientNumId] });
+      setNoteForm({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "", icd10: "" });
+      void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
@@ -739,9 +787,7 @@ export default function PatientProfile() {
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center text-sm text-muted-foreground">
         <AlertTriangle className="h-8 w-8 text-destructive opacity-60" />
         <p>Patient not found or failed to load.</p>
-        <Button variant="outline" size="sm" onClick={() => navigate("/hospital/patients")}>
-          Back to Patients
-        </Button>
+        <BackButton fallback="/hospital/patients" variant="outline">Back to Patients</BackButton>
       </div>
     );
   }
@@ -756,9 +802,7 @@ export default function PatientProfile() {
       <AllergyBanner allergies={patient.allergies} className="mb-2" />
       {/* Page header */}
       <div className="mb-4 flex items-center gap-3">
-        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate("/hospital/patients")}>
-          <ArrowLeft className="h-4 w-4" /> Patients
-        </Button>
+        <BackButton fallback="/hospital/patients" />
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
         <span className="font-semibold">{fullName}</span>
         <Badge variant="outline" className="font-mono text-xs">{patient.mrn}</Badge>
@@ -790,14 +834,14 @@ export default function PatientProfile() {
                 <div className={cn(
                   "flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium",
                   insuranceActive
-                    ? "border-green-500/30 bg-green-500/10 text-green-400"
-                    : "border-slate-500/30 bg-slate-500/10 text-slate-400",
+                    ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+                    : "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-400",
                 )}>
                   {insuranceActive ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}
                   {insurance?.hmo_name ?? patient.hmo_provider ?? (insuranceActive ? "HMO Active" : "No HMO")}
                 </div>
                 {insurance?.plan_name && (
-                  <p className="text-[11px] text-muted-foreground">{insurance.plan_name}</p>
+                  <p className="text-[13px] text-muted-foreground">{insurance.plan_name}</p>
                 )}
               </div>
             </CardContent>
@@ -816,7 +860,7 @@ export default function PatientProfile() {
                   <p className="text-xs text-muted-foreground">Allergies</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {patient.allergies.map((a) => (
-                      <Badge key={a} variant="outline" className="text-[10px] bg-destructive/10 text-destructive border-destructive/30">
+                      <Badge key={a} variant="outline" className="text-[12px] bg-destructive/10 text-destructive border-destructive/30">
                         {a}
                       </Badge>
                     ))}
@@ -839,7 +883,7 @@ export default function PatientProfile() {
                     ))}
                     {problems.filter(p => p.status === "active").length > 4 && (
                       <button
-                        className="text-[10px] text-primary underline underline-offset-2"
+                        className="text-[12px] text-primary underline underline-offset-2"
                         onClick={() => setMainTab("problems")}
                       >
                         +{problems.filter(p => p.status === "active").length - 4} more
@@ -880,27 +924,27 @@ export default function PatientProfile() {
               <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Thermometer className="h-3 w-3" /> Last Vitals
-                  <span className="ml-auto font-normal normal-case text-[10px]">{fmtDate(lastVitals.recorded_at)}</span>
+                  <span className="ml-auto font-normal normal-case text-[12px]">{fmtDate(lastVitals.recorded_at)}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                 {lastVitals.bp_systolic && (
-                  <div><p className="text-muted-foreground text-[10px]">BP</p><p className="font-medium">{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">BP</p><p className="font-medium">{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</p></div>
                 )}
                 {lastVitals.pulse && (
-                  <div><p className="text-muted-foreground text-[10px]">Pulse</p><p className="font-medium">{lastVitals.pulse} bpm</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">Pulse</p><p className="font-medium">{lastVitals.pulse} bpm</p></div>
                 )}
                 {lastVitals.temperature && (
-                  <div><p className="text-muted-foreground text-[10px]">Temp</p><p className="font-medium">{lastVitals.temperature}°C</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">Temp</p><p className="font-medium">{lastVitals.temperature}°C</p></div>
                 )}
                 {lastVitals.spo2 && (
-                  <div><p className="text-muted-foreground text-[10px]">SpO2</p><p className="font-medium">{lastVitals.spo2}%</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">SpO2</p><p className="font-medium">{lastVitals.spo2}%</p></div>
                 )}
                 {lastVitals.weight && (
-                  <div><p className="text-muted-foreground text-[10px]">Weight</p><p className="font-medium">{lastVitals.weight} kg</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">Weight</p><p className="font-medium">{lastVitals.weight} kg</p></div>
                 )}
                 {lastVitals.pain_score != null && (
-                  <div><p className="text-muted-foreground text-[10px]">Pain</p><p className="font-medium">{lastVitals.pain_score}/10</p></div>
+                  <div><p className="text-muted-foreground text-[12px]">Pain</p><p className="font-medium">{lastVitals.pain_score}/10</p></div>
                 )}
               </CardContent>
             </Card>
@@ -911,7 +955,7 @@ export default function PatientProfile() {
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           {/* Active encounter banner */}
           {hasActiveEnc && (
-            <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm text-blue-400">
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm text-blue-700 dark:text-blue-400">
               <Activity className="h-4 w-4 shrink-0 animate-pulse" />
               <span>
                 Active encounter — <strong className="capitalize">
@@ -1003,7 +1047,7 @@ export default function PatientProfile() {
                     ? structuredAllergies.slice(0, 6).map((a: any) => (
                       <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
                         <span className="min-w-0 truncate font-medium text-red-600 dark:text-red-400">{a.allergen}</span>
-                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{a.severity}</Badge>
+                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{a.severity}</Badge>
                       </div>
                     ))
                     : (patient.allergies ?? []).slice(0, 6).map((a: string) => (
@@ -1047,10 +1091,10 @@ export default function PatientProfile() {
                   {postings.slice(0, 6).map((p: any) => (
                     <div key={p.id} className="flex items-start justify-between gap-2 text-xs">
                       <div className="min-w-0">
-                        <Badge variant="outline" className={cn("text-[10px] capitalize mr-1.5",
+                        <Badge variant="outline" className={cn("text-[12px] capitalize mr-1.5",
                           p.severity === "critical" ? "border-red-500/30 text-red-500 bg-red-500/10" :
                           p.severity === "warning" ? "border-amber-500/30 text-amber-500 bg-amber-500/10" :
-                          "border-slate-500/30 text-slate-400"
+                          "border-slate-500/30 text-slate-700 dark:text-slate-400"
                         )}>{p.posting_type}</Badge>
                         <span className="align-middle">{p.message}</span>
                       </div>
@@ -1103,7 +1147,7 @@ export default function PatientProfile() {
                         <span className={cn("min-w-0 truncate", noDetail && "italic text-muted-foreground")}>
                           {noDetail ? "No drug detail captured" : rx.drug_name}
                         </span>
-                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{rx.status?.replace(/_/g, " ")}</Badge>
+                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{rx.status?.replace(/_/g, " ")}</Badge>
                       </button>
                     );
                   })}
@@ -1182,51 +1226,47 @@ export default function PatientProfile() {
                   {appointmentsAndVisits.slice(0, 6).map((v, idx) => (
                     <button
                       key={idx}
-                      onClick={() => setRecordDetail({
-                        title: v.kind === "appointment" ? "Appointment Details" : "Visit Details",
-                        subtitle: `${fmtDate(v.date)} · ${v.label}`,
-                        rows: v.kind === "appointment"
-                          ? [
-                              ["Status", (v.record.ui_status ?? v.record.status)?.replace(/_/g, " ")],
-                              ["Department", v.record.department],
-                              ["Doctor", formatAttribution(v.record.doctor_name)],
-                              ["Date", v.record.slot_date ? fmtDate(v.record.slot_date) : null],
-                              ["Time", v.record.slot_time],
-                              ["Duration", v.record.duration_mins != null ? `${v.record.duration_mins} min` : null],
-                              ["Type", v.record.appointment_type],
-                              ["Reason", v.record.reason],
-                              ["Booked by", v.record.booked_by],
-                              ["Booked at", v.record.booked_at ? fmtDateTime(v.record.booked_at) : null],
-                              ["Reminder sent", v.record.reminder_sent ? `Yes${v.record.reminder_sent_at ? " · " + fmtDateTime(v.record.reminder_sent_at) : ""}` : "No"],
-                              ["Cancellation reason", v.record.cancellation_reason],
-                              ["Notes", v.record.notes],
-                              ["MRN", v.record.mrn],
-                              ["Phone", v.record.patient_phone],
-                              ["Source", v.record.external_source ?? "Native (booked in app)"],
-                              ["External ID", v.record.external_id],
-                            ]
-                          : [
-                              ["Status", v.record.status?.replace(/_/g, " ")],
-                              ["Department", v.record.department],
-                              ["Encounter type", v.record.encounter_type?.replace(/_/g, " ")],
-                              ["Created", v.record.created_at ? fmtDateTime(v.record.created_at) : null],
-                              ["Discharged", v.record.discharge_at ? fmtDateTime(v.record.discharge_at) : null],
-                              ["Triage level", v.record.triage_level],
-                              ["Consulting doctor", v.record.consulting_doctor],
-                              ["Ward", v.record.ward_id],
-                              ["Chief complaint", v.record.chief_complaint],
-                              ["Notes", v.record.notes],
-                              ["Source", v.record.external_source ?? "Native (opened in app)"],
-                              ["External ID", v.record.external_id],
-                            ],
-                      })}
+                      onClick={() => {
+                        // A visit is a full clinical encounter — open the
+                        // Encounter Story (the complete chronological record:
+                        // vitals, notes, orders, results, dispensing, billing)
+                        // instead of the flat status/date summary appointments
+                        // still use, since a booking has no "story" to tell.
+                        if (v.kind === "visit" && v.record.id) {
+                          setStoryEncounterId(v.record.id);
+                          return;
+                        }
+                        setRecordDetail({
+                          title: "Appointment Details",
+                          subtitle: `${fmtDate(v.date)} · ${v.label}`,
+                          rows: [
+                            ["Status", (v.record.ui_status ?? v.record.status)?.replace(/_/g, " ")],
+                            ["Department", v.record.department],
+                            ["Doctor", formatAttribution(v.record.doctor_name)],
+                            ["Date", v.record.slot_date ? fmtDate(v.record.slot_date) : null],
+                            ["Time", v.record.slot_time],
+                            ["Duration", v.record.duration_mins != null ? `${v.record.duration_mins} min` : null],
+                            ["Type", v.record.appointment_type],
+                            ["Reason", v.record.reason],
+                            ["Booked by", v.record.booked_by],
+                            ["Booked at", v.record.booked_at ? fmtDateTime(v.record.booked_at) : null],
+                            ["Reminder sent", v.record.reminder_sent ? `Yes${v.record.reminder_sent_at ? " · " + fmtDateTime(v.record.reminder_sent_at) : ""}` : "No"],
+                            ["Cancellation reason", v.record.cancellation_reason],
+                            ["Notes", v.record.notes],
+                            ["MRN", v.record.mrn],
+                            ["Phone", v.record.patient_phone],
+                            ["Source", v.record.external_source ?? "Native (booked in app)"],
+                            ["External ID", v.record.external_id],
+                          ],
+                        });
+                      }}
                       className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
                     >
                       <div className="min-w-0">
                         <span className="text-muted-foreground mr-1">{fmtDate(v.date)}</span>
                         <span className="truncate">{v.label}</span>
                       </div>
-                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">{v.status?.replace(/_/g, " ")}</Badge>
+                      <Badge variant="outline" className="text-[12px] capitalize shrink-0">{v.status?.replace(/_/g, " ")}</Badge>
                     </button>
                   ))}
                 </div>
@@ -1324,14 +1364,28 @@ export default function PatientProfile() {
               ) : (
                 <div className="space-y-2">
                   {problems.map((p: any) => (
-                    <div key={p.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                    <button
+                      key={p.id}
+                      onClick={() => setRecordDetail({
+                        title: p.description,
+                        subtitle: p.icd10_code ?? undefined,
+                        rows: [
+                          ["Status", p.status],
+                          ["ICD-10", p.icd10_code],
+                          ["Onset date", p.onset_date ? fmtDate(p.onset_date) : null],
+                          ["Resolved date", p.resolved_date ? fmtDate(p.resolved_date) : null],
+                          ["Notes", p.notes],
+                        ],
+                      })}
+                      className="flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           {p.icd10_code && <span className="font-mono text-xs text-muted-foreground">{p.icd10_code}</span>}
-                          <Badge variant="outline" className={cn("text-[10px] capitalize",
-                            p.status === "active" ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
-                            p.status === "resolved" ? "border-green-500/30 text-green-400 bg-green-500/10" :
-                            "border-slate-500/30 text-slate-400"
+                          <Badge variant="outline" className={cn("text-[12px] capitalize",
+                            p.status === "active" ? "border-blue-500/30 text-blue-700 dark:text-blue-400 bg-blue-500/10" :
+                            p.status === "resolved" ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" :
+                            "border-slate-500/30 text-slate-700 dark:text-slate-400"
                           )}>{p.status}</Badge>
                         </div>
                         <p className="text-sm font-medium">{p.description}</p>
@@ -1341,13 +1395,13 @@ export default function PatientProfile() {
                         <Button
                           size="sm" variant="ghost"
                           className="h-7 px-2 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10 shrink-0"
-                          onClick={() => resolveProblemMut.mutate(p.id)}
+                          onClick={(e) => { e.stopPropagation(); resolveProblemMut.mutate(p.id); }}
                           disabled={resolveProblemMut.isPending}
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1370,17 +1424,30 @@ export default function PatientProfile() {
               ) : (
                 <div className="space-y-2">
                   {consents.map((c: any) => (
-                    <div key={c.id} className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                    <button
+                      key={c.id}
+                      onClick={() => setRecordDetail({
+                        title: (c.consent_type ?? "Consent").replace(/_/g, " "),
+                        subtitle: fmtDateTime(c.signed_at),
+                        rows: [
+                          ["Decision", c.consented ? "Consented" : "Refused"],
+                          ["Captured by", c.captured_by],
+                          ["Witness", c.witness_name],
+                          ["Notes", c.notes],
+                        ],
+                      })}
+                      className="block w-full rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                    >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium capitalize">{(c.consent_type ?? "").replace(/_/g, " ")}</span>
                         {c.consented
-                          ? <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10 gap-1"><CheckCircle2 className="h-2.5 w-2.5"/>Consented</Badge>
-                          : <Badge variant="outline" className="text-[10px] border-red-500/30 text-red-400 bg-red-500/10 gap-1"><XCircle className="h-2.5 w-2.5"/>Refused</Badge>
+                          ? <Badge variant="outline" className="text-[12px] border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10 gap-1"><CheckCircle2 className="h-2.5 w-2.5"/>Consented</Badge>
+                          : <Badge variant="outline" className="text-[12px] border-red-500/30 text-red-700 dark:text-red-400 bg-red-500/10 gap-1"><XCircle className="h-2.5 w-2.5"/>Refused</Badge>
                         }
                       </div>
-                      <p className="text-[11px] text-muted-foreground">{fmtDateTime(c.signed_at)} · {c.captured_by ?? "—"}</p>
-                      {c.notes && <p className="text-xs text-muted-foreground mt-1 italic">"{c.notes}"</p>}
-                    </div>
+                      <p className="text-[13px] text-muted-foreground">{fmtDateTime(c.signed_at)} · {c.captured_by ?? "—"}</p>
+                      {c.notes && <p className="text-xs text-muted-foreground mt-1 italic truncate">"{c.notes}"</p>}
+                    </button>
                   ))}
                 </div>
               )}
@@ -1402,48 +1469,55 @@ export default function PatientProfile() {
                   </Button>
                 </div>
               ) : (
-                specialistNotes.map((n: any, idx: number) => (
-                  <div key={n.id ?? idx} className="rounded-xl border border-border/60 bg-card px-4 py-3">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] capitalize bg-indigo-500/10 border-indigo-500/30 text-indigo-400">
-                          {(n.specialty ?? n.template_specialty ?? "specialist").replace(/_/g, " ")}
-                        </Badge>
-                        {n.icd10_codes && n.icd10_codes.length > 0 && n.icd10_codes.map((code: string) => (
-                          <span key={code} className="font-mono text-[10px] text-muted-foreground">{code}</span>
-                        ))}
-                        {n.is_amended && (
-                          <Badge variant="outline" className="text-[10px] border-yellow-500/30 text-yellow-400 bg-yellow-500/10 gap-1">
-                            <PenLine className="h-2.5 w-2.5" />Amended
+                specialistNotes.map((n: any, idx: number) => {
+                  const noteDataRows: [string, any][] = n.note_data && typeof n.note_data === "object"
+                    ? Object.entries(n.note_data as Record<string, any>)
+                        .filter(([, val]) => val != null && val !== "" && val !== false)
+                        .map(([key, val]): [string, any] => [
+                          key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+                          typeof val === "boolean" ? (val ? "Yes" : "No") : String(val),
+                        ])
+                    : [];
+                  return (
+                    <button
+                      key={n.id ?? idx}
+                      onClick={() => setRecordDetail({
+                        title: (n.specialty ?? n.template_specialty ?? "Specialist").replace(/_/g, " ") + " note",
+                        subtitle: `${fmtDateTime(n.noted_at)} · ${n.noted_by ?? "—"}`,
+                        rows: [
+                          ["Encounter", n.encounter_id],
+                          ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
+                          ["Amended", n.amended_at ? fmtDateTime(n.amended_at) : null],
+                          ...noteDataRows,
+                        ],
+                      })}
+                      className="block w-full rounded-xl border border-border/60 bg-card px-4 py-3 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="text-[12px] capitalize bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-400">
+                            {(n.specialty ?? n.template_specialty ?? "specialist").replace(/_/g, " ")}
                           </Badge>
-                        )}
+                          {n.icd10_codes && n.icd10_codes.length > 0 && n.icd10_codes.map((code: string) => (
+                            <span key={code} className="font-mono text-[12px] text-muted-foreground">{code}</span>
+                          ))}
+                          {!!n.amended_at && (
+                            <Badge variant="outline" className="text-[12px] border-yellow-500/30 text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 gap-1">
+                              <PenLine className="h-2.5 w-2.5" />Amended
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-[13px] text-muted-foreground">{fmtDateTime(n.noted_at)}</span>
                       </div>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">{fmtDateTime(n.created_at)}</span>
-                    </div>
-                    {n.encounter_id && (
-                      <p className="text-[11px] text-muted-foreground mb-2">Encounter: <span className="font-mono">{n.encounter_id}</span></p>
-                    )}
-                    {n.fields && typeof n.fields === "object" && Object.keys(n.fields).length > 0 && (
-                      <div className="mt-1 grid grid-cols-1 gap-1.5 rounded-lg bg-muted/40 px-3 py-2">
-                        {Object.entries(n.fields as Record<string, any>).map(([key, val]) => (
-                          val != null && val !== "" && val !== false ? (
-                            <div key={key} className="flex gap-2 text-xs">
-                              <span className="shrink-0 capitalize text-muted-foreground min-w-[120px]">
-                                {key.replace(/_/g, " ")}
-                              </span>
-                              <span className="font-medium">
-                                {typeof val === "boolean" ? (val ? "Yes" : "No") : String(val)}
-                              </span>
-                            </div>
-                          ) : null
-                        ))}
-                      </div>
-                    )}
-                    {n.written_by && (
-                      <p className="mt-2 text-[10px] text-muted-foreground">Written by: {n.written_by}</p>
-                    )}
-                  </div>
-                ))
+                      {noteDataRows.length > 0 && (
+                        <p className="text-sm text-foreground/80 truncate">{String(noteDataRows[0][1])}</p>
+                      )}
+                      {n.noted_by && (
+                        <p className="mt-1 text-[12px] text-muted-foreground">Written by: {n.noted_by}</p>
+                      )}
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
@@ -1459,7 +1533,11 @@ export default function PatientProfile() {
                 ) : activeMeds.map((rx: any) => {
                   const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
                   return (
-                    <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                    <button
+                      key={rx.id}
+                      onClick={() => setRecordDetail(rxRecordDetail(rx, noDetail))}
+                      className="mb-2 flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                    >
                       <div>
                         {noDetail ? (
                           <>
@@ -1473,8 +1551,8 @@ export default function PatientProfile() {
                           </>
                         )}
                       </div>
-                      <Badge variant="outline" className={cn("text-[10px] capitalize shrink-0", noDetail ? "bg-muted text-muted-foreground border-border" : "bg-green-50 text-green-700 border-green-300")}>{rx.status?.replace(/_/g," ")}</Badge>
-                    </div>
+                      <Badge variant="outline" className={cn("text-[12px] capitalize shrink-0", noDetail ? "bg-muted text-muted-foreground border-border" : "bg-green-50 text-green-700 border-green-300")}>{rx.status?.replace(/_/g," ")}</Badge>
+                    </button>
                   );
                 })}
               </div>
@@ -1485,7 +1563,11 @@ export default function PatientProfile() {
                   {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).map((rx: any) => {
                     const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
                     return (
-                      <div key={rx.id} className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                      <button
+                        key={rx.id}
+                        onClick={() => setRecordDetail(rxRecordDetail(rx, noDetail))}
+                        className="mb-2 flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-left hover:bg-muted/60 hover:border-border transition-colors"
+                      >
                         <div>
                           {noDetail ? (
                             <>
@@ -1499,8 +1581,8 @@ export default function PatientProfile() {
                             </>
                           )}
                         </div>
-                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
-                      </div>
+                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
+                      </button>
                     );
                   })}
                 </div>
@@ -1518,7 +1600,28 @@ export default function PatientProfile() {
                 ) : (data?.lab_orders ?? []).map((o: any) => {
                   const noDetail = isPlaceholderRecord(o.test_name, o.external_source);
                   return (
-                    <div key={o.id} className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2">
+                    <button
+                      key={o.id}
+                      onClick={() => setRecordDetail({
+                        title: noDetail ? "Lab order" : o.test_name,
+                        subtitle: `Ordered ${fmtDateTime(o.ordered_at)}`,
+                        rows: [
+                          ["Urgency", o.urgency],
+                          ["Status", o.status?.replace(/_/g, " ")],
+                          ["Sample type", o.sample_type],
+                          ["Ordered by", formatAttribution(o.ordered_by)],
+                          ["Notes", o.notes],
+                          ["Result", o.result_summary],
+                          ["Reference range", o.reference_range],
+                          ["Interpretation", o.interpretation],
+                          ["Critical", o.is_critical ? "Yes" : null],
+                          ["Resulted by", o.resulted_by ? formatAttribution(o.resulted_by) : null],
+                          ["Verified by", o.verified_by ? formatAttribution(o.verified_by) : null],
+                          ["Result notes", o.result_notes],
+                        ],
+                      })}
+                      className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                    >
                       <div>
                         <p className={cn("text-sm font-medium", noDetail && "italic text-muted-foreground")}>
                           {noDetail ? "No test detail captured" : o.test_name}
@@ -1526,10 +1629,10 @@ export default function PatientProfile() {
                         <p className="text-xs text-muted-foreground">{noDetail ? "Legacy record — source system only recorded an internal catalog ID" : fmtDate(o.ordered_at)}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Badge variant="outline" className="text-[10px] uppercase">{o.urgency}</Badge>
-                        <Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge>
+                        <Badge variant="outline" className="text-[12px] uppercase">{o.urgency}</Badge>
+                        <Badge variant="outline" className="text-[12px] capitalize">{o.status}</Badge>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1538,13 +1641,30 @@ export default function PatientProfile() {
                 {radOrders.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No imaging orders</p>
                 ) : radOrders.map((o: any) => (
-                  <div key={o.id} className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2">
+                  <button
+                    key={o.id}
+                    onClick={() => setRecordDetail({
+                      title: `${o.modality?.toUpperCase() ?? "Imaging"}${o.body_part ? ` — ${o.body_part}` : ""}`,
+                      subtitle: `Ordered ${fmtDateTime(o.ordered_at)}`,
+                      rows: [
+                        ["Urgency", o.urgency],
+                        ["Status", o.status?.replace(/_/g, " ")],
+                        ["Clinical indication", o.clinical_indication],
+                        ["Ordered by", formatAttribution(o.ordered_by)],
+                        ["Reported at", o.reported_at ? fmtDateTime(o.reported_at) : null],
+                        ["Impression", o.impression],
+                        ["Findings", o.findings],
+                        ["Radiologist", o.radiologist_id],
+                      ],
+                    })}
+                    className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                  >
                     <div>
                       <p className="text-sm font-medium">{o.modality?.toUpperCase()} — {o.body_part}</p>
                       <p className="text-xs text-muted-foreground">{o.clinical_indication} · {fmtDate(o.ordered_at)}</p>
                     </div>
-                    <Badge variant="outline" className="text-[10px] capitalize shrink-0">{o.status}</Badge>
-                  </div>
+                    <Badge variant="outline" className="text-[12px] capitalize shrink-0">{o.status}</Badge>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1566,27 +1686,59 @@ export default function PatientProfile() {
                   <NotebookPen className="h-7 w-7 opacity-30" />No progress notes yet
                 </div>
               ) : encNotes.map((n: any, idx: number) => {
-                let soap: Record<string,string> | null = null;
-                try { soap = JSON.parse(n.content); } catch { /**/ }
+                // Structured columns first (new notes); fall back to the old
+                // JSON-in-content convention for notes written before this
+                // migration.
+                let soap: Record<string,string> | null =
+                  n.subjective || n.objective || n.assessment || n.plan
+                    ? { subjective: n.subjective, objective: n.objective, assessment: n.assessment, plan: n.plan }
+                    : null;
+                if (!soap) {
+                  try { soap = JSON.parse(n.content); } catch { /**/ }
+                }
+                const preview = soap?.assessment || soap?.subjective || n.content || "";
                 return (
-                  <div key={n.id ?? idx} className="rounded-xl border border-border/60 bg-card px-4 py-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <Badge variant="outline" className="text-[10px] capitalize">{(n.note_type ?? "note").replace(/_/g," ")}</Badge>
-                      <span className="text-[11px] text-muted-foreground">{fmtDateTime(n.created_at)} · {n.created_by}</span>
-                    </div>
-                    {soap ? (
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        {(["subjective","objective","assessment","plan"] as const).map(k => soap![k] ? (
-                          <div key={k} className="rounded-lg bg-muted/40 p-2">
-                            <p className="text-[10px] font-semibold uppercase text-muted-foreground mb-1">{k[0].toUpperCase()}</p>
-                            <p className="leading-snug">{soap![k]}</p>
-                          </div>
-                        ) : null)}
+                  <button
+                    key={n.id ?? idx}
+                    onClick={() => setRecordDetail({
+                      title: `${(n.note_type ?? "note").replace(/_/g, " ")} note`,
+                      subtitle: `${fmtDateTime(n.created_at)} · ${n.author_name ?? "—"}`,
+                      rows: soap
+                        ? [
+                            ["Subjective", soap.subjective],
+                            ["Objective", soap.objective],
+                            ["Assessment", soap.assessment],
+                            ["Plan", soap.plan],
+                            ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
+                            ["Signed by", n.signed_by ? (n.signed_by_name ?? n.signed_by) : null],
+                            ["Signed at", n.signed_at ? fmtDateTime(n.signed_at) : null],
+                          ]
+                        : [
+                            ["Content", n.content],
+                            ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
+                            ["Signed by", n.signed_by ? (n.signed_by_name ?? n.signed_by) : null],
+                            ["Signed at", n.signed_at ? fmtDateTime(n.signed_at) : null],
+                          ],
+                    })}
+                    className="block w-full rounded-xl border border-border/60 bg-card px-4 py-3 text-left hover:bg-muted/40 hover:border-border transition-colors"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline" className="text-[12px] capitalize">{(n.note_type ?? "note").replace(/_/g," ")}</Badge>
+                        {n.icd10_codes && n.icd10_codes.length > 0 && n.icd10_codes.map((code: string) => (
+                          <span key={code} className="font-mono text-[12px] text-muted-foreground">{code}</span>
+                        ))}
+                        {n.signed_by && (
+                          <Badge variant="outline" className="text-[12px] border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10 gap-1">
+                            <CheckCircle2 className="h-2.5 w-2.5" />
+                            Signed by {n.signed_by_name ?? "—"}
+                          </Badge>
+                        )}
                       </div>
-                    ) : (
-                      <p className="text-sm text-foreground/80 whitespace-pre-wrap">{n.content}</p>
-                    )}
-                  </div>
+                      <span className="shrink-0 text-[13px] text-muted-foreground">{fmtDateTime(n.created_at)} · {n.author_name}</span>
+                    </div>
+                    {preview && <p className="text-sm text-foreground/80 truncate">{preview}</p>}
+                  </button>
                 );
               })}
             </div>
@@ -1616,7 +1768,26 @@ export default function PatientProfile() {
                         const val = parseFloat(o.result_value ?? o.result_summary ?? "");
                         const isAbnormal = ref && !isNaN(val) && (val < (ref.normal_low ?? -Infinity) || val > (ref.normal_high ?? Infinity));
                         return (
-                          <tr key={o.id} className={cn("border-b last:border-0", isAbnormal && "bg-red-50/50")}>
+                          <tr
+                            key={o.id}
+                            onClick={() => setRecordDetail({
+                              title: o.test_name,
+                              subtitle: `Resulted ${fmtDateTime(o.resulted_at ?? o.ordered_at)}`,
+                              rows: [
+                                ["Result", o.result_summary ?? o.result_value],
+                                ["Reference range", ref ? `${ref.normal_low ?? "?"}–${ref.normal_high ?? "?"} ${ref.unit ?? ""}` : o.reference_range],
+                                ["Interpretation", o.interpretation],
+                                ["Critical", o.is_critical ? "Yes" : null],
+                                ["Ordered by", formatAttribution(o.ordered_by)],
+                                ["Ordered at", o.ordered_at ? fmtDateTime(o.ordered_at) : null],
+                                ["Resulted by", o.resulted_by ? formatAttribution(o.resulted_by) : null],
+                                ["Verified by", o.verified_by ? formatAttribution(o.verified_by) : null],
+                                ["Result notes", o.result_notes],
+                                ["Sample type", o.sample_type],
+                              ],
+                            })}
+                            className={cn("border-b last:border-0 cursor-pointer hover:bg-muted/40 transition-colors", isAbnormal && "bg-red-50/50")}
+                          >
                             <td className="px-3 py-2 font-medium">{o.test_name}</td>
                             <td className={cn("px-3 py-2 font-semibold", isAbnormal ? "text-red-700" : "text-green-700")}>
                               {o.result_summary ?? o.result_value ?? "—"}
@@ -1626,7 +1797,7 @@ export default function PatientProfile() {
                               {ref ? `${ref.normal_low ?? "?"}–${ref.normal_high ?? "?"} ${ref.unit ?? ""}` : o.reference_range ?? "—"}
                             </td>
                             <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-[10px] capitalize">{o.interpretation ?? "—"}</Badge>
+                              <Badge variant="outline" className="text-[12px] capitalize">{o.interpretation ?? "—"}</Badge>
                             </td>
                             <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(o.resulted_at ?? o.ordered_at)}</td>
                           </tr>
@@ -1658,15 +1829,39 @@ export default function PatientProfile() {
                     </thead>
                     <tbody>
                       {theatreCases.map((c: any) => (
-                        <tr key={c.id} className="border-b last:border-0">
+                        <tr
+                          key={c.id}
+                          onClick={() => setRecordDetail({
+                            title: c.procedure_name,
+                            subtitle: `${c.theatre_name ?? "Theatre"} · ${fmtDate(c.scheduled_date)}`,
+                            rows: [
+                              ["Case type", c.case_type],
+                              ["Urgency", c.urgency],
+                              ["Status", c.status?.replace(/_/g, " ")],
+                              ["Surgeon", c.surgeon_id],
+                              ["Anaesthetist", c.anaesthetist_id],
+                              ["Scrub nurse", c.scrub_nurse],
+                              ["Circulating nurse", c.circulating_nurse],
+                              ["Scheduled start", c.start_time],
+                              ["Actual start", c.actual_start_time ? fmtDateTime(c.actual_start_time) : null],
+                              ["Actual end", c.actual_end_time ? fmtDateTime(c.actual_end_time) : null],
+                              ["Pre-op notes", c.notes],
+                              ["Anaesthetic record", c.anaesthetic_record],
+                              ["Operative notes", c.operative_notes],
+                              ["Post-op notes", c.post_op_notes],
+                              ["Booked by", c.booked_by],
+                            ],
+                          })}
+                          className="border-b last:border-0 cursor-pointer hover:bg-muted/40 transition-colors"
+                        >
                           <td className="px-3 py-2 font-medium">{c.procedure_name}</td>
                           <td className="px-3 py-2 text-muted-foreground">{c.theatre_name ?? "—"}</td>
                           <td className="px-3 py-2 text-muted-foreground">{c.surgeon_id ?? "—"}</td>
                           <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-[10px] capitalize">{c.urgency}</Badge>
+                            <Badge variant="outline" className="text-[12px] capitalize">{c.urgency}</Badge>
                           </td>
                           <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-[10px] capitalize">{c.status?.replace(/_/g," ")}</Badge>
+                            <Badge variant="outline" className="text-[12px] capitalize">{c.status?.replace(/_/g," ")}</Badge>
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(c.scheduled_date)}</td>
                         </tr>
@@ -1713,7 +1908,7 @@ export default function PatientProfile() {
             Add Lab Order
           </Button>
           {!hasActiveEnc && (
-            <p className="text-[10px] text-muted-foreground -mt-1 pl-1">Open encounter first</p>
+            <p className="text-[12px] text-muted-foreground -mt-1 pl-1">Open encounter first</p>
           )}
 
           <Button
@@ -1785,7 +1980,7 @@ export default function PatientProfile() {
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-start gap-2 border-green-500/30 text-green-400 hover:bg-green-500/10"
+                className="w-full justify-start gap-2 border-green-500/30 text-green-700 dark:text-green-400 hover:bg-green-500/10"
                 disabled={dischargeMut.isPending}
                 onClick={() => setDischargeOpen(true)}
               >
@@ -1795,7 +1990,7 @@ export default function PatientProfile() {
             </>
           )}
           {hasActiveEnc && data?.active_encounter?.status !== "billing_pending" && (
-            <p className="text-[10px] text-muted-foreground pl-1">
+            <p className="text-[12px] text-muted-foreground pl-1">
               Discharge available once billing is finalized (current: {String(data?.active_encounter?.status ?? "").replace(/_/g, " ")})
             </p>
           )}
@@ -1804,7 +1999,7 @@ export default function PatientProfile() {
 
           {/* Summary counts */}
           <div className="rounded-xl border border-border/50 bg-card p-3 space-y-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Summary</p>
+            <p className="text-[12px] uppercase tracking-wider text-muted-foreground font-semibold">Summary</p>
             {[
               { label: "Encounters", value: data?.encounters.length ?? 0, icon: Stethoscope },
               { label: "Lab Orders", value: data?.lab_orders.length ?? 0, icon: FlaskConical },
@@ -1906,66 +2101,66 @@ export default function PatientProfile() {
                     <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />
                     Vitals Entry
                   </span>
-                  <span className="text-[11px] text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
+                  <span className="text-[13px] text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
                   {v.bp_systolic != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">BP</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">BP</p>
                       <p className="font-semibold">{v.bp_systolic}/{v.bp_diastolic} <span className="font-normal text-muted-foreground">mmHg</span></p>
                     </div>
                   )}
                   {v.pulse != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pulse</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Pulse</p>
                       <p className="font-semibold">{v.pulse} <span className="font-normal text-muted-foreground">bpm</span></p>
                     </div>
                   )}
                   {v.temperature != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Temp</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Temp</p>
                       <p className="font-semibold">{v.temperature}<span className="font-normal text-muted-foreground">°C</span></p>
                     </div>
                   )}
                   {v.spo2 != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">SpO2</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">SpO2</p>
                       <p className="font-semibold">{v.spo2}<span className="font-normal text-muted-foreground">%</span></p>
                     </div>
                   )}
                   {v.respiratory_rate != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">RR</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">RR</p>
                       <p className="font-semibold">{v.respiratory_rate} <span className="font-normal text-muted-foreground">/min</span></p>
                     </div>
                   )}
                   {v.weight != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Weight</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Weight</p>
                       <p className="font-semibold">{v.weight} <span className="font-normal text-muted-foreground">kg</span></p>
                     </div>
                   )}
                   {v.height != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Height</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Height</p>
                       <p className="font-semibold">{v.height} <span className="font-normal text-muted-foreground">cm</span></p>
                     </div>
                   )}
                   {v.bmi != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">BMI</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">BMI</p>
                       <p className="font-semibold">{v.bmi}</p>
                     </div>
                   )}
                   {v.gcs != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">GCS</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">GCS</p>
                       <p className="font-semibold">{v.gcs}<span className="font-normal text-muted-foreground">/15</span></p>
                     </div>
                   )}
                   {v.pain_score != null && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pain</p>
+                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Pain</p>
                       <p className="font-semibold">{v.pain_score}<span className="font-normal text-muted-foreground">/10</span></p>
                     </div>
                   )}
@@ -1974,7 +2169,7 @@ export default function PatientProfile() {
                   <p className="mt-2 text-xs text-muted-foreground italic border-t border-border/50 pt-1.5">"{v.notes}"</p>
                 )}
                 {v.recorded_by && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">Recorded by: {v.recorded_by}</p>
+                  <p className="mt-1 text-[12px] text-muted-foreground">Recorded by: {v.recorded_by}</p>
                 )}
               </div>
             ))}
@@ -2152,6 +2347,24 @@ export default function PatientProfile() {
                 placeholder="Comma-separated, e.g. Penicillin, Sulfa"
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Father's / Guardian's Name</Label>
+                <Input
+                  value={editPatientForm.father_name}
+                  onChange={e => setEditPatientForm(f => ({ ...f, father_name: e.target.value }))}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Place of Birth</Label>
+                <Input
+                  value={editPatientForm.place_of_birth}
+                  onChange={e => setEditPatientForm(f => ({ ...f, place_of_birth: e.target.value }))}
+                  placeholder="e.g. Royan Hospital"
+                />
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditPatientOpen(false)}>Cancel</Button>
@@ -2227,6 +2440,15 @@ export default function PatientProfile() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Encounter Story (full chronological detail for a visit) ────── */}
+      {storyEncounterId && (
+        <EncounterStoryPanel
+          encounterId={storyEncounterId}
+          patientName={fullName}
+          onClose={() => setStoryEncounterId(null)}
+        />
+      )}
 
       {/* ── Record Consent Dialog ─────────────────────────────────────── */}
       <Dialog open={consentOpen} onOpenChange={setConsentOpen}>
@@ -2527,9 +2749,19 @@ export default function PatientProfile() {
               <Label>Drug Name *</Label>
               <Input
                 value={rxForm.drug_name}
-                onChange={e => setRxForm(f => ({ ...f, drug_name: e.target.value }))}
+                onChange={e => { setRxForm(f => ({ ...f, drug_name: e.target.value })); setDrugSearch(e.target.value); }}
                 placeholder="e.g. Amoxicillin 500mg"
               />
+              {drugResults.length > 0 && (
+                <div className="rounded-md border max-h-28 overflow-y-auto">
+                  {drugResults.map((d: any) => (
+                    <button key={d.id} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
+                      onClick={() => { setRxForm(f => ({ ...f, drug_name: `${d.generic_name}${d.strength ? " " + d.strength + (d.unit ?? "") : ""}`, dosage: d.strength ? `${d.strength}${d.unit ?? ""}` : f.dosage })); setDrugSearch(""); }}>
+                      {d.generic_name} {d.strength}{d.unit} {d.brand_name ? `(${d.brand_name})` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -2545,12 +2777,7 @@ export default function PatientProfile() {
                 <Select value={rxForm.frequency} onValueChange={v => setRxForm(f => ({ ...f, frequency: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="once daily">Once daily</SelectItem>
-                    <SelectItem value="twice daily">Twice daily</SelectItem>
-                    <SelectItem value="three times daily">Three times daily</SelectItem>
-                    <SelectItem value="four times daily">Four times daily</SelectItem>
-                    <SelectItem value="every 8 hours">Every 8 hours</SelectItem>
-                    <SelectItem value="as needed">As needed (PRN)</SelectItem>
+                    {FREQUENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -2567,12 +2794,7 @@ export default function PatientProfile() {
                 <Select value={rxForm.route} onValueChange={v => setRxForm(f => ({ ...f, route: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="oral">Oral</SelectItem>
-                    <SelectItem value="iv">IV</SelectItem>
-                    <SelectItem value="im">IM</SelectItem>
-                    <SelectItem value="sc">SC</SelectItem>
-                    <SelectItem value="topical">Topical</SelectItem>
-                    <SelectItem value="inhaled">Inhaled</SelectItem>
+                    {ROUTE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -2602,7 +2824,7 @@ export default function PatientProfile() {
       <Dialog open={!!duplicateRxAlert} onOpenChange={o => { if (!o) setDuplicateRxAlert(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-400">
+            <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
               <ShieldAlert className="h-5 w-5" />
               Duplicate Prescription
             </DialogTitle>
@@ -2773,6 +2995,15 @@ export default function PatientProfile() {
                 />
               </div>
             ))}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">ICD-10 Codes (comma-separated)</Label>
+              <Input
+                value={noteForm.icd10}
+                onChange={e => setNoteForm(f => ({ ...f, icd10: e.target.value }))}
+                placeholder="I10, J45.0"
+                className="text-sm"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNoteOpen(false)}>Cancel</Button>

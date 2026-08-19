@@ -29,7 +29,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -179,6 +179,10 @@ class NewbornAssessment(BaseModel):
     hbv_given: bool = False
     breast_feeding_initiated: bool = True
     notes: Optional[str] = None
+    # Patient-level bio fields (not columns on royan_newborn_assessment) —
+    # split onto the baby's own royan_patients row in add_newborn_assessment.
+    father_name: Optional[str] = None
+    place_of_birth: Optional[str] = None
 
     model_config = {"extra": "ignore"}
 
@@ -232,6 +236,103 @@ def _generate_mrn() -> str:
 
 _SEX_TO_GENDER = {"male": "male", "female": "female", "indeterminate": "other"}
 
+_DUE_SOON_DAYS = 14  # upcoming (not yet overdue) doses due within this many days count as "due_soon"
+
+
+def _as_date(v) -> Optional[date]:
+    """Normalise a DB value that may come back as a date/datetime object or
+    an ISO string (depends on driver/cursor path) into a plain date."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def _compute_immunisation_status(
+    dob: Optional[date],
+    given: list[dict],
+    schedule_rows: list[dict],
+) -> tuple[list[dict], dict]:
+    """Annotate schedule rows with due_date/status/date_given for one patient,
+    and return an aggregate summary.
+
+    Matching is ordinal, not a strict dose-number join: for the k-th schedule
+    row of a given vaccine name (ordered by age_days), we match it to the k-th
+    administered dose of that same name (ordered by date_given) if one exists.
+    Schedule rows don't consistently carry dose_number, and this mirrors how a
+    real paper vaccination card gets filled in — in order, not by matching an
+    explicit dose index.
+    """
+    today = date.today()
+    _norm = lambda s: (s or "").strip().lower()
+    schedule_rows = sorted(schedule_rows, key=lambda r: r.get("age_days") if r.get("age_days") is not None else 0)
+
+    by_name_given: dict[str, list[dict]] = {}
+    for g in sorted(given, key=lambda r: r.get("date_given") or ""):
+        if g.get("vaccine_name"):
+            by_name_given.setdefault(_norm(g["vaccine_name"]), []).append(g)
+
+    given_cursor: dict[str, int] = {}
+    annotated: list[dict] = []
+    overdue_count = 0
+    upcoming_count = 0
+    next_due: Optional[dict] = None
+
+    for row in schedule_rows:
+        name = _norm(row["vaccine_name"])
+        idx = given_cursor.get(name, 0)
+        doses_given = by_name_given.get(name, [])
+        out = dict(row)
+
+        due_date = dob + timedelta(days=row.get("age_days") or 0) if dob else None
+        out["due_date"] = due_date.isoformat() if due_date else None
+
+        if idx < len(doses_given):
+            dose = doses_given[idx]
+            out["status"] = "given"
+            out["date_given"] = dose.get("date_given")
+            out["administered"] = True
+            given_cursor[name] = idx + 1
+        else:
+            out["date_given"] = None
+            out["administered"] = False
+            if due_date is None:
+                out["status"] = "upcoming"
+            elif due_date < today:
+                out["status"] = "overdue"
+                overdue_count += 1
+                if next_due is None or due_date < date.fromisoformat(next_due["due_date"]):
+                    next_due = {"vaccine_name": row["vaccine_name"], "due_date": out["due_date"]}
+            else:
+                out["status"] = "upcoming"
+                if due_date <= today + timedelta(days=_DUE_SOON_DAYS):
+                    upcoming_count += 1
+                    if next_due is None or due_date < date.fromisoformat(next_due["due_date"]):
+                        next_due = {"vaccine_name": row["vaccine_name"], "due_date": out["due_date"]}
+
+        annotated.append(out)
+
+    if overdue_count:
+        overall_status = "overdue"
+    elif upcoming_count:
+        overall_status = "due_soon"
+    else:
+        overall_status = "up_to_date"
+
+    summary = {
+        "overdue_count": overdue_count,
+        "upcoming_count": upcoming_count,
+        "next_due": next_due,
+        "overall_status": overall_status,
+    }
+    return annotated, summary
+
 
 # ---------------------------------------------------------------------------
 # ANC Registration
@@ -275,7 +376,20 @@ async def list_anc(
     if status:
         query = query.eq("status", status)
     result = query.execute()
-    return {"records": result.data or [], "count": len(result.data or [])}
+    records = result.data or []
+
+    patient_ids = list({r["patient_id"] for r in records if r.get("patient_id")})
+    patients_by_id: dict[int, dict] = {}
+    if patient_ids:
+        patients = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name").in_("id", patient_ids).execute()
+        patients_by_id = {p["id"]: p for p in (patients.data or [])}
+
+    for r in records:
+        p = patients_by_id.get(r.get("patient_id"))
+        r["patient_name"] = f"{p['first_name']} {p['last_name']}" if p else None
+        r["mrn"] = p.get("mrn") if p else None
+
+    return {"records": records, "count": len(records)}
 
 
 @router.get("/anc/{anc_id}")
@@ -439,6 +553,10 @@ async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, u
         "mother_patient_id": delivery["patient_id"],
         "registered_by": user.get("sub") or "system",
     }
+    if payload.father_name:
+        baby_patient["father_name"] = payload.father_name
+    if payload.place_of_birth:
+        baby_patient["place_of_birth"] = payload.place_of_birth
     try:
         baby_result = db.table(TABLE_PATIENTS).insert(baby_patient).execute()
     except Exception as exc:
@@ -446,7 +564,7 @@ async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, u
         raise HTTPException(status_code=500, detail="Failed to create the newborn's patient record")
     baby = baby_result.data[0] if baby_result.data else baby_patient
 
-    data = payload.model_dump(exclude_none=True)
+    data = payload.model_dump(exclude_none=True, exclude={"father_name", "place_of_birth"})
     data["delivery_id"] = delivery_id
     data["patient_id"]  = baby["id"]
     data["assessed_by"] = user.get("sub") or "system"
@@ -557,27 +675,196 @@ async def list_babies(patient_id: int, user=Depends(verify_jwt)):
 
 @router.get("/vaccine-schedule")
 async def get_vaccine_schedule(
-    patient_id: Optional[int] = Query(None, description="Annotate rows with administered status for this patient"),
+    patient_id: Optional[int] = Query(None, description="Compute due/overdue status against this patient's DOB and history"),
     user=Depends(verify_jwt),
 ):
     """Reference vaccination schedule (seeded from the client's vaccination
-    booklet). Optionally cross-references a patient's immunisation history so
-    the frontend can render a due/overdue table."""
+    booklet). When patient_id is passed, each row is annotated with a real
+    due_date (patient's date_of_birth + age_days) and a status of
+    given/overdue/upcoming — not just a boolean "ever given" — via
+    _compute_immunisation_status."""
     result = db.table(TABLE_VACCINE_SCHEDULE).select("*").order("age_days").execute()
     rows = result.data or []
 
     if patient_id is not None:
+        patient = db.table(TABLE_PATIENTS).select("id,date_of_birth").eq("id", patient_id).execute()
+        dob = _as_date(patient.data[0]["date_of_birth"]) if patient.data else None
+
         given = (
             db.table(TABLE_IMMUNISATION)
-            .select("vaccine_name")
+            .select("vaccine_name,date_given")
             .eq("patient_id", patient_id)
             .execute()
         )
-        given_names = {g["vaccine_name"].strip().lower() for g in (given.data or []) if g.get("vaccine_name")}
-        for row in rows:
-            row["administered"] = row["vaccine_name"].strip().lower() in given_names
+        rows, summary = _compute_immunisation_status(dob, given.data or [], rows)
+        return {"schedule": rows, "count": len(rows), "summary": summary}
 
     return {"schedule": rows, "count": len(rows)}
+
+
+# ---------------------------------------------------------------------------
+# Babies roster — hospital-wide, not scoped to a single mother
+# ---------------------------------------------------------------------------
+
+class BabyRegister(BaseModel):
+    mother_patient_id: int
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)   # defaults to mother's last name
+    date_of_birth: str = Field(..., description="ISO date")
+    gender: Optional[str] = None
+    place_of_birth: Optional[str] = None
+    father_name: Optional[str] = None
+
+
+@router.post("/babies/register", status_code=201)
+async def register_baby(payload: BabyRegister, user=Depends(verify_jwt)):
+    """Start a new baby directly onto the immunisation program — the
+    Immunisation page's "New Baby" entry point. Unlike add_newborn_assessment
+    (gated behind a delivery record in this system), this covers any baby
+    brought in for vaccination, including ones born elsewhere. The mother
+    link is mandatory, not optional — a baby record can never be created
+    without a resolved, real mother patient behind it."""
+    mother = db.table(TABLE_PATIENTS).select("id,last_name,hmo_provider,hmo_id,mrn").eq("id", payload.mother_patient_id).execute()
+    if not mother.data:
+        raise HTTPException(status_code=404, detail=f"Mother patient {payload.mother_patient_id} not found")
+    mother_row = mother.data[0]
+
+    if payload.gender and payload.gender not in {"male", "female", "other", "prefer_not_to_say"}:
+        raise HTTPException(status_code=422, detail="gender must be one of male/female/other/prefer_not_to_say")
+
+    baby_patient = {
+        "mrn": _generate_mrn(),
+        "first_name": payload.first_name.strip(),
+        "last_name": (payload.last_name or mother_row.get("last_name") or "Unknown").strip(),
+        "date_of_birth": payload.date_of_birth,
+        "gender": payload.gender,
+        "hmo_provider": mother_row.get("hmo_provider"),
+        "hmo_id": mother_row.get("hmo_id"),
+        "mother_patient_id": payload.mother_patient_id,
+        "registered_by": user.get("sub") or "system",
+    }
+    if payload.father_name:
+        baby_patient["father_name"] = payload.father_name
+    if payload.place_of_birth:
+        baby_patient["place_of_birth"] = payload.place_of_birth
+
+    try:
+        result = db.table(TABLE_PATIENTS).insert(baby_patient).execute()
+    except Exception as exc:
+        logger.error("Baby registration failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to register baby")
+    baby = result.data[0] if result.data else baby_patient
+
+    audit_event(
+        "baby_registered",
+        {"mother_patient_id": payload.mother_patient_id, "mrn": baby.get("mrn")},
+        actor_id=user.get("sub"),
+        subject_type="patient",
+        subject_id=str(baby.get("id") or ""),
+    )
+    return {"ok": True, "baby": baby}
+
+
+@router.get("/babies")
+async def list_all_babies(
+    search: Optional[str] = Query(None, description="Match against first/last name or MRN"),
+    status: Optional[str] = Query(None, description="Filter: overdue | due_soon | up_to_date"),
+    limit: int = Query(100, ge=1, le=500),
+    user=Depends(verify_jwt),
+):
+    """Hospital-wide roster of babies in the immunisation program — powers the
+    dedicated Immunisation page (there was previously no way to browse babies
+    without already knowing a specific patient ID). A "baby" is any patient
+    linked to a mother via mother_patient_id (created through the Newborn
+    Assessment flow) OR any patient with at least one immunisation record on
+    file (covers a pediatric patient registered directly, without an ANC/
+    delivery record in this system)."""
+    linked = db.table(TABLE_PATIENTS).select("id").is_("mother_patient_id", "not_null").execute()
+    dosed = db.table(TABLE_IMMUNISATION).select("patient_id").execute()
+    candidate_ids = {r["id"] for r in (linked.data or [])} | {r["patient_id"] for r in (dosed.data or []) if r.get("patient_id")}
+
+    if not candidate_ids:
+        return {"babies": [], "count": 0}
+
+    query = (
+        db.table(TABLE_PATIENTS)
+        .select("id,mrn,first_name,last_name,date_of_birth,gender,mother_patient_id")
+        .in_("id", list(candidate_ids))
+    )
+    if search:
+        like = f"%{search}%"
+        query = query.or_(f"first_name.ilike.{like},last_name.ilike.{like},mrn.ilike.{like}")
+    babies = query.order("date_of_birth", desc=True).limit(limit).execute().data or []
+
+    if not babies:
+        return {"babies": [], "count": 0}
+
+    baby_ids = [b["id"] for b in babies]
+    mother_ids = [b["mother_patient_id"] for b in babies if b.get("mother_patient_id")]
+
+    imm_rows = (
+        db.table(TABLE_IMMUNISATION).select("patient_id,vaccine_name,date_given").in_("patient_id", baby_ids).execute()
+    ).data or []
+    imm_by_patient: dict[int, list[dict]] = {}
+    for r in imm_rows:
+        imm_by_patient.setdefault(r["patient_id"], []).append(r)
+
+    mothers_by_id: dict[int, dict] = {}
+    if mother_ids:
+        mothers = db.table(TABLE_PATIENTS).select("id,first_name,last_name,mrn").in_("id", mother_ids).execute()
+        mothers_by_id = {m["id"]: m for m in (mothers.data or [])}
+
+    schedule = db.table(TABLE_VACCINE_SCHEDULE).select("*").order("age_days").execute().data or []
+
+    roster = []
+    for baby in babies:
+        dob = _as_date(baby.get("date_of_birth"))
+        _rows, summary = _compute_immunisation_status(dob, imm_by_patient.get(baby["id"], []), schedule)
+        mother = mothers_by_id.get(baby.get("mother_patient_id"))
+        roster.append({
+            **baby,
+            "mother_name": f"{mother['first_name']} {mother['last_name']}" if mother else None,
+            "mother_mrn": mother.get("mrn") if mother else None,
+            "overall_status": summary["overall_status"],
+            "overdue_count": summary["overdue_count"],
+            "upcoming_count": summary["upcoming_count"],
+            "next_due": summary["next_due"],
+        })
+
+    if status:
+        roster = [b for b in roster if b["overall_status"] == status]
+
+    return {"babies": roster, "count": len(roster)}
+
+
+@router.get("/babies/{patient_id}")
+async def get_baby_detail(patient_id: int, user=Depends(verify_jwt)):
+    """Combined bio header for a baby's Vaccination Record page: the patient
+    row (incl. father_name/place_of_birth), their birth stats from the
+    newborn assessment, and their mother's identity."""
+    patient = db.table(TABLE_PATIENTS).select(
+        "id,mrn,first_name,last_name,date_of_birth,gender,father_name,place_of_birth,"
+        "address,phone,allergies,mother_patient_id"
+    ).eq("id", patient_id).execute()
+    if not patient.data:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+    baby = patient.data[0]
+
+    assessment = (
+        db.table(TABLE_NEWBORN_ASSESSMENT)
+        .select("birth_weight_kg,length_cm,head_circumference_cm,apgar_1min,apgar_5min,apgar_10min")
+        .eq("patient_id", patient_id)
+        .execute()
+    )
+    baby["newborn_assessment"] = assessment.data[0] if assessment.data else None
+
+    mother = None
+    if baby.get("mother_patient_id"):
+        m = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name,phone").eq("id", baby["mother_patient_id"]).execute()
+        mother = m.data[0] if m.data else None
+    baby["mother"] = mother
+
+    return {"baby": baby}
 
 
 # ---------------------------------------------------------------------------

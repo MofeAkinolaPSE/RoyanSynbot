@@ -11,7 +11,7 @@ import { TourProvider } from "./components/tour/TourProvider";
 import SessionPrewarm from "./components/SessionPrewarm";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
-import Dashboard from "./pages/Dashboard";
+import Workstation from "./pages/Workstation";
 import Executive from "./pages/Executive";
 import ExecutiveSummaryDetails from "./pages/ExecutiveSummaryDetails";
 import FinanceAnalytics from "./pages/FinanceAnalytics";
@@ -46,7 +46,9 @@ import ClinicalQueue         from "./pages/ClinicalQueue";
 import WardsAndBeds          from "./pages/WardsAndBeds";
 import Laboratory            from "./pages/Laboratory";
 import PharmacyDispensing    from "./pages/PharmacyDispensing";
+import Inventory             from "./pages/Inventory";
 import HospitalBilling       from "./pages/HospitalBilling";
+import HospitalInvoice       from "./pages/HospitalInvoice";
 import HospitalAppointments  from "./pages/HospitalAppointments";
 import HMOAdmin              from "./pages/HMOAdmin";
 import DoctorDashboard       from "./pages/DoctorDashboard";
@@ -56,8 +58,11 @@ import NursingStation        from "./pages/NursingStation";
 import Radiology             from "./pages/Radiology";
 import SurgicalTheatre       from "./pages/SurgicalTheatre";
 import MCHObGyn              from "./pages/MCHObGyn";
+import Immunisation          from "./pages/Immunisation";
+import BabyVaccinationRecord from "./pages/BabyVaccinationRecord";
 import DigitalEngagement     from "./pages/DigitalEngagement";
 import QualitySafety        from "./pages/QualitySafety";
+import AuditsMaintenance    from "./pages/AuditsMaintenance";
 import HRShifts             from "./pages/HRShifts";
 import Reports               from "./pages/Reports";
 import PaymentGateway        from "./pages/PaymentGateway";
@@ -101,7 +106,7 @@ const App = () => (
                   </ProtectedRoute>
                 }
               >
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/" element={<Workstation />} />
                 <Route path="/executive" element={<Executive />} />
                 <Route path="/executive/summary" element={<ExecutiveSummaryDetails />} />
                 <Route path="/finance/analytics" element={<FinanceAnalytics />} />
@@ -133,6 +138,7 @@ const App = () => (
                 <Route path="/hospital/wards"            element={<WardsAndBeds />} />
                 <Route path="/hospital/lab"              element={<Laboratory />} />
                 <Route path="/hospital/pharmacy"         element={<PharmacyDispensing />} />
+                <Route path="/hospital/pharmacy/inventory" element={<Inventory />} />
                 <Route path="/hospital/billing"          element={<HospitalBilling />} />
                 <Route path="/hospital/appointments"     element={<HospitalAppointments />} />
                 <Route path="/hospital/hmo"              element={<HMOAdmin />} />
@@ -143,8 +149,11 @@ const App = () => (
                 <Route path="/hospital/radiology"       element={<Radiology />} />
                 <Route path="/hospital/theatre"         element={<SurgicalTheatre />} />
                 <Route path="/hospital/mch"             element={<MCHObGyn />} />
+                <Route path="/hospital/immunisation"    element={<Immunisation />} />
+                <Route path="/hospital/immunisation/:patientId" element={<BabyVaccinationRecord />} />
                 <Route path="/hospital/engagement"      element={<DigitalEngagement />} />
                 <Route path="/hospital/quality"        element={<QualitySafety />} />
+                <Route path="/hospital/audits-maintenance" element={<AuditsMaintenance />} />
                 <Route path="/hospital/hr"             element={<HRShifts />} />
                 <Route path="/hospital/reports"        element={<Reports />} />
                 <Route path="/admin/payments"          element={<PaymentGateway />} />
@@ -155,6 +164,9 @@ const App = () => (
               </Route>
               {/* Public display board — no sidebar, full-screen */}
               <Route path="/hospital/display" element={<QueueDisplay />} />
+              {/* Printable invoice — dedicated full page, no sidebar chrome, so
+                  browser print isn't fighting a scroll-clipped Sheet layout. */}
+              <Route path="/hospital/billing/:billId/invoice" element={<ProtectedRoute><HospitalInvoice /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             </TourProvider>

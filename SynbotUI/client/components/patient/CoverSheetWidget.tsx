@@ -48,7 +48,7 @@ export function CoverSheetWidget({
           {title}
         </CardTitle>
         {typeof count === "number" && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+          <Badge variant="outline" className="text-[12px] px-1.5 py-0 h-4 font-normal">
             {count}
           </Badge>
         )}
@@ -81,7 +81,7 @@ export function CoverSheetWidget({
           <button
             type="button"
             onClick={onViewAll}
-            className="mt-1.5 text-[11px] text-primary hover:underline self-start shrink-0"
+            className="mt-1.5 text-[13px] text-primary hover:underline self-start shrink-0"
           >
             {viewAllLabel}
           </button>

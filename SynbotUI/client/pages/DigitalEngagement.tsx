@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import {
   MessageSquare, RefreshCw, Loader2, Plus, Send, Video,
-  Bell, CheckCircle2, XCircle, Clock, Copy, FileText, Trash2,
+  Bell, CheckCircle2, XCircle, FileText, Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -27,35 +27,20 @@ import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { TelemedicineSessionPanel } from "@/components/engagement/TelemedicineSessionPanel";
+import { TELE_STATUS_COLORS } from "@/components/engagement/engagement-shared";
 
 const CHANNEL_COLORS: Record<string, string> = {
-  sms:       "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  whatsapp:  "bg-green-500/20 text-green-400 border-green-500/30",
-  email:     "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  sms:       "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  whatsapp:  "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  email:     "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
 };
 
 const MSG_STATUS_COLORS: Record<string, string> = {
-  sent:      "bg-green-500/20 text-green-400 border-green-500/30",
-  delivered: "bg-teal-500/20 text-teal-400 border-teal-500/30",
-  failed:    "bg-red-500/20 text-red-400 border-red-500/30",
-  queued:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-};
-
-const TELE_STATUS_COLORS: Record<string, string> = {
-  scheduled:  "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  active:     "bg-green-500/20 text-green-400 border-green-500/30",
-  completed:  "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  cancelled:  "bg-red-500/20 text-red-400 border-red-500/30",
-  no_show:    "bg-orange-500/20 text-orange-400 border-orange-500/30",
-};
-
-const TELE_TRANSITIONS: Record<string, string> = {
-  scheduled: "active",
-  active: "completed",
-};
-const TELE_NEXT_LABEL: Record<string, string> = {
-  scheduled: "Start Session",
-  active:    "End Session",
+  sent:      "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  delivered: "bg-teal-500/20 text-teal-700 dark:text-teal-400 border-teal-500/30",
+  failed:    "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+  queued:    "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
 };
 
 export default function DigitalEngagement() {
@@ -87,14 +72,37 @@ export default function DigitalEngagement() {
     chief_complaint: "", notes: "",
   });
 
-  // Join link dialog
-  const [joinOpen, setJoinOpen] = useState(false);
-  const [joinData, setJoinData] = useState<any>(null);
+  // Telemedicine session detail panel
+  const [selectedSession, setSelectedSession] = useState<any | null>(null);
 
   // Filter state
   const [logChannel, setLogChannel] = useState("all");
   const [logStatus, setLogStatus] = useState("all");
   const [teleStatus, setTeleStatus] = useState("all");
+
+  // Patient search — New Telemedicine Session dialog
+  const [telePatientQuery, setTelePatientQuery] = useState("");
+  const [telePatientDebounced, setTelePatientDebounced] = useState("");
+  const telePatientDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [selectedTelePatient, setSelectedTelePatient] = useState<any | null>(null);
+
+  function handleTelePatientQueryChange(val: string) {
+    setTelePatientQuery(val);
+    if (telePatientDebounceRef.current) clearTimeout(telePatientDebounceRef.current);
+    telePatientDebounceRef.current = setTimeout(() => setTelePatientDebounced(val), 400);
+  }
+
+  // Patient search — Send Message dialog (optional patient link + phone auto-fill)
+  const [sendPatientQuery, setSendPatientQuery] = useState("");
+  const [sendPatientDebounced, setSendPatientDebounced] = useState("");
+  const sendPatientDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [selectedSendPatient, setSelectedSendPatient] = useState<any | null>(null);
+
+  function handleSendPatientQueryChange(val: string) {
+    setSendPatientQuery(val);
+    if (sendPatientDebounceRef.current) clearTimeout(sendPatientDebounceRef.current);
+    sendPatientDebounceRef.current = setTimeout(() => setSendPatientDebounced(val), 400);
+  }
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
@@ -102,6 +110,27 @@ export default function DigitalEngagement() {
     queryKey: ["notif-stats"],
     queryFn: () => api.notifications.stats(),
   });
+
+  const { data: doctorsData } = useQuery({
+    queryKey: ["appt-doctors"],
+    queryFn: () => (api.hospital.appointments as any).doctors(),
+    staleTime: 300_000,
+  });
+  const doctors: { doctor_name: string; department: string }[] = doctorsData?.doctors ?? [];
+
+  const { data: telePatientSearchData, isFetching: telePatientSearching } = useQuery({
+    queryKey: ["engagement-tele-patient-search", telePatientDebounced],
+    queryFn: () => api.hospital.patients.search(telePatientDebounced),
+    enabled: teleOpen && !selectedTelePatient && telePatientDebounced.length >= 2,
+  });
+  const telePatientResults: any[] = Array.isArray(telePatientSearchData) ? telePatientSearchData : (telePatientSearchData?.patients ?? []);
+
+  const { data: sendPatientSearchData, isFetching: sendPatientSearching } = useQuery({
+    queryKey: ["engagement-send-patient-search", sendPatientDebounced],
+    queryFn: () => api.hospital.patients.search(sendPatientDebounced),
+    enabled: sendOpen && !selectedSendPatient && sendPatientDebounced.length >= 2,
+  });
+  const sendPatientResults: any[] = Array.isArray(sendPatientSearchData) ? sendPatientSearchData : (sendPatientSearchData?.patients ?? []);
 
   const { data: teleStats } = useQuery({
     queryKey: ["tele-stats"],
@@ -136,15 +165,22 @@ export default function DigitalEngagement() {
 
   // ── Mutations ────────────────────────────────────────────────────────────
 
+  function resetSendForm() {
+    setSendForm({ channel: "sms", recipient: "", message: "", patient_id: "" });
+    setSendPatientQuery("");
+    setSendPatientDebounced("");
+    setSelectedSendPatient(null);
+  }
+
   const sendMut = useMutation({
     mutationFn: () => api.notifications.send({
       ...sendForm,
-      patient_id: sendForm.patient_id ? Number(sendForm.patient_id) : undefined,
+      patient_id: selectedSendPatient ? Number(selectedSendPatient.id) : undefined,
     }),
     onSuccess: (d) => {
       toast({ title: `Message ${d.status}` });
       setSendOpen(false);
-      setSendForm({ channel: "sms", recipient: "", message: "", patient_id: "" });
+      resetSendForm();
       qc.invalidateQueries({ queryKey: ["notif-logs"] });
       qc.invalidateQueries({ queryKey: ["notif-stats"] });
     },
@@ -195,44 +231,29 @@ export default function DigitalEngagement() {
     onSuccess: () => { toast({ title: "Template deleted" }); refetchTemplates(); },
   });
 
+  function resetTeleForm() {
+    setTeleForm({ patient_id: "", encounter_id: "", doctor_id: "", scheduled_date: "", scheduled_time: "", duration_minutes: "30", visit_type: "consultation", chief_complaint: "", notes: "" });
+    setTelePatientQuery("");
+    setTelePatientDebounced("");
+    setSelectedTelePatient(null);
+  }
+
   const teleMut = useMutation({
     mutationFn: () => api.telemedicine.createSession({
       ...teleForm,
-      patient_id:       Number(teleForm.patient_id),
+      patient_id:       Number(selectedTelePatient.id),
       encounter_id:     teleForm.encounter_id ? Number(teleForm.encounter_id) : undefined,
       duration_minutes: Number(teleForm.duration_minutes),
     }),
     onSuccess: () => {
       toast({ title: "Telemedicine session scheduled" });
       setTeleOpen(false);
-      setTeleForm({ patient_id: "", encounter_id: "", doctor_id: "", scheduled_date: "", scheduled_time: "", duration_minutes: "30", visit_type: "consultation", chief_complaint: "", notes: "" });
+      resetTeleForm();
       qc.invalidateQueries({ queryKey: ["tele-sessions"] });
       qc.invalidateQueries({ queryKey: ["tele-stats"] });
     },
     onError: () => toast({ title: "Failed to schedule session", variant: "destructive" }),
   });
-
-  const teleStatusMut = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      api.telemedicine.advanceStatus(id, { status }),
-    onSuccess: (_, v) => {
-      toast({ title: `Session ${v.status}` });
-      qc.invalidateQueries({ queryKey: ["tele-sessions"] });
-      qc.invalidateQueries({ queryKey: ["tele-stats"] });
-    },
-    onError: (e: any) => toast({ title: e?.message || "Status change failed", variant: "destructive" }),
-  });
-
-  async function handleJoinLinks(id: number) {
-    const d = await api.telemedicine.getJoinLinks(id);
-    setJoinData(d);
-    setJoinOpen(true);
-  }
-
-  function copyLink(link: string) {
-    navigator.clipboard.writeText(link);
-    toast({ title: "Link copied" });
-  }
 
   return (
     <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
@@ -254,20 +275,20 @@ export default function DigitalEngagement() {
             onClick={() => { refetchLogs(); refetchSessions(); }}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
-          <Button size="sm" variant="outline" className="border-green-500/40 text-green-400 hover:bg-green-500/10"
+          <Button size="sm" variant="outline" className="border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
             onClick={() => setReminderOpen(true)}>
             <Bell className="w-4 h-4 mr-1" /> Reminders
           </Button>
-          <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+          <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
             onClick={() => setBulkOpen(true)}>
             <Send className="w-4 h-4 mr-1" /> Bulk SMS
           </Button>
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => setSendOpen(true)}>
+            onClick={() => { resetSendForm(); setSendOpen(true); }}>
             <Plus className="w-4 h-4 mr-1" /> Send Message
           </Button>
           <Button size="sm" className="bg-blue-700 hover:bg-blue-800"
-            onClick={() => setTeleOpen(true)}>
+            onClick={() => { resetTeleForm(); setTeleOpen(true); }}>
             <Video className="w-4 h-4 mr-1" /> New Session
           </Button>
         </div>
@@ -277,10 +298,10 @@ export default function DigitalEngagement() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: "Total Sent",       value: ns.total,                 color: "text-foreground",  bg: "bg-muted/30" },
-          { label: "Sent Today",       value: ns.sent_today,            color: "text-blue-400",    bg: "bg-blue-500/10" },
-          { label: "Delivery Rate",    value: `${ns.delivery_rate_pct}%`, color: ns.delivery_rate_pct >= 90 ? "text-green-400" : "text-yellow-400", bg: "bg-background" },
-          { label: "Tele Sessions",    value: ts.total,                 color: "text-blue-400",    bg: "bg-blue-500/10" },
-          { label: "Scheduled",        value: ts.scheduled,             color: "text-sky-400",     bg: "bg-sky-500/10" },
+          { label: "Sent Today",       value: ns.sent_today,            color: "text-blue-700 dark:text-blue-400",    bg: "bg-blue-500/10" },
+          { label: "Delivery Rate",    value: `${ns.delivery_rate_pct}%`, color: ns.delivery_rate_pct >= 90 ? "text-green-700 dark:text-green-400" : "text-yellow-700 dark:text-yellow-400", bg: "bg-background" },
+          { label: "Tele Sessions",    value: ts.total,                 color: "text-blue-700 dark:text-blue-400",    bg: "bg-blue-500/10" },
+          { label: "Scheduled",        value: ts.scheduled,             color: "text-sky-700 dark:text-sky-400",     bg: "bg-sky-500/10" },
         ].map(k => (
           <Card key={k.label} className={cn("border-border", k.bg)}>
             <CardContent className="pt-4 pb-3">
@@ -427,9 +448,9 @@ export default function DigitalEngagement() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: "Total",           value: ts.total,                   color: "text-foreground" },
-              { label: "Scheduled",       value: ts.scheduled,               color: "text-blue-400" },
-              { label: "Completed",       value: ts.completed,               color: "text-green-400" },
-              { label: "Avg Duration",    value: `${ts.avg_duration_minutes}m`, color: "text-sky-400" },
+              { label: "Scheduled",       value: ts.scheduled,               color: "text-blue-700 dark:text-blue-400" },
+              { label: "Completed",       value: ts.completed,               color: "text-green-700 dark:text-green-400" },
+              { label: "Avg Duration",    value: `${ts.avg_duration_minutes}m`, color: "text-sky-700 dark:text-sky-400" },
             ].map(k => (
               <Card key={k.label} className="border-border bg-muted/30">
                 <CardContent className="pt-3 pb-2">
@@ -464,21 +485,18 @@ export default function DigitalEngagement() {
                   <TableHead className="text-muted-foreground text-xs">Date / Time</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Type</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Status</TableHead>
-                  <TableHead className="text-muted-foreground text-xs">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sessionsLoading
-                  ? <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  ? <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…
                     </TableCell></TableRow>
                   : sessions.length === 0
-                    ? <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No sessions found</TableCell></TableRow>
+                    ? <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No sessions found</TableCell></TableRow>
                     : sessions.map((s: any) => {
-                        const nextStatus = TELE_TRANSITIONS[s.status];
-                        const nextLabel  = TELE_NEXT_LABEL[s.status];
                         return (
-                          <TableRow key={s.id} className="border-border hover:bg-muted">
+                          <TableRow key={s.id} className="border-border hover:bg-muted cursor-pointer" onClick={() => setSelectedSession(s)}>
                             <TableCell className="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
                             <TableCell className="text-sm text-foreground">{s.patient_id}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{s.doctor_id}</TableCell>
@@ -491,21 +509,6 @@ export default function DigitalEngagement() {
                                 {s.status.replace("_", " ")}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
-                                <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                                  onClick={() => handleJoinLinks(s.id)}>
-                                  <Video className="w-3 h-3 mr-1" /> Join
-                                </Button>
-                                {nextStatus && nextLabel && (
-                                  <Button size="sm" className="h-6 text-xs px-2 bg-blue-700 hover:bg-blue-800"
-                                    disabled={teleStatusMut.isPending}
-                                    onClick={() => teleStatusMut.mutate({ id: s.id, status: nextStatus })}>
-                                    {nextLabel}
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
                           </TableRow>
                         );
                       })
@@ -517,7 +520,7 @@ export default function DigitalEngagement() {
       </Tabs>
 
       {/* ── Send Message Dialog ─────────────────────────────────────────────── */}
-      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+      <Dialog open={sendOpen} onOpenChange={(o) => { setSendOpen(o); if (!o) resetSendForm(); }}>
         <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -537,16 +540,44 @@ export default function DigitalEngagement() {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Link to Patient (optional)</Label>
+              {!selectedSendPatient ? (
+                <>
+                  <Input placeholder="Search patient by name, phone, or HMO ID…" value={sendPatientQuery}
+                    onChange={e => handleSendPatientQueryChange(e.target.value)}
+                    className="bg-background border-border text-foreground text-sm h-8" />
+                  {sendPatientSearching && <p className="text-xs text-muted-foreground">Searching…</p>}
+                  {sendPatientResults.length > 0 && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {sendPatientResults.map((p: any) => (
+                        <button key={p.id} type="button"
+                          className="w-full text-left rounded-md border px-3 py-2 text-xs hover:bg-muted/40 transition-colors"
+                          onClick={() => {
+                            setSelectedSendPatient(p);
+                            if (p.phone) setSendForm(f => ({ ...f, recipient: p.phone }));
+                          }}>
+                          <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
+                          <p className="text-muted-foreground">MRN: {p.mrn} · {p.phone ?? "no phone on file"}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{selectedSendPatient.first_name} {selectedSendPatient.last_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{selectedSendPatient.mrn}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedSendPatient(null)}>Change</Button>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Recipient Phone *</Label>
               <Input value={sendForm.recipient}
                 onChange={e => setSendForm(p => ({ ...p, recipient: e.target.value }))}
                 placeholder="+234..."
-                className="bg-background border-border text-foreground text-sm h-8" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Patient ID (optional)</Label>
-              <Input type="number" value={sendForm.patient_id}
-                onChange={e => setSendForm(p => ({ ...p, patient_id: e.target.value }))}
                 className="bg-background border-border text-foreground text-sm h-8" />
             </div>
             <div className="space-y-1">
@@ -736,7 +767,7 @@ export default function DigitalEngagement() {
       </Dialog>
 
       {/* ── New Telemedicine Session Dialog ─────────────────────────────────── */}
-      <Dialog open={teleOpen} onOpenChange={setTeleOpen}>
+      <Dialog open={teleOpen} onOpenChange={(o) => { setTeleOpen(o); if (!o) resetTeleForm(); }}>
         <DialogContent className="bg-card border-border text-foreground max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -745,10 +776,48 @@ export default function DigitalEngagement() {
             </DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs text-muted-foreground">Patient *</Label>
+              {!selectedTelePatient ? (
+                <>
+                  <Input placeholder="Search patient by name, phone, or HMO ID…" value={telePatientQuery}
+                    onChange={e => handleTelePatientQueryChange(e.target.value)}
+                    className="bg-background border-border text-foreground text-sm h-8" />
+                  {telePatientSearching && <p className="text-xs text-muted-foreground">Searching…</p>}
+                  {telePatientResults.length > 0 && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {telePatientResults.map((p: any) => (
+                        <button key={p.id} type="button"
+                          className="w-full text-left rounded-md border px-3 py-2 text-xs hover:bg-muted/40 transition-colors"
+                          onClick={() => setSelectedTelePatient(p)}>
+                          <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
+                          <p className="text-muted-foreground">MRN: {p.mrn}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{selectedTelePatient.first_name} {selectedTelePatient.last_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{selectedTelePatient.mrn}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedTelePatient(null)}>Change</Button>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Doctor *</Label>
+              <Select value={teleForm.doctor_id} onValueChange={v => setTeleForm(p => ({ ...p, doctor_id: v }))}>
+                <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm"><SelectValue placeholder="Select doctor" /></SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {doctors.map(d => <SelectItem key={d.doctor_name} value={d.doctor_name}>{d.doctor_name}{d.department ? ` (${d.department})` : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             {[
-              { key: "patient_id",   label: "Patient ID *",    type: "number" },
               { key: "encounter_id", label: "Encounter ID",    type: "number" },
-              { key: "doctor_id",    label: "Doctor ID *",     type: "text" },
               { key: "duration_minutes", label: "Duration (min)", type: "number" },
               { key: "scheduled_date",   label: "Date *",      type: "date" },
               { key: "scheduled_time",   label: "Time *",      type: "time" },
@@ -787,7 +856,7 @@ export default function DigitalEngagement() {
           <DialogFooter className="mt-4">
             <Button variant="outline" className="border-border" onClick={() => setTeleOpen(false)}>Cancel</Button>
             <Button className="bg-blue-700 hover:bg-blue-800"
-              disabled={teleMut.isPending || !teleForm.patient_id || !teleForm.doctor_id || !teleForm.scheduled_date}
+              disabled={teleMut.isPending || !selectedTelePatient || !teleForm.doctor_id || !teleForm.scheduled_date}
               onClick={() => teleMut.mutate()}>
               {teleMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Schedule Session
@@ -796,52 +865,9 @@ export default function DigitalEngagement() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Join Links Dialog ───────────────────────────────────────────────── */}
-      <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Video className="w-5 h-5 text-green-400" />
-              Join Links — Session #{joinData?.session_id}
-            </DialogTitle>
-            {joinData && (
-              <DialogDescription className="text-muted-foreground">
-                {joinData.scheduled_date} {joinData.scheduled_time}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          {joinData && (
-            <div className="space-y-3 mt-2">
-              {[
-                { label: "Doctor Link (Host)", key: "doctor_link", color: "text-purple-400" },
-                { label: "Patient Link (Guest)", key: "patient_link", color: "text-blue-400" },
-              ].map(item => (
-                <div key={item.key} className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{item.label}</Label>
-                  <div className="flex gap-2">
-                    <Input readOnly value={joinData[item.key] || ""}
-                      className="bg-background border-border text-xs font-mono flex-1 h-8" />
-                    <Button size="sm" variant="outline" className="h-8 border-border px-2"
-                      onClick={() => copyLink(joinData[item.key])}>
-                      <Copy className="w-3 h-3" />
-                    </Button>
-                    <Button size="sm" className="h-8 bg-green-700 hover:bg-green-600 px-2"
-                      onClick={() => window.open(joinData[item.key], "_blank")}>
-                      <Video className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground mt-2">
-                Powered by Jitsi Meet. No download required — opens in browser.
-              </p>
-            </div>
-          )}
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setJoinOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedSession && (
+        <TelemedicineSessionPanel session={selectedSession} onClose={() => setSelectedSession(null)} />
+      )}
     </motion.div>
   );
 }

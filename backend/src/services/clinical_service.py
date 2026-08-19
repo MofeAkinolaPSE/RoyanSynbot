@@ -38,8 +38,8 @@ def record_vitals(
                 """
                 INSERT INTO public.royan_vitals
                     (encounter_id, patient_id,
-                     temperature, systolic_bp, diastolic_bp, pulse_rate,
-                     respiratory_rate, oxygen_saturation, weight_kg, height_cm,
+                     temperature, bp_systolic, bp_diastolic, pulse,
+                     respiratory_rate, spo2, weight, height,
                      notes, recorded_by)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
@@ -179,7 +179,7 @@ def create_soap_note(
                 """
                 INSERT INTO public.royan_encounter_notes
                     (encounter_id, patient_id, note_type, content,
-                     subjective, objective, assessment, plan, authored_by)
+                     subjective, objective, assessment, plan, author_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,

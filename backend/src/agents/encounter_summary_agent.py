@@ -315,19 +315,39 @@ class EncounterSummaryAgent(BaseAgent):
             conn = db.pool.getconn()
             try:
                 cur = conn.cursor()
+                # No unique constraint on (encounter_id, note_type) exists —
+                # deliberately not one, since multiple real human `progress`
+                # notes per encounter are legitimate. Idempotency for this
+                # agent-generated summary is done with a pre-check instead.
                 cur.execute(
                     """
-                    INSERT INTO public.royan_encounter_notes
-                        (encounter_id, note_type, content, authored_by, authored_at)
-                    VALUES (%s, 'soap_summary', %s, %s, NOW())
-                    ON CONFLICT (encounter_id, note_type) DO NOTHING
+                    SELECT 1 FROM public.royan_encounter_notes
+                    WHERE encounter_id = %s AND note_type = 'soap_summary'
+                    LIMIT 1
                     """,
-                    (
-                        encounter_id,
-                        soap_text,
-                        self.context.get("actor_id", "system"),
-                    ),
+                    (encounter_id,),
                 )
+                if cur.fetchone() is None:
+                    cur.execute(
+                        "SELECT patient_id FROM public.royan_encounters WHERE id = %s",
+                        (encounter_id,),
+                    )
+                    row = cur.fetchone()
+                    patient_id = row[0] if row else None
+                    if patient_id is not None:
+                        cur.execute(
+                            """
+                            INSERT INTO public.royan_encounter_notes
+                                (encounter_id, patient_id, note_type, content, author_id)
+                            VALUES (%s, %s, 'soap_summary', %s, %s)
+                            """,
+                            (
+                                encounter_id,
+                                patient_id,
+                                soap_text,
+                                self.context.get("actor_id", "system"),
+                            ),
+                        )
                 conn.commit()
                 cur.close()
             except Exception as exc:

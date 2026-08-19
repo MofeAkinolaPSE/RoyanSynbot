@@ -94,6 +94,7 @@ def approve_registration(registration_id: str, body: ApproveRequest, user=Depend
             raise RuntimeError("no row returned from royan_users insert")
 
         department_id = body.department_id_override if body.department_id_override is not None else reg.get("department_id")
+        kyc = reg.get("kyc_details") or {}
         staff_resp = db.table(TABLE_STAFF).insert({
             "staff_number": f"REG-{reg['id'][:8].upper()}",
             "full_name": reg["full_name"],
@@ -103,7 +104,9 @@ def approve_registration(registration_id: str, body: ApproveRequest, user=Depend
             "role": reg["role"],
             "email": reg["email"],
             "phone": reg.get("phone"),
-            "metadata": reg.get("kyc_details") or {},
+            "metadata": kyc,
+            "specialty": kyc.get("specialty"),
+            "license_number": kyc.get("medical_council_number"),
             "user_id": new_user["id"],
         }).execute()
         new_staff = staff_resp.data[0] if staff_resp.data else None

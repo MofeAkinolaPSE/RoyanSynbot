@@ -29,6 +29,7 @@ from src.db import db, audit_event
 from src.middleware import verify_jwt
 from src.constants import (
     TABLE_THEATRE_CASES,
+    TABLE_PATIENTS,
     THEATRE_STATUS_ALLOWED,
     THEATRE_STATUS_TRANSITIONS,
     THEATRE_URGENCY_ALLOWED,
@@ -135,6 +136,19 @@ class StatusAdvance(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class OperativeNotesVerifyRequest(BaseModel):
+    notes: Optional[str] = None
+
+    model_config = {"extra": "ignore"}
+
+
+class OperativeNotesAmend(OperativeNotes):
+    """Corrects a verified operative note. Verified notes are immutable in
+    place — this snapshots the current version into operative_notes_history
+    and resets verified_by/verified_at, mirroring Radiology's ReportAmend."""
+    amendment_reason: str = Field(..., min_length=1)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -148,6 +162,35 @@ def _get_case(case_id: int) -> dict:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _jsonable(v):
+    return v.isoformat() if isinstance(v, datetime) else v
+
+
+def _merge_jsonb(existing: Optional[dict], updates: dict) -> dict:
+    return {**(existing or {}), **updates}
+
+
+def _enrich_patients(rows: list) -> None:
+    """Batch-merge patient_name/patient_mrn onto a list of case rows in place."""
+    if not rows:
+        return
+    try:
+        pid_set = list({r["patient_id"] for r in rows if r.get("patient_id") is not None})
+        if not pid_set:
+            return
+        pt_rows = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name").in_("id", pid_set).execute()
+        pt_map = {p["id"]: p for p in (pt_rows.data or [])}
+        for r in rows:
+            p = pt_map.get(r.get("patient_id"))
+            if p:
+                fn = (p.get("first_name") or "").strip()
+                ln = (p.get("last_name") or "").strip()
+                r["patient_name"] = f"{fn} {ln}".strip() or None
+                r["patient_mrn"] = p.get("mrn")
+    except Exception as exc:
+        logger.warning("theatre patient enrichment failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +246,36 @@ async def list_cases(
     if patient_id:
         query = query.eq("patient_id", patient_id)
     result = query.execute()
-    return {"cases": result.data or [], "count": len(result.data or [])}
+    cases = list(result.data or [])
+    _enrich_patients(cases)
+    return {"cases": cases, "count": len(cases)}
+
+
+@router.get("/stats")
+async def theatre_stats(user=Depends(verify_jwt)):
+    rows = db.table(TABLE_THEATRE_CASES).select("status,urgency").execute().data or []
+    counts = {s: sum(1 for r in rows if r.get("status") == s) for s in STATUSES}
+    emergency_active = sum(
+        1 for r in rows if r.get("urgency") == "emergency" and r.get("status") not in ("completed", "cancelled")
+    )
+    return {**counts, "emergency": emergency_active, "total": len(rows)}
 
 
 @router.get("/cases/{case_id}")
 async def get_case(case_id: int, user=Depends(verify_jwt)):
-    return {"case": _get_case(case_id)}
+    case = _get_case(case_id)
+    pt = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name,gender,date_of_birth").eq("id", case["patient_id"]).execute()
+    if pt.data:
+        p = pt.data[0]
+        fn, ln = (p.get("first_name") or "").strip(), (p.get("last_name") or "").strip()
+        case = {
+            **case,
+            "patient_name": f"{fn} {ln}".strip() or None,
+            "patient_mrn": p.get("mrn"),
+            "patient_gender": p.get("gender"),
+            "patient_dob": p.get("date_of_birth"),
+        }
+    return {"case": case}
 
 
 @router.patch("/cases/{case_id}/status")
@@ -224,6 +291,10 @@ async def advance_status(case_id: int, payload: StatusAdvance, user=Depends(veri
             status_code=409,
             detail=f"Cannot transition '{current}' → '{payload.status}'. Allowed: {TRANSITIONS.get(current)}",
         )
+    if payload.status == "recovery" and not case.get("operative_notes"):
+        raise HTTPException(status_code=409, detail="Cannot move to recovery — operative notes must be recorded first (Op Notes tab)")
+    if payload.status == "completed" and not case.get("post_op_notes"):
+        raise HTTPException(status_code=409, detail="Cannot complete case — post-op recovery record must be documented first (Post-Op tab)")
 
     updates: dict = {"status": payload.status}
     if payload.notes:
@@ -260,14 +331,12 @@ async def submit_preop(case_id: int, payload: PreOpChecklist, user=Depends(verif
 
 @router.patch("/cases/{case_id}/anaesthetic")
 async def submit_anaesthetic(case_id: int, payload: AnaestheticRecord, user=Depends(verify_jwt)):
-    """Record anaesthetic details for a theatre case."""
-    _get_case(case_id)
-    updates = {
-        "anaesthetic_record": payload.model_dump(exclude_none=True),
-        "anaesthetist_id": payload.anaesthetic_type,   # keep existing if set
-    }
-    # Merge — don't overwrite existing anaesthetic details
-    db.table(TABLE_THEATRE_CASES).update({"anaesthetic_record": payload.model_dump(exclude_none=True)}).eq("id", case_id).execute()
+    """Record anaesthetic details. Merges onto whatever is already stored so a
+    resubmission that omits a previously-set optional field doesn't silently
+    wipe it out."""
+    case = _get_case(case_id)
+    merged = _merge_jsonb(case.get("anaesthetic_record"), payload.model_dump(exclude_none=True))
+    db.table(TABLE_THEATRE_CASES).update({"anaesthetic_record": merged}).eq("id", case_id).execute()
     audit_event("theatre_anaesthetic_recorded", {}, actor_id=user.get("sub"), subject_type="theatre_case", subject_id=str(case_id))
     return {"ok": True, "case_id": case_id}
 
@@ -275,21 +344,70 @@ async def submit_anaesthetic(case_id: int, payload: AnaestheticRecord, user=Depe
 @router.patch("/cases/{case_id}/operative-notes")
 async def submit_operative_notes(case_id: int, payload: OperativeNotes, user=Depends(verify_jwt)):
     """Surgeon submits intraoperative notes."""
-    _get_case(case_id)
+    case = _get_case(case_id)
+    if case.get("operative_notes_verified_at"):
+        raise HTTPException(status_code=409, detail="Operative notes already verified — use PATCH /theatre/cases/{case_id}/operative-notes/amend to correct them")
+    merged = _merge_jsonb(case.get("operative_notes"), payload.model_dump(exclude_none=True))
     db.table(TABLE_THEATRE_CASES).update({
-        "operative_notes": payload.model_dump(exclude_none=True),
+        "operative_notes": merged,
         "operative_notes_by": user.get("sub") or "system",
     }).eq("id", case_id).execute()
     audit_event("theatre_operative_notes_submitted", {"procedure": payload.procedure_performed}, actor_id=user.get("sub"), subject_type="theatre_case", subject_id=str(case_id))
     return {"ok": True, "case_id": case_id}
 
 
+@router.post("/cases/{case_id}/operative-notes/verify")
+async def verify_operative_notes(case_id: int, payload: OperativeNotesVerifyRequest, user=Depends(verify_jwt)):
+    case = _get_case(case_id)
+    if not case.get("operative_notes"):
+        raise HTTPException(status_code=409, detail="No operative notes recorded for this case yet")
+    if case.get("operative_notes_verified_at"):
+        raise HTTPException(status_code=409, detail=f"Already verified by {case.get('operative_notes_verified_by') or 'unknown'} at {case['operative_notes_verified_at']}")
+    now_iso = _now()
+    verified_by = user.get("sub") or "system"
+    db.table(TABLE_THEATRE_CASES).update({
+        "operative_notes_verified_by": verified_by,
+        "operative_notes_verified_at": now_iso,
+    }).eq("id", case_id).execute()
+    audit_event("theatre_operative_notes_verified", {}, actor_id=user.get("sub"), subject_type="theatre_case", subject_id=str(case_id))
+    return {"ok": True, "case_id": case_id, "verified_by": verified_by, "verified_at": now_iso}
+
+
+@router.patch("/cases/{case_id}/operative-notes/amend")
+async def amend_operative_notes(case_id: int, payload: OperativeNotesAmend, user=Depends(verify_jwt)):
+    case = _get_case(case_id)
+    if not case.get("operative_notes_verified_at"):
+        raise HTTPException(status_code=409, detail="No verified operative notes exist to amend — unverified notes can be corrected directly via PATCH /theatre/cases/{case_id}/operative-notes")
+    now_iso = _now()
+    history = list(case.get("operative_notes_history") or [])
+    history.append({
+        "operative_notes": case.get("operative_notes"),
+        "operative_notes_by": case.get("operative_notes_by"),
+        "verified_by": case.get("operative_notes_verified_by"),
+        "verified_at": _jsonable(case.get("operative_notes_verified_at")),
+        "amendment_reason": case.get("operative_notes_amendment_reason"),
+        "superseded_at": now_iso,
+    })
+    new_notes = payload.model_dump(exclude_none=True, exclude={"amendment_reason"})
+    db.table(TABLE_THEATRE_CASES).update({
+        "operative_notes": new_notes,
+        "operative_notes_by": user.get("sub") or "system",
+        "operative_notes_verified_by": None,
+        "operative_notes_verified_at": None,
+        "operative_notes_amendment_reason": payload.amendment_reason,
+        "operative_notes_history": history,
+    }).eq("id", case_id).execute()
+    audit_event("theatre_operative_notes_amended", {"reason": payload.amendment_reason}, actor_id=user.get("sub"), subject_type="theatre_case", subject_id=str(case_id))
+    return {"ok": True, "case_id": case_id, "amended": True}
+
+
 @router.patch("/cases/{case_id}/post-op")
 async def submit_postop(case_id: int, payload: PostOpRecord, user=Depends(verify_jwt)):
     """Record post-operative recovery status."""
-    _get_case(case_id)
+    case = _get_case(case_id)
+    merged = _merge_jsonb(case.get("post_op_notes"), payload.model_dump(exclude_none=True))
     db.table(TABLE_THEATRE_CASES).update({
-        "post_op_notes": payload.model_dump(exclude_none=True),
+        "post_op_notes": merged,
         "post_op_by": user.get("sub") or "system",
         "post_op_at": _now(),
     }).eq("id", case_id).execute()
@@ -313,4 +431,6 @@ async def daily_schedule(
     if theatre_name:
         query = query.eq("theatre_name", theatre_name)
     result = query.execute()
-    return {"schedule": result.data or [], "date": date, "count": len(result.data or [])}
+    schedule = list(result.data or [])
+    _enrich_patients(schedule)
+    return {"schedule": schedule, "date": date, "count": len(schedule)}

@@ -14,7 +14,9 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import os
@@ -27,13 +29,16 @@ from pydantic import BaseModel, Field
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
 from src.services.event_service import emit_clinical_event
+from src.services.realtime import realtime_hub
 from src.constants import (
     LAB_INTERPRETATION_ALLOWED,
     LAB_ORDER_STATUS_ALLOWED,
     LAB_URGENCY_ALLOWED,
+    TABLE_LAB_CATALOG,
     TABLE_LAB_ORDERS,
     TABLE_LAB_RESULTS,
     TABLE_LAB_REFERENCE_RANGES,
+    TABLE_LAB_SPECIMENS,
     TABLE_LAB_TEST_TEMPLATES,
     TABLE_PATIENTS,
     TABLE_ENCOUNTERS,
@@ -46,6 +51,7 @@ router = APIRouter(prefix="/lab", tags=["Laboratory"])
 ORDER_STATUSES   = LAB_ORDER_STATUS_ALLOWED
 URGENCY_LEVELS   = LAB_URGENCY_ALLOWED
 INTERPRETATIONS  = LAB_INTERPRETATION_ALLOWED
+SPECIMEN_TYPES   = {"blood", "urine", "stool", "sputum", "csf", "swab", "tissue", "serum", "plasma", "other"}
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +72,25 @@ class LabOrderCreate(BaseModel):
 
 
 class SampleCollectedRequest(BaseModel):
+    notes: Optional[str] = None
+    specimen_type: Optional[str] = None
+    container: Optional[str] = None
+    volume: Optional[str] = None
+    specimen_label: Optional[str] = None
+    collected_by: Optional[str] = None
+
+
+class ReceiveRequest(BaseModel):
+    notes: Optional[str] = None
+    specimen_id: Optional[int] = None
+
+
+class RejectRequest(BaseModel):
+    rejection_reason: str = Field(..., min_length=1)
+    specimen_id: Optional[int] = None
+
+
+class VerifyRequest(BaseModel):
     notes: Optional[str] = None
 
 
@@ -94,6 +119,12 @@ class LabResultCreate(BaseModel):
     notes: Optional[str] = None
 
     model_config = {"extra": "ignore"}
+
+
+class ResultAmendRequest(LabResultCreate):
+    """Corrects a verified result. Authenticated results are immutable, so
+    this always produces a new row referencing the one it supersedes."""
+    amendment_reason: str = Field(..., min_length=1)
 
 
 class AnalyteDef(BaseModel):
@@ -195,6 +226,80 @@ def _apply_template(template: dict, analyte_values: List["AnalyteValue"]) -> tup
     return analytes_out, any_abnormal, any_critical
 
 
+def _get_latest_result(order_id: int) -> Optional[dict]:
+    """Most recent result row for an order — an order can have more than one
+    once amendments exist, so callers must never fetch unordered."""
+    result = (
+        db.table(TABLE_LAB_RESULTS)
+        .select("*")
+        .eq("lab_order_id", order_id)
+        .order("id", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def _build_result_row(order: dict, payload: "LabResultCreate", resulted_by: str) -> dict:
+    """Build a royan_lab_results row from a result payload — shared by
+    record_result (insert/update) and amend_result (always insert)."""
+    if payload.interpretation and payload.interpretation not in INTERPRETATIONS:
+        raise HTTPException(status_code=422, detail=f"interpretation must be one of {INTERPRETATIONS}")
+
+    data = payload.model_dump(exclude_none=True)
+    data.pop("analyte_values", None)
+
+    if payload.analyte_values:
+        template = _get_active_template(order["test_name"])
+        if template is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No active result template for test '{order['test_name']}' — record a template first or use result_value/result_data instead.",
+            )
+        analytes_out, any_abnormal, any_critical = _apply_template(template, payload.analyte_values)
+        data["result_data"] = {**(payload.result_data or {}), "analytes": analytes_out}
+        data["template_id"] = template["id"]
+        if not payload.result_summary:
+            data["result_summary"] = "; ".join(
+                f"{a['name']}: {a['observed_value']}{(' ' + a['unit']) if a.get('unit') else ''}"
+                for a in analytes_out if a.get("observed_value") is not None
+            )
+        if not payload.interpretation:
+            data["interpretation"] = "critical" if any_critical else ("abnormal" if any_abnormal else "normal")
+        if not payload.is_critical:
+            data["is_critical"] = any_critical
+        data.pop("result_value", None)
+        data.pop("result_unit", None)
+    elif payload.result_value or payload.result_unit:
+        data["result_data"] = {
+            **(payload.result_data or {}),
+            "value": payload.result_value,
+            "unit": payload.result_unit,
+        }
+        data["result_summary"] = payload.result_summary or " ".join(
+            part for part in [payload.result_value, payload.result_unit] if part
+        )
+        data.pop("result_value", None)
+        data.pop("result_unit", None)
+
+    data["lab_order_id"] = order["id"]
+    data["patient_id"] = order["patient_id"]
+    data["resulted_by"] = resulted_by
+    return data
+
+
+def _get_specimen_for_order(order_id: int, specimen_id: Optional[int], statuses: tuple) -> Optional[dict]:
+    """Resolve the specimen a receive/reject call applies to: an explicit
+    specimen_id if given, else the most recent specimen in one of `statuses`."""
+    query = db.table(TABLE_LAB_SPECIMENS).select("*").eq("lab_order_id", order_id)
+    if specimen_id:
+        query = query.eq("id", specimen_id)
+    else:
+        query = query.in_("status", list(statuses))
+    result = query.order("id", desc=True).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -232,7 +337,6 @@ async def lab_stats(user=Depends(verify_jwt)):
     result = db.table(TABLE_LAB_ORDERS).select("status, urgency, ordered_at").is_("external_source", None).execute()
     rows = result.data or []
 
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
 
     pending          = sum(1 for r in rows if r.get("status") in ("ordered", "pending"))
@@ -272,6 +376,7 @@ async def list_lab_orders(
     patient_id: Optional[int] = Query(None),
     encounter_id: Optional[int] = Query(None),
     urgency: Optional[str] = Query(None),
+    ordered_by: Optional[str] = Query(None, description="Filter to orders placed by this user (JWT sub)"),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
@@ -284,6 +389,8 @@ async def list_lab_orders(
         query = query.eq("encounter_id", encounter_id)
     if urgency:
         query = query.eq("urgency", urgency)
+    if ordered_by:
+        query = query.eq("ordered_by", ordered_by)
     result = query.execute()
     orders: list = list(result.data or [])
 
@@ -317,26 +424,59 @@ async def list_lab_orders(
 @router.get("/orders/{order_id}")
 async def get_lab_order(order_id: int, user=Depends(verify_jwt)):
     order = _get_order(order_id)
-    # Attach result if available
-    result_rec = db.table(TABLE_LAB_RESULTS).select("*").eq("lab_order_id", order_id).execute()
-    return {"order": order, "result": result_rec.data[0] if result_rec.data else None}
+    result = _get_latest_result(order_id)
+    specimens = (
+        db.table(TABLE_LAB_SPECIMENS)
+        .select("*")
+        .eq("lab_order_id", order_id)
+        .order("id", desc=True)
+        .execute()
+    )
+    return {"order": order, "result": result, "specimens": specimens.data or []}
 
 
 @router.post("/orders/{order_id}/collect")
 async def collect_sample(order_id: int, payload: SampleCollectedRequest, user=Depends(verify_jwt)):
-    """Mark a sample as collected."""
+    """Mark a sample as collected and log the specimen."""
     order = _get_order(order_id)
     if order["status"] != "ordered":
         raise HTTPException(status_code=409, detail=f"Order is '{order['status']}'; sample collection requires 'ordered' status")
 
-    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    specimen_type = payload.specimen_type or order.get("sample_type") or "blood"
+    if specimen_type not in SPECIMEN_TYPES:
+        specimen_type = "other"
+    collected_by = payload.collected_by or user.get("sub") or "system"
+
+    specimen = None
+    try:
+        specimen_result = db.table(TABLE_LAB_SPECIMENS).insert({
+            "lab_order_id": order_id,
+            "patient_id": order["patient_id"],
+            "specimen_type": specimen_type,
+            "specimen_label": payload.specimen_label,
+            "volume": payload.volume,
+            "container": payload.container,
+            "status": "collected",
+            "collected_by": collected_by,
+            "collected_at": now_iso,
+            "notes": payload.notes,
+        }).execute()
+        specimen = specimen_result.data[0] if specimen_result.data else None
+    except Exception as exc:
+        logger.error("Lab specimen insert failed: %s", exc)
+
     db.table(TABLE_LAB_ORDERS).update({
         "status": "sample_collected",
-        "sample_collected_at": datetime.now(timezone.utc).isoformat(),
+        "sample_collected_at": now_iso,
         "notes": payload.notes or order.get("notes"),
     }).eq("id", order_id).execute()
 
-    audit_event("lab_sample_collected", {}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
+    audit_event(
+        "lab_sample_collected",
+        {"specimen_id": specimen.get("id") if specimen else None},
+        actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id),
+    )
     emit_clinical_event(
         event_type="LAB_SAMPLE_COLLECTED",
         encounter_id=order.get("encounter_id"),
@@ -345,68 +485,108 @@ async def collect_sample(order_id: int, payload: SampleCollectedRequest, user=De
         performed_by=user.get("sub"),
         event_data={"test_name": order.get("test_name")},
     )
-    return {"ok": True, "order_id": order_id, "status": "sample_collected"}
+    if specimen:
+        emit_clinical_event(
+            event_type="SPECIMEN_COLLECTED",
+            encounter_id=order.get("encounter_id"),
+            patient_id=order.get("patient_id"),
+            entity_type="lab_specimen", entity_id=specimen["id"],
+            performed_by=user.get("sub"),
+            event_data={"specimen_type": specimen_type},
+        )
+    return {"ok": True, "order_id": order_id, "status": "sample_collected", "specimen": specimen}
+
+
+@router.post("/orders/{order_id}/receive")
+async def receive_specimen(order_id: int, payload: ReceiveRequest, user=Depends(verify_jwt)):
+    """Mark a collected specimen as received by the lab and start processing."""
+    order = _get_order(order_id)
+    if order["status"] != "sample_collected":
+        raise HTTPException(status_code=409, detail=f"Order is '{order['status']}'; receiving requires 'sample_collected' status")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    specimen = _get_specimen_for_order(order_id, payload.specimen_id, ("collected",))
+    if specimen:
+        db.table(TABLE_LAB_SPECIMENS).update({
+            "status": "received",
+            "received_at": now_iso,
+            "notes": payload.notes or specimen.get("notes"),
+        }).eq("id", specimen["id"]).execute()
+
+    db.table(TABLE_LAB_ORDERS).update({"status": "processing"}).eq("id", order_id).execute()
+
+    audit_event(
+        "lab_specimen_received",
+        {"specimen_id": specimen.get("id") if specimen else None},
+        actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id),
+    )
+    return {"ok": True, "order_id": order_id, "status": "processing", "specimen_id": specimen.get("id") if specimen else None}
+
+
+@router.post("/orders/{order_id}/reject")
+async def reject_specimen(order_id: int, payload: RejectRequest, user=Depends(verify_jwt)):
+    """Reject a specimen and reopen the order for a redraw."""
+    order = _get_order(order_id)
+    if order["status"] not in ("sample_collected", "processing"):
+        raise HTTPException(status_code=409, detail=f"Order is '{order['status']}'; rejection requires 'sample_collected' or 'processing' status")
+
+    specimen = _get_specimen_for_order(order_id, payload.specimen_id, ("collected", "received"))
+    if specimen:
+        db.table(TABLE_LAB_SPECIMENS).update({
+            "status": "rejected",
+            "rejection_reason": payload.rejection_reason,
+        }).eq("id", specimen["id"]).execute()
+
+    db.table(TABLE_LAB_ORDERS).update({
+        "status": "ordered",
+        "sample_collected_at": None,
+    }).eq("id", order_id).execute()
+
+    audit_event(
+        "lab_specimen_rejected",
+        {"reason": payload.rejection_reason, "specimen_id": specimen.get("id") if specimen else None},
+        actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id),
+    )
+    return {"ok": True, "order_id": order_id, "status": "ordered", "specimen_id": specimen.get("id") if specimen else None}
 
 
 @router.post("/orders/{order_id}/result", status_code=201)
 async def record_result(order_id: int, payload: LabResultCreate, user=Depends(verify_jwt)):
-    """Record the lab result for an order."""
+    """Record the lab result for an order. An unverified result is updated
+    in place on re-submission; a verified result must go through
+    /result/amend instead, since authenticated results are immutable."""
     order = _get_order(order_id)
-    if order["status"] in ("resulted", "cancelled"):
-        raise HTTPException(status_code=409, detail=f"Order already '{order['status']}'")
+    if order["status"] == "cancelled":
+        raise HTTPException(status_code=409, detail="Order is cancelled")
 
-    if payload.interpretation and payload.interpretation not in INTERPRETATIONS:
-        raise HTTPException(status_code=422, detail=f"interpretation must be one of {INTERPRETATIONS}")
-
-    data = payload.model_dump(exclude_none=True)
-    data.pop("analyte_values", None)
-
-    if payload.analyte_values:
-        template = _get_active_template(order["test_name"])
-        if template is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"No active result template for test '{order['test_name']}' — record a template first or use result_value/result_data instead.",
-            )
-        analytes_out, any_abnormal, any_critical = _apply_template(template, payload.analyte_values)
-        data["result_data"] = {**(payload.result_data or {}), "analytes": analytes_out}
-        data["template_id"] = template["id"]
-        if not payload.result_summary:
-            data["result_summary"] = "; ".join(
-                f"{a['name']}: {a['observed_value']}{(' ' + a['unit']) if a.get('unit') else ''}"
-                for a in analytes_out if a.get("observed_value") is not None
-            )
-        if not payload.interpretation:
-            data["interpretation"] = "critical" if any_critical else ("abnormal" if any_abnormal else "normal")
-        if not payload.is_critical:
-            data["is_critical"] = any_critical
-        data.pop("result_value", None)
-        data.pop("result_unit", None)
-    elif payload.result_value or payload.result_unit:
-        data["result_data"] = {
-            **(payload.result_data or {}),
-            "value": payload.result_value,
-            "unit": payload.result_unit,
-        }
-        data["result_summary"] = payload.result_summary or " ".join(
-            part for part in [payload.result_value, payload.result_unit] if part
+    existing = _get_latest_result(order_id)
+    if existing and existing.get("verified_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Result already verified — use POST /lab/orders/{order_id}/result/amend to correct it",
         )
-        data.pop("result_value", None)
-        data.pop("result_unit", None)
-    data["lab_order_id"] = order_id
-    data["patient_id"] = order["patient_id"]
-    data["resulted_by"] = payload.resulted_by or user.get("sub") or "system"
+    if not existing and order["status"] not in ("processing", "sent_out"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Order is '{order['status']}'; recording a result requires the specimen to be received first ('processing'), or the order to be 'sent_out'",
+        )
+
+    resulted_by = payload.resulted_by or user.get("sub") or "system"
+    data = _build_result_row(order, payload, resulted_by)
 
     try:
-        result = db.table(TABLE_LAB_RESULTS).insert(data).execute()
+        if existing:
+            result = db.table(TABLE_LAB_RESULTS).update(data).eq("id", existing["id"]).execute()
+        else:
+            result = db.table(TABLE_LAB_RESULTS).insert(data).execute()
     except Exception as exc:
-        logger.error("Lab result insert failed: %s", exc)
+        logger.error("Lab result save failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save result")
 
     # Update order status
     db.table(TABLE_LAB_ORDERS).update({"status": "resulted"}).eq("id", order_id).execute()
 
-    res_row = result.data[0] if result.data else data
+    res_row = result.data[0] if result.data else {**data, "id": existing["id"] if existing else None}
     if payload.is_critical:
         logger.warning("CRITICAL lab result for order %s patient %s", order_id, order["patient_id"])
         audit_event("lab_critical_result", {"test": order.get("test_name")}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
@@ -432,7 +612,106 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
             "is_critical": payload.is_critical,
         },
     )
+    # emit_clinical_event only writes to the audit log — nothing pushes this
+    # to connected clients without it, so the OPD queue/doctor dashboard
+    # would only pick a new result up on a manual refresh.
+    if order.get("encounter_id"):
+        asyncio.create_task(realtime_hub.broadcast("encounter_updates", {
+            "event": "lab_result_ready",
+            "encounter_id": order.get("encounter_id"),
+            "order_id": order_id,
+            "test_name": order.get("test_name"),
+            "is_critical": payload.is_critical,
+        }))
     return {"ok": True, "result": res_row}
+
+
+@router.post("/orders/{order_id}/verify")
+async def verify_result(order_id: int, payload: VerifyRequest, user=Depends(verify_jwt)):
+    """Verify and authenticate the current lab result. This also serves as
+    critical-result acknowledgement — /lab/critical already filters on
+    verified_at IS NULL. Authenticated results are immutable from here on;
+    corrections go through /result/amend instead."""
+    order = _get_order(order_id)
+    result = _get_latest_result(order_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No result recorded for this order yet")
+    if result.get("verified_at"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Already verified by {result.get('verified_by') or 'unknown'} at {result['verified_at']}",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    verified_by = user.get("sub") or "system"
+    db.table(TABLE_LAB_RESULTS).update({
+        "verified_by": verified_by,
+        "verified_at": now_iso,
+    }).eq("id", result["id"]).execute()
+
+    audit_event("lab_result_verified", {"test_name": order.get("test_name")}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
+    emit_clinical_event(
+        event_type="LAB_RESULT_VERIFIED",
+        encounter_id=order.get("encounter_id"),
+        patient_id=order.get("patient_id"),
+        entity_type="lab_order", entity_id=order_id,
+        performed_by=user.get("sub"),
+        event_data={"test_name": order.get("test_name"), "result_id": result["id"]},
+    )
+    return {"ok": True, "order_id": order_id, "result_id": result["id"], "verified_by": verified_by, "verified_at": now_iso}
+
+
+@router.post("/orders/{order_id}/result/amend", status_code=201)
+async def amend_result(order_id: int, payload: ResultAmendRequest, user=Depends(verify_jwt)):
+    """Correct a verified result. Authenticated results are immutable, so
+    this inserts a new row referencing the one it supersedes rather than
+    editing verified_by/verified_at in place. The amendment starts its own
+    verify cycle — verified_by/verified_at are left null on the new row."""
+    order = _get_order(order_id)
+    prior = _get_latest_result(order_id)
+    if not prior or not prior.get("verified_at"):
+        raise HTTPException(status_code=409, detail="No verified result exists to amend")
+
+    resulted_by = payload.resulted_by or user.get("sub") or "system"
+    data = _build_result_row(order, payload, resulted_by)
+    data["amends_result_id"] = prior["id"]
+    data["amendment_reason"] = payload.amendment_reason
+
+    try:
+        result = db.table(TABLE_LAB_RESULTS).insert(data).execute()
+    except Exception as exc:
+        logger.error("Lab result amendment insert failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save amended result")
+
+    res_row = result.data[0] if result.data else data
+    audit_event(
+        "lab_result_amended",
+        {"prior_result_id": prior["id"], "reason": payload.amendment_reason},
+        actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id),
+    )
+    emit_clinical_event(
+        event_type="LAB_RESULT_READY",
+        encounter_id=order.get("encounter_id"),
+        patient_id=order.get("patient_id"),
+        entity_type="lab_order", entity_id=order_id,
+        performed_by=user.get("sub"),
+        event_data={"test_name": order.get("test_name"), "amended": True, "amends_result_id": prior["id"]},
+    )
+    return {"ok": True, "result": res_row}
+
+
+@router.get("/orders/{order_id}/results")
+async def list_result_versions(order_id: int, user=Depends(verify_jwt)):
+    """All result-row versions for an order, oldest first — the amendment trail."""
+    _get_order(order_id)
+    result = (
+        db.table(TABLE_LAB_RESULTS)
+        .select("*")
+        .eq("lab_order_id", order_id)
+        .order("id")
+        .execute()
+    )
+    return {"results": result.data or [], "count": len(result.data or [])}
 
 
 # ─── Lab Test Templates ───────────────────────────────────────────────────────
@@ -534,13 +813,67 @@ async def lab_turnaround(
 
 @router.get("/critical")
 async def critical_results(user=Depends(verify_jwt)):
-    """List all critical lab results that have not been verified."""
+    """List all critical lab results that have not been verified. Enriched
+    with the parent order's test_name and the patient's name/MRN so this can
+    drive a clickable worklist — note `id` here is the *result* row id, the
+    order to open is `lab_order_id`."""
     result = db.table(TABLE_LAB_RESULTS).select("*") \
         .eq("is_critical", True) \
         .is_("verified_at", None) \
         .order("resulted_at", desc=True) \
         .execute()
-    return {"critical_results": result.data, "count": len(result.data)}
+    rows = result.data or []
+
+    if rows:
+        try:
+            order_ids = list({r["lab_order_id"] for r in rows if r.get("lab_order_id") is not None})
+            orders = db.table(TABLE_LAB_ORDERS).select("id,test_name,urgency,status").in_("id", order_ids).execute()
+            order_map = {o["id"]: o for o in (orders.data or [])}
+            pid_set = list({r["patient_id"] for r in rows if r.get("patient_id") is not None})
+            pt_rows = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name").in_("id", pid_set).execute()
+            pt_map = {p["id"]: p for p in (pt_rows.data or [])}
+            for r in rows:
+                o = order_map.get(r.get("lab_order_id"))
+                if o:
+                    r["test_name"] = o.get("test_name")
+                    r["urgency"] = o.get("urgency")
+                    r["order_status"] = o.get("status")
+                p = pt_map.get(r.get("patient_id"))
+                if p:
+                    fn = (p.get("first_name") or "").strip()
+                    ln = (p.get("last_name") or "").strip()
+                    r["patient_name"] = f"{fn} {ln}".strip() or None
+                    r["patient_mrn"] = p.get("mrn")
+        except Exception as exc:
+            logger.warning("critical results enrichment failed: %s", exc)
+
+    return {"critical_results": rows, "count": len(rows)}
+
+
+# ─── Lab Catalog Search ───────────────────────────────────────────────────────
+
+@router.get("/catalog/search")
+async def search_lab_catalog(
+    q: str = Query(..., min_length=2, description="Code, name, or abbreviation keyword"),
+    limit: int = Query(20, ge=1, le=50),
+    user=Depends(verify_jwt),
+):
+    """Search the lab test catalog by code, name, or abbreviation."""
+    q = q.strip()
+    try:
+        results = (
+            db.table(TABLE_LAB_CATALOG)
+            .select("id,code,name,abbreviation,category,specimen_type,unit,reference_range,turnaround_hours")
+            .eq("is_active", True)
+            .or_(f"code.ilike.{q}%,name.ilike.%{q}%,abbreviation.ilike.{q}%")
+            .order("name")
+            .limit(limit)
+            .execute()
+        )
+        return {"tests": results.data or [], "count": len(results.data or [])}
+    except Exception as exc:
+        logger.error("Lab catalog search failed: %s", exc)
+        return {"tests": [], "count": 0}
 
 
 # ─── Lab Reference Ranges ─────────────────────────────────────────────────────
@@ -656,7 +989,6 @@ async def mark_sent_out(order_id: int, payload: SendOutRequest, user=Depends(ver
     order = _get_order(order_id)
     if order["status"] in ("resulted", "cancelled"):
         raise HTTPException(status_code=409, detail=f"Cannot send out order with status '{order['status']}'")
-    from datetime import datetime, timezone
     db.table(TABLE_LAB_ORDERS).update({
         "status": "sent_out",
         "external_lab": payload.external_lab,

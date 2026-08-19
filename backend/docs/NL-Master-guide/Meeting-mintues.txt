@@ -1,0 +1,355 @@
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+NOS clicks that button and then it takes her to where she will enter vitals and all that, so it's just like a button here. So the NOS has been tagged to the queue basically? Yeah, she has access to the whole phone desk. Okay. 
+
+So if she clicks the button, it takes to the vitals, she enters all the vitals. Okay. Okay, and she saves and it's there. 
+
+And then the doctor just goes to the notes button and clicks on it. And in fact, whatever they've entered transfers into the notes, like the temperature. The CPR is naturally into the notes. 
+
+Yes, so you can see it as you are writing. Okay. The vitals for the day. 
+
+All right. Okay? Yeah. So that is that.
+
+And that is the main thing we use on the dashboard. Of course, they want to know HMO, there's a... So if you can look at the HMO dashboard, you can replicate parts of it now. Okay. 
+
+Look, like this. These are the things you see when you open outpatient dashboard on the whole system, you know, things outpatient. So most of these buttons, let me show you the only ones that are important. 
+
+So this is what we are scared of. You see how it's loading. Yeah, I get it. 
+
+Your home will not do that. No, no. You are sure? Eventually. 
+
+No. Okay. So you can see patient's name, whatever. 
+
+If you can mimic your dashboard to just suit this. Look like this. Yeah. 
+
+It shows their HMO. We don't need this patient pic unless you want to start putting pictures of patients. I'm not sure we need it. 
+
+Okay. To just be extra. Then status, whether they've been seen. 
+
+Okay. So for whoever is an admin, when they arrive a patient, it comes in as a... Arrive. No, it comes in as something.
+
+But then until they click arrive, it's not open for us to document on. Do you understand? Okay. Then patient, I don't know who uses this. 
+
+I think, I don't think anybody uses this, to be honest. This one shows some results. We don't need to show results. 
+
+Yeah, on the dashboard. Okay. Because there's another button for results. 
+
+Then it shows time they arrived, time elapsed, whatever. Yeah, yeah. So if you take a picture of this one, and then this is initial assessment is where they enter the vitals. 
+
+Yeah. Okay. Oh, so that's where he just takes you to improve vitals. 
+
+Yes, let me show you. So the nurse can enter like a minute later. She just takes vitals here, and she puts all the vitals in. 
+
+And you can see all the previous encounters. They're still there. The nurses are also going to put all the entries.
+
+Okay, okay. So you want to add buttons here to the QPRS page, so you can even go through that there if needed to. Okay. 
+
+So as much as you want, you want to mimic this. It's not that the system doesn't work. It's just that it's giving us issues. 
+
+So even if you mimic it, it makes it easier. New flows and everything. Okay, okay.
+
+So I'll present that for you.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+PArt 2--
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+Visit time, okay, depending on how they arrive there, is it for urologist visit, that's the visit time. That's on registration, initial registration. Motivating me is just for, I need to work on.
+
+Add other notes, any of the nurses, anybody who wants to write a note on the patient, that can be dropped off. You know I said that, if I say you cannot, you can't teach. Mope is following me, man.
+
+I think, bro, I think that's the first thing, that's the only thing. I'm gonna, I'm gonna, I'm gonna show you, all you gonna need, to resume. Okay.
+
+You remember, but you don't need to show me both hands at the same time, so. No, no, no. Okay, alright.
+
+So, this is, so guys, initial assessment is for the vitals and the trans. From the nurses. These are the only main buttons we use.
+
+Initial assessment, the doctor uses this one to write the notes. Okay. So if I click a note now, it's buffs up the.
+
+Okay, and then this one shows the provider, the nurse that the patient was allocated to, the doctor and all that. So if you come in with the dashboard and you look at it, everybody will be happy that it's over. Then add other notes, it's for, like I said, there's a new, like the nurse wants to write a note, she'll put a new title.
+
+Okay, interesting. Ah, interesting. Can you imagine? Wow, no wonder.
+
+There's a master document for note titles that we've created, different types of notes that we can enter. So for example, if I want to do a urology note, I put this, those options, it's not even the template that matters, it's the note titles. Let me show you.
+
+Now it's looking like it's actually, something's happening. Can you go to the admin so I can show you what I mean by that. So at least you understand the database in the back.
+
+So masters, this is admin, so this contains all like things that we can change, companies, facility, the users, this is how I add new users to the system from here. Rules, blah, blah, blah. Okay, so now, scan care stuff is there to laboratory, new laboratories, I add them here, the name of the clinic.
+
+So notes templates. So visit type should be here somewhere. You see anything, visit? You see anything? So all the different diagnosis, the master is here.
+
+So it pulls from here if you want to enter a diagnosis. Every note must mandatorily have a diagnosis, otherwise you can't save, it won't let you save. As part of the things that are, sorry, visit.
+
+Where am I? Were you looking for the note template? No, visit type. Okay, maybe it's here. Okay, other notes master.
+
+Okay. See, these are the difference for other notes if I want to add other notes. Okay.
+
+So that's, you know. I'll look through your database and see all the information that's available to me. And I'll just move everything into it.
+
+So from the workflow standpoint, it's really dashboard. I get here, that's where everybody goes. Okay.
+
+And from here, most people will do their work. All right. There's not, this is inpatient, this is different.
+
+Outpatient. So this is, okay, continue. So this is all that needs to be on the dashboard.
+
+Okay. Okay, and what happens now, when it gets to 50 counts, it creates a new page. Okay.
+
+They did that because they said they can't have 100. It becomes too cumbersome or something. If yours can be 100, if you can keep going, it doesn't matter.
+
+It makes it easier. You don't have to be scared. It'll just refresh or something.
+
+So nurse click here, doctor clicks here, finish. Then there's lab dashboard. If you want to go to lab dashboard, you can mimic exactly what is there.
+
+Like you said, name of the patient, the tariff of the patient. This is for viewing results. If you want to, what you want to view, you click on it.
+
+Okay. And you press print button. In fact, let me go check my patient and stuff since I'm here.
+
+Which one, patient that I want to check, you hear me? Okay. Okay. You click on print and it will pull up the lab.
+
+Okay, the radiology result. Yes. So this is a template.
+
+Yes, so there's a template. We can change it here. This is what we do.
+
+Okay. Because they do it from here too. It can be plain.
+
+Okay. Okay. Let me check it's clear.
+
+It's not ready. Okay. So this is to review results like I said.
+
+This is their lab accession number. Everybody gets in a new lab has a number for that sample or whatever. So this is lab dashboard.
+
+All right. Of course, the people in lab have a different view. Because they have to be able to enter results and all those things.
+
+So but your doctors don't need the... But the truth is we don't even have any problem with all of those things. The only thing we have problem with is the outpatient dashboard. So I don't know how... When the dashboard is already slowed down the system, nothing else will open easily.
+
+Do you understand? So this is who requested the lab date. So they've received it. They've put it in and authenticated it as a final result.
+
+Print taking like if we opened it before. It has updated the status. If they use barcode there's something for barcode here.
+
+But I've never used that before. Okay. But the search buttons are date range.
+
+Usually it's defaulted to today. So that's what shows up on the dashboard. If I want to check more I can... You can do category.
+
+Yeah, yeah. So that's that. What else do we use? Radiology manager.
+
+That's the scan care site. Okay. This is radiology manager's dashboard.
+
+As you see on scan care's end. Oh, okay. Only issue for radiology.
+
+So it's not open right now. Okay, all these other things. Really nobody else uses any of these things.
+
+That's what they use. Okay, pharmacy. Yeah.
+
+If they want to... That's home management. For people who want to discharge a patient. So this is pharmacy.
+
+They want to add a question to another. Copy charges. You can copy charges from one HMO to another.
+
+So for example if I have a new HMO. I click on copy pages. I select from this person that has a tariff.
+
+I want to copy it to new HMO that I just entered. I put it and I click copy charges. Okay.
+
+So I can verify. I can write down the entry. Okay, okay.
+
+But those are all pharmacy stuff. Doctors don't need that. How do doctors order medication? Let me even see because that's important.
+
+Doctors are going to order medication on outpatients. Add medication. That will help us.
+
+Help us. Also, I was just wondering. Select task.
+
+Add doctor's prescription. Add services if you want to do something else. We have buttons like that for the CPRS.
+
+But just to bring it together so that it's not like I'm going to a patient. Yeah, so once you click a button it takes you to that page. It gives you the option of selecting what you want to do.
+
+I don't know which one is add services. Let me see. Okay, this is like for billing more stuff.
+
+But the doctors don't use it. They just put their prescription. And then that opens this.
+
+Okay, and I can type the drug name. Okay. So the idea is to just replicate as much as possible.
+
+Yes, and if they save this it goes to pharmacy. Okay, yeah. So pharmacy will log in.
+
+Let me just show you from the admin standpoint what the pharmacy is seeing. So if I'm pharmacy now. Where is pharmacy here? Okay.
+
+So pharmacy, I can look at these are all my items. You know, you can do the purchase orders for me, everything. Okay.
+
+Let's see, what is... Prescriptions. Yeah. Prescriptions.
+
+Doctor prescription, okay. So if you click on that you'll see all the stuff that's been prescribed today. Okay.
+
+Okay, so if I go right you can view the prescription. This doctor, see these are the orders from this doctor for this patient. Okay.
+
+So this is from pharmacy's end. Yeah. This is what they see.
+
+Like a new one comes that hasn't been processed. There's a way they process it. See, it breaks down into OPD and then IPD.
+
+Inpatient, outpatient. Okay. Like this one now.
+
+Okay, retrieve for sale. It has not been, it's been ordered but it hasn't been. So there's a button to retrieve for sale.
+
+If you click on it, it takes me here. And I confirm. It gives you all the tariff prices, everything is there.
+
+Okay. And then you submit. So this one is going to be very complicated.
+
+You can see how... You have to pay for it. You have to pay to do it actually. Monkey.
+
+I'm not paying though. Okay. I know you're not paying.
+
+You like money. So by the time you... It's actually not so bad. Stop shaking me like that.
+
+If you are able to do it, it's something you can set up anywhere. Some of them can actually achieve at once. It's a long time.
+
+It's a contract. The person that started this stuff in the US was a nurse. Okay.
+
+The biggest one in the world. Epic. Epic is huge.
+
+That's what most people use. Blah, blah, blah, blah, blah. But it's like that.
+
+Once you know what you are doing, you can just correct all the errors. Yeah. And you have a software that is robust.
+
+Hospitals will buy it. You know, buy it. And I know you, you are just planning how you want to scan the world.
+
+So you can code it. Right, right, right. Anyway.
+
+So that's... I'll work on this and refine. But like I said, we have finished deployment. And that was the timeline for the end of this month.
+
+We have finished deployment.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+Part 3.
+ 
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+No, it won't, it won't, it won't. Because I want to be able to open your app and see these 32 patients that are there. That are currently there.
+
+And all those things. So while we're working on doing the other, let's see if you can, okay. Yeah, so you have to have a test instance for the app itself, but for the database that you are using, we should be able to see, and then there are test patients you can pull up to do examples and practise.
+
+There are already a lot of test patients, if you type test, they will come up. Okay. So, I'll look at it.
+
+You need to connect to that, you need to connect to that database. You need to be running your, running your. Back up before we do that connection, so I don't have any issue.
+
+Yeah, no problem. Yeah, no problem. It's just a reference.
+
+We'll only be referencing those later. We'll be pulling the data. We'll be pulling the data from there, just for us.
+
+All right, let's see what's possible. But you need to be working online. Yeah, I'll see what's possible.
+
+Because how would your own design, you know, like. It's, it currently has all your information, your historic information on the software. The idea is just that you start using it and then it will be building its own.
+
+Naturally, yeah. You know what I'm saying is, two instances happen, the final, the two of them must get to work independently from each other. Yeah, that's what it is.
+
+That's the end. So, but you need to connect to the database. For now, yeah.
+
+The only thing I don't know is whether, if two of them are connected and their information entry from here and here, it won't cause some conflict. No, it will just be one way. So, but the thing is, the goal is to move to this new one, eventually, yeah.
+
+So, what we can do is, we can just get some, I'll figure something out that will connect your outpatient dashboard to this app so that you can currently see what's going on live and information is stored on the software as well. So, we don't need to have to come back and start using it. I know, it can't just be the outpatient though.
+
+Like, I mean, the entire. Data. Yeah.
+
+Anybody that are registering at 40 hours. No, the encounter. Yeah, it should.
+
+The encounter should be updated. Yeah, we can't see if it's possible. We'll try.
+
+We'll try if that's possible. I had the same problem with, but we'll see, we'll see what's possible. Honestly, I think it's best to just start going ahead and start using the app now and then gradually start to face this one out.
+
+You can't, you can't. It's not ready for that. You don't understand.
+
+Like, yeah, it's not, you can't rely on it's app. How many students I'm telling you, you can't rely on it's app. If pharmacy can work, anybody can work without any of those things.
+
+So, everything's active. Everybody has to be. Active.
+
+Yeah. Active, so, run everything at once. Everybody work at once.
+
+So, no stats. One will work at a time. Room management.
+
+Yeah. Room management. You don't want to distract the patient.
+
+These are the rooms that are occupied, 10 beds currently. Nice, more UI. Yeah, so.
+
+You go for the sluggishness of this one. You know what would be great? If you can just somehow put your own dashboard, application dashboard, there. And then that will answer everything.
+
+Be dealing with the, instead of using their own application dashboard. I can't mess with the, yeah. That's what I'm saying, so.
+
+Don't worry, we'll get it done. That's all that's left, the fine tuning. You tell me what you want exactly, and we'll get that done.
+
+That's all that is now. You said time one, how long to you, uncle? I'm going there now, actually. You are not finished yet.
+
+I'm done. I just want, it's the same process fine tuning. What, how do you want your data to expose? And that's what it is.
+
+How do you want to interact with the app? And what are they doing with it? Their own is not, their own is not that complex. Yeah. And what are they doing with it? It's the same thing.
+
+You do your finance, you do your sales, operations management, HR, quantity control, quality control. Just your staff management, your leaves, your payment, payroll, and then. How did you do that? The payroll, I'm not sorry, leaves and all that.
+
+How did you do the HR part of the software? No intent. It's just back in logic. You design it how you want to track your payroll.
+
+So once the staff members register, you assign their payment and then monthly, you take off and click a button, they have been paid. Information is saved. Their time and hours they spend in the work is tracked.
+
+So they can sign in and sign out is also tracked if that's what you want. So I'll get this done.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+
+PART 4
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+So if the patient wants to pay, like there's a card where you can put money, so if a patient deposits money, view patient card, and the person from funders can add how much the patient is paying, blah blah blah, shows all the previous payments, and deposit to the card, or you can refund, blah blah blah. Okay, this is the bill that has been generated from this patient since his admission, click on invoice, okay, and it breaks it and puts it in invoice format. Yeah.
+
+When they want to finalise payments, they click final payment, okay, and they make the payment, cash, card, different options. I'll talk to the finance team, honestly, the way it is now is, one after the other, and we'll just design it as they like. Because it's a good job, it's what they communicate, it's just to communicate.
+
+No problem. So it's outdated, to be honest, yeah. ECSS and EC9, that's why they're having that.
+
+You just need something more recent, more user friendly. So where's your software, let me open it and see what happens. So what is this dashboard supposed to be? Because it's different depending, so it's like hospital command, so for you now, you see this dashboard, not everybody will see that particular dashboard, so it's whatever you want.
+
+So what does the doctor see? So that's the, my dashboard is for the doctor. This one? No, the third one. Yeah, so this is the doctor one.
+
+So this is what the doctor will see? Yeah, so this is what they see when they sign it. This is the first landing page. So I click begin, right? Yeah, so you just begin the consultation and that.
+
+So you can add notes if you need to request a lab order. I'll make the text in black so it's more visible. Yeah, so just click on that and you can add the notes in progress, add the progress notes.
+
+That's a lot of clicks for me to get to where I need to be. No problem. Like I said, if you're writing notes, it should be on the page where I click on where I don't use it.
+
+You don't use it? Yeah. So you add the progress notes. Okay, if you want to click orders.
+
+So you have your most recent orders. What do you mean, if I want to add another? That's the button on your right. Add lab order.
+
+And if I enter this, it goes to the lab dashboard for the lab people. Yeah, it will go to the lab people. And you can prescribe a drug as well.
+
+Is this linked to the current database? Not yet. We haven't got an extract of that data yet. Right now we only have your patient, some billing data, and some other things.
+
+The billing for that particular patient. We'll work on it so it looks more like the Dr. M. Okay, let me show you the HMO stuff. That one is another thing that is serious.
+
+HMO dashboard. It lists all the HMO patients. Okay? Yeah.
+
+There is a way. Okay, so the same thing you can add stuff on the dashboard. This is the HMO here.
+
+Now, they generate a report. They generate a bill. So, at the end of the month for the HMOs.
+
+So we select the HMO. This is HMO panel itself. This is like for July.
+
+You search. It brings up all these. These are all the patients from their HMO.
+
+For the month of July. Does anyone want to change something in HMO? There is capitation. Writing, writing, writing.
+
+There is capitation and all. I don't know what capitation is. I don't know.
+
+Maybe it's like what they've paid towards this patient or whatever. The HMO people can't afford the amount. And then it creates HMO bill.
+
+That creates a bill. So when you go to create later HMO bill list. These are the ones that have been previously generated, blah, blah, blah.
+
+For the different whatever. So you can from here print it, view, print and send to the HMO directly. Alright, alright.
+
+Alright. No, no, it's okay. Don't worry about this.
+
+Don't worry about this. I'll talk to you. I spoke to them already.
+
+I spoke to every department. Just now to spend at least a day with each department. And then fine-tune our process.
+
+No, let them show you how they use Dr. M. Yeah, exactly. Just like that. And then you go and replicate it to meet that need.
+
+That's right. In this next stage. We need to release your software.
+
+That's the problem. It's good. It's good.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)

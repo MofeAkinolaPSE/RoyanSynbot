@@ -79,7 +79,7 @@ function KpiCard({
         <div>
           <div className="text-2xl font-bold">{value}</div>
           <div className="text-xs text-muted-foreground">{label}</div>
-          {sub && <div className="text-[11px] text-muted-foreground/70">{sub}</div>}
+          {sub && <div className="text-[13px] text-muted-foreground/70">{sub}</div>}
         </div>
       </CardContent>
     </Card>
@@ -464,7 +464,7 @@ function NHIATab() {
                     <td className="px-3 py-2">₦{(r.total_amount ?? 0).toLocaleString()}</td>
                     <td className="px-3 py-2">₦{(r.hmo_amount ?? 0).toLocaleString()}</td>
                     <td className="px-3 py-2">₦{(r.patient_copay ?? 0).toLocaleString()}</td>
-                    <td className="px-3 py-2"><Badge variant="outline" className="text-[10px]">{r.billing_status}</Badge></td>
+                    <td className="px-3 py-2"><Badge variant="outline" className="text-[12px]">{r.billing_status}</Badge></td>
                   </tr>
                 ))}
               </tbody>

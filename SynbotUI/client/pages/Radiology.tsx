@@ -1,89 +1,53 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   ScanLine, RefreshCw, Loader2, Clock, CheckCircle2, AlertTriangle,
-  Timer, Plus, FileText, BarChart3,
+  Timer, BarChart3,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { useToast } from "@/hooks/use-toast";
 import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { RadiologyWorkspacePanel } from "@/components/radiology/RadiologyWorkspacePanel";
+import {
+  StatusBadge, UrgencyBadge, ModalityBadge, elapsed, MODALITY_COLORS, URGENCY_LEFT_BORDER,
+} from "@/components/radiology/radiology-shared";
 
 const MODALITIES = ["xray", "ultrasound", "ct", "mri", "ecg", "echo", "fluoroscopy", "mammography", "endoscopy", "other"];
 
-const MODALITY_COLORS: Record<string, string> = {
-  xray:        "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  ultrasound:  "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  ct:          "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  mri:         "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
-  ecg:         "bg-red-500/20 text-red-400 border-red-500/30",
-  echo:        "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  fluoroscopy: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  mammography: "bg-rose-500/20 text-rose-400 border-rose-500/30",
-  endoscopy:   "bg-teal-500/20 text-teal-400 border-teal-500/30",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  ordered:     "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  scheduled:   "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  in_progress: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  reported:    "bg-green-500/20 text-green-400 border-green-500/30",
-  cancelled:   "bg-slate-500/20 text-slate-300 border-slate-500/30",
-};
-
-const STATUS_NEXT: Record<string, string> = {
-  ordered: "scheduled", scheduled: "in_progress", in_progress: "reported",
-};
-
-function fmtDate(ts?: string) {
-  if (!ts) return "—";
-  return new Date(ts).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+interface RadiologyOrder {
+  id: string;
+  patient_id?: string | number;
+  patient_name?: string;
+  patient_mrn?: string;
+  modality?: string;
+  body_part?: string;
+  clinical_indication?: string;
+  urgency?: string;
+  status?: string;
+  ordered_at?: string;
 }
-
-function elapsed(ts?: string) {
-  if (!ts) return "—";
-  const mins = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
-  return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
-}
-
-const EMPTY_ORDER = { encounter_id: "", patient_id: "", modality: "xray", body_part: "", clinical_indication: "", urgency: "routine", notes: "" };
-const EMPTY_REPORT = { report: "", impression: "", radiologist_id: "" };
 
 export default function Radiology() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-
   const [tab, setTab] = useState("worklist");
-  const [statusFilter, setStatusFilter]   = useState("all");
+  const [statusFilter, setStatusFilter]     = useState("all");
   const [modalityFilter, setModalityFilter] = useState("all");
-  const [orderOpen, setOrderOpen]         = useState(false);
-  const [reportOpen, setReportOpen]       = useState(false);
-  const [activeOrder, setActiveOrder]     = useState<any | null>(null);
-  const [orderForm, setOrderForm]         = useState({ ...EMPTY_ORDER });
-  const [reportForm, setReportForm]       = useState({ ...EMPTY_REPORT });
-  const [orderTemplateId, setOrderTemplateId]   = useState<string>("");
-  const [reportTemplateId, setReportTemplateId] = useState<string>("");
 
-  // ── Queries ────────────────────────────────────────────────────────────────
+  const [panelOrder, setPanelOrder]           = useState<RadiologyOrder | null>(null);
+  const [panelInitialTab, setPanelInitialTab] = useState<string | undefined>(undefined);
+
+  // ── Queries ──────────────────────────────────────────────────────────────
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["radiology-orders", statusFilter, modalityFilter],
     queryFn: () => api.hospital.radiology.listOrders({
@@ -92,71 +56,31 @@ export default function Radiology() {
     }),
     refetchInterval: 60_000,
   });
-  const orders: any[] = Array.isArray(data?.orders) ? data.orders : [];
+  const orders: RadiologyOrder[] = Array.isArray(data?.orders) ? data.orders : [];
 
   const { data: statsData } = useQuery({
     queryKey: ["radiology-stats"],
     queryFn: () => api.hospital.radiology.stats(),
-    enabled: tab === "stats",
-    staleTime: 120_000,
+    refetchInterval: 30_000,
   });
   const stats = statsData ?? {};
 
-  const { data: orderTemplatesData } = useQuery({
-    queryKey: ["radiology-templates", orderForm.modality],
-    queryFn: () => api.hospital.radiology.listTemplates({ modality: orderForm.modality }),
-    enabled: orderOpen && !!orderForm.modality,
-    staleTime: 60_000,
-  });
-  const orderTemplates: any[] = Array.isArray(orderTemplatesData?.templates) ? orderTemplatesData.templates : [];
+  // KPI counts — sourced from the /radiology/stats aggregate, not the
+  // paginated worklist, so they stay accurate past the 50-row page limit.
+  const pendingCount    = stats.pending ?? 0;
+  const inProgressCount = stats.in_progress ?? 0;
+  const reportedCount   = stats.reported ?? 0;
+  const statCount       = stats.stat_pending ?? 0;
 
-  const { data: reportTemplatesData } = useQuery({
-    queryKey: ["radiology-templates", activeOrder?.modality],
-    queryFn: () => api.hospital.radiology.listTemplates({ modality: activeOrder!.modality }),
-    enabled: reportOpen && !!activeOrder?.modality,
-    staleTime: 60_000,
-  });
-  const reportTemplates: any[] = Array.isArray(reportTemplatesData?.templates) ? reportTemplatesData.templates : [];
+  function openPanel(order: RadiologyOrder, initialTab?: string) {
+    setPanelOrder(order);
+    setPanelInitialTab(initialTab);
+  }
 
-  // KPI counts
-  const pendingCount = orders.filter(o => ["ordered", "scheduled"].includes(o.status)).length;
-  const inProgressCount = orders.filter(o => o.status === "in_progress").length;
-  const reportedCount = orders.filter(o => o.status === "reported").length;
-  const statCount = orders.filter(o => o.urgency === "stat").length;
-
-  // ── Mutations ──────────────────────────────────────────────────────────────
-  const createOrderMut = useMutation({
-    mutationFn: () => api.hospital.radiology.createOrder({
-      ...orderForm,
-      patient_id: Number(orderForm.patient_id),
-      encounter_id: Number(orderForm.encounter_id),
-    }),
-    onSuccess: () => {
-      toast({ title: "Imaging request created" });
-      setOrderOpen(false);
-      setOrderForm({ ...EMPTY_ORDER });
-      void qc.invalidateQueries({ queryKey: ["radiology-orders"] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const advanceStatusMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.hospital.radiology.advanceStatus(id, { status }),
-    onSuccess: () => { toast({ title: "Status updated" }); void qc.invalidateQueries({ queryKey: ["radiology-orders"] }); },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const reportMut = useMutation({
-    mutationFn: () => activeOrder ? api.hospital.radiology.submitReport(activeOrder.id, reportForm) : Promise.reject(),
-    onSuccess: () => {
-      toast({ title: "Report submitted" });
-      setReportOpen(false);
-      setReportForm({ ...EMPTY_REPORT });
-      void qc.invalidateQueries({ queryKey: ["radiology-orders"] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
+  function closePanel() {
+    setPanelOrder(null);
+    setPanelInitialTab(undefined);
+  }
 
   return (
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
@@ -167,14 +91,9 @@ export default function Radiology() {
           <h1 className="text-2xl font-bold tracking-tight">Radiology & Diagnostics</h1>
           <p className="text-sm text-muted-foreground">Imaging requests, worklist, and reporting</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
-          </Button>
-          <Button size="sm" className="gap-2" onClick={() => { setOrderTemplateId(""); setOrderOpen(true); }}>
-            <Plus className="h-3.5 w-3.5" /> New Request
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
+          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
+        </Button>
       </div>
 
       {/* KPI cards */}
@@ -241,63 +160,45 @@ export default function Radiology() {
                       <TableHead>Urgency</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Elapsed</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {orders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                           <ScanLine className="mx-auto mb-2 h-6 w-6 opacity-30" />No radiology orders found
                         </TableCell>
                       </TableRow>
-                    ) : orders.map((order: any) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-mono text-xs">{String(order.id).slice(0, 8)}</TableCell>
-                        <TableCell className="font-mono text-xs">{order.patient_id ? String(order.patient_id).slice(0, 8) : "—"}</TableCell>
+                    ) : orders.map((order) => (
+                      <TableRow
+                        key={order.id}
+                        onClick={() => openPanel(order)}
+                        className={cn(
+                          "cursor-pointer transition-colors border-l-2 hover:bg-muted/50",
+                          URGENCY_LEFT_BORDER[order.urgency ?? "routine"],
+                        )}
+                      >
+                        <TableCell className="font-mono text-xs text-muted-foreground">#{order.id}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn("text-xs uppercase", MODALITY_COLORS[order.modality] ?? "")}>
-                            {order.modality}
-                          </Badge>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium leading-tight">
+                              {order.patient_name ?? <span className="text-muted-foreground italic text-xs">ID {order.patient_id}</span>}
+                            </span>
+                            {order.patient_mrn && (
+                              <span className="font-mono text-[12px] text-muted-foreground">{order.patient_mrn}</span>
+                            )}
+                          </div>
                         </TableCell>
+                        <TableCell><ModalityBadge modality={order.modality} /></TableCell>
                         <TableCell className="text-sm">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-medium">{order.body_part ?? "—"}</span>
-                            <span className="text-[11px] text-muted-foreground truncate max-w-[200px]">{order.clinical_indication ?? ""}</span>
+                            <span className="text-[13px] text-muted-foreground truncate max-w-[200px]">{order.clinical_indication ?? ""}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-xs capitalize",
-                            order.urgency === "stat" ? "border-red-500/30 text-red-400 bg-red-500/10" :
-                            order.urgency === "urgent" ? "border-orange-500/30 text-orange-400" :
-                            "border-slate-500/30 text-slate-400"
-                          )}>
-                            {order.urgency}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-xs capitalize", STATUS_COLORS[order.status] ?? "")}>
-                            {order.status?.replace(/_/g, " ")}
-                          </Badge>
-                        </TableCell>
+                        <TableCell><UrgencyBadge urgency={order.urgency} /></TableCell>
+                        <TableCell><StatusBadge status={order.status} /></TableCell>
                         <TableCell className="text-xs text-muted-foreground">{elapsed(order.ordered_at)}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {STATUS_NEXT[order.status] && order.status !== "in_progress" && (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                                onClick={() => advanceStatusMut.mutate({ id: order.id, status: STATUS_NEXT[order.status] })}
-                                disabled={advanceStatusMut.isPending}>
-                                {STATUS_NEXT[order.status] === "scheduled" ? "Schedule" : "Start Scan"}
-                              </Button>
-                            )}
-                            {order.status === "in_progress" && (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                                onClick={() => { setActiveOrder(order); setReportTemplateId(""); setReportOpen(true); }}>
-                                <FileText className="mr-1 h-3.5 w-3.5" /> Report
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -342,7 +243,7 @@ export default function Radiology() {
                   {Object.entries(stats.avg_tat_minutes ?? {}).map(([mod, tat]: [string, any]) => (
                     <div key={mod} className="flex items-center justify-between">
                       <Badge variant="outline" className={cn("text-xs uppercase", MODALITY_COLORS[mod] ?? "")}>{mod}</Badge>
-                      <span className={cn("text-sm font-semibold", tat > 120 ? "text-red-400" : tat > 60 ? "text-yellow-400" : "text-green-400")}>
+                      <span className={cn("text-sm font-semibold", tat > 120 ? "text-red-700 dark:text-red-400" : tat > 60 ? "text-yellow-700 dark:text-yellow-400" : "text-green-700 dark:text-green-400")}>
                         {tat < 60 ? `${tat}m` : `${Math.floor(tat / 60)}h ${Math.round(tat % 60)}m`}
                       </span>
                     </div>
@@ -357,157 +258,12 @@ export default function Radiology() {
         </TabsContent>
       </Tabs>
 
-      {/* ── New Imaging Request Dialog ─────────────────────────────────────── */}
-      <Dialog open={orderOpen} onOpenChange={setOrderOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>New Imaging Request</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Patient ID *</Label>
-                <Input value={orderForm.patient_id} onChange={e => setOrderForm(f => ({ ...f, patient_id: e.target.value }))}
-                  placeholder="Patient ID" className="h-8 text-sm" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Encounter ID *</Label>
-                <Input value={orderForm.encounter_id} onChange={e => setOrderForm(f => ({ ...f, encounter_id: e.target.value }))}
-                  placeholder="Encounter ID" className="h-8 text-sm" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Modality *</Label>
-                <Select value={orderForm.modality} onValueChange={v => setOrderForm(f => ({ ...f, modality: v }))}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {MODALITIES.map(m => <SelectItem key={m} value={m}>{m.toUpperCase()}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Urgency</Label>
-                <Select value={orderForm.urgency} onValueChange={v => setOrderForm(f => ({ ...f, urgency: v }))}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="routine">Routine</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                    <SelectItem value="stat">STAT</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {orderTemplates.length > 0 && (
-              <div className="space-y-1">
-                <Label className="text-xs">Structured Protocol (optional)</Label>
-                <Select value={orderTemplateId} onValueChange={v => {
-                  setOrderTemplateId(v);
-                  const t = orderTemplates.find((x: any) => String(x.id) === v);
-                  if (t) setOrderForm(f => ({
-                    ...f,
-                    body_part: t.body_part || f.body_part,
-                    clinical_indication: f.clinical_indication || t.variant_name,
-                  }));
-                }}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choose a protocol…" /></SelectTrigger>
-                  <SelectContent>
-                    {orderTemplates.map((t: any) => (
-                      <SelectItem key={t.id} value={String(t.id)}>{t.variant_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label className="text-xs">Body Part / Region</Label>
-              <Input value={orderForm.body_part} onChange={e => setOrderForm(f => ({ ...f, body_part: e.target.value }))}
-                placeholder="e.g. Chest, Abdomen, Left Knee" className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Clinical Indication *</Label>
-              <Textarea value={orderForm.clinical_indication}
-                onChange={e => setOrderForm(f => ({ ...f, clinical_indication: e.target.value }))}
-                placeholder="Reason for imaging request..." rows={2} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
-              <Input value={orderForm.notes} onChange={e => setOrderForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Optional notes for radiologist" className="h-8 text-sm" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOrderOpen(false)}>Cancel</Button>
-            <Button disabled={!orderForm.patient_id || !orderForm.encounter_id || !orderForm.clinical_indication.trim() || createOrderMut.isPending}
-              onClick={() => createOrderMut.mutate()}>
-              {createOrderMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Submit Request
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Report Submission Dialog ───────────────────────────────────────── */}
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Submit Radiology Report</DialogTitle>
-            <DialogDescription>
-              {activeOrder?.modality?.toUpperCase()} — {activeOrder?.body_part ?? "—"} — Order {String(activeOrder?.id ?? "").slice(0, 8)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Radiologist</Label>
-              <Input value={reportForm.radiologist_id}
-                onChange={e => setReportForm(f => ({ ...f, radiologist_id: e.target.value }))}
-                placeholder="Radiologist name / ID" className="h-8 text-sm" />
-            </div>
-            {reportTemplates.length > 0 && (
-              <div className="space-y-1">
-                <Label className="text-xs">Load Template</Label>
-                <div className="flex gap-2">
-                  <Select value={reportTemplateId} onValueChange={setReportTemplateId}>
-                    <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Choose a canned-findings template…" /></SelectTrigger>
-                    <SelectContent>
-                      {reportTemplates.map((t: any) => (
-                        <SelectItem key={t.id} value={String(t.id)}>{t.variant_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" size="sm" variant="outline" disabled={!reportTemplateId}
-                    onClick={() => {
-                      const t = reportTemplates.find((x: any) => String(x.id) === reportTemplateId);
-                      if (t) setReportForm(f => ({ ...f, report: t.template_text }));
-                    }}>
-                    <FileText className="h-3.5 w-3.5 mr-1" /> Load
-                  </Button>
-                </div>
-                <p className="text-[10px] text-muted-foreground">Loads the canned normal-findings text into the Report field below — edit per-patient before submitting.</p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label className="text-xs">Report *</Label>
-              <Textarea value={reportForm.report}
-                onChange={e => setReportForm(f => ({ ...f, report: e.target.value }))}
-                placeholder="Detailed radiological findings..." rows={5}
-                className="font-mono text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Impression / Conclusion</Label>
-              <Textarea value={reportForm.impression}
-                onChange={e => setReportForm(f => ({ ...f, impression: e.target.value }))}
-                placeholder="Brief impression and clinical recommendation..." rows={3} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button>
-            <Button disabled={!reportForm.report.trim() || reportMut.isPending}
-              onClick={() => reportMut.mutate()}>
-              {reportMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Submit Report
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ═══════════════════════════════════════════════════════════════════
+          RADIOLOGY WORKSPACE PANEL — opens inline on row click, no navigation
+      ════════════════════════════════════════════════════════════════════ */}
+      {panelOrder && (
+        <RadiologyWorkspacePanel order={panelOrder} initialTab={panelInitialTab} onClose={closePanel} />
+      )}
     </motion.div>
   );
 }

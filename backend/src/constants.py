@@ -35,6 +35,7 @@ TABLE_STOCK_CACHE = "royan_stock_cache"
 TABLE_INVENTORY_EVENTS = "royan_inventory_events"
 TABLE_STAFF = "royan_staff"
 TABLE_STAFF_REGISTRATIONS = "royan_staff_registrations"
+TABLE_PRESENCE_SESSIONS = "royan_presence_sessions"
 TABLE_TIMESHEETS = "royan_timesheets"
 TABLE_ALERTS = "royan_alerts"
 TABLE_BRIEFINGS = "royan_executive_briefings"
@@ -63,6 +64,7 @@ TABLE_WARDS                 = "royan_wards"
 TABLE_BEDS                  = "royan_beds"
 TABLE_LAB_ORDERS            = "royan_lab_orders"
 TABLE_LAB_RESULTS           = "royan_lab_results"
+TABLE_LAB_SPECIMENS         = "royan_lab_specimens"
 TABLE_PRESCRIPTIONS         = "royan_prescriptions"
 TABLE_DISPENSING            = "royan_dispensing"
 TABLE_SALES_RETURNS         = "royan_sales_returns"
@@ -80,6 +82,7 @@ TABLE_COVERAGE_AUTHORIZATIONS = "royan_coverage_authorizations"
 TABLE_BILL_ITEMS            = "royan_bill_items"
 TABLE_HOPE_SYNC_RUNS        = "royan_hope_sync_runs"
 TABLE_ENCOUNTER_NOTES       = "royan_encounter_notes"
+TABLE_NOTE_TITLES           = "royan_note_titles"
 
 # --- Hospital Phase 1 additions ---
 TABLE_CONSENT_RECORDS       = "royan_consent_records"
@@ -175,9 +178,22 @@ INCIDENT_CATEGORY_ALLOWED    = {
     "equipment_failure", "infection", "documentation_error", "delay_in_treatment",
     "violence_aggression", "other"
 }
-SHIFT_TYPE_ALLOWED           = {"morning", "afternoon", "night", "on_call", "split"}
-LEAVE_TYPE_ALLOWED           = {"annual", "sick", "maternity", "paternity", "compassionate", "study", "unpaid"}
+SHIFT_TYPE_ALLOWED           = {"morning", "afternoon", "night", "on_call"}
+LEAVE_TYPE_ALLOWED           = {"annual", "sick", "maternity", "paternity", "emergency", "unpaid"}
 LEAVE_STATUS_ALLOWED         = {"pending", "approved", "rejected", "cancelled"}
+PAYROLL_STATUS_ALLOWED       = {"draft", "approved", "paid"}
+
+# --- Hospital Phase 12 — Facility Audits & Equipment Maintenance ---
+# NOT the pharma QMS tables (audit_schedule/equipment_registry, migration 070)
+# and NOT the platform-reliability tables (royan_maintenance_assets/tasks,
+# migration 110) — a separate, genuinely hospital-native pair.
+TABLE_FACILITY_AUDITS        = "royan_facility_audits"
+TABLE_EQUIPMENT_MAINTENANCE  = "royan_equipment_maintenance"
+
+FACILITY_AUDIT_RISK_ALLOWED          = {"low", "medium", "high", "critical"}
+FACILITY_AUDIT_STATUS_ALLOWED        = {"scheduled", "in_progress", "completed"}
+EQUIPMENT_MAINTENANCE_TYPE_ALLOWED   = {"preventive", "corrective", "calibration", "emergency"}
+EQUIPMENT_MAINTENANCE_STATUS_ALLOWED = {"pending", "completed"}
 
 # --- Hospital Phase 8 — Reporting / Integrations / Payments ---
 TABLE_PAYMENT_TRANSACTIONS   = "royan_payment_transactions"
@@ -535,10 +551,25 @@ AUTH0_AUDIENCE = os.getenv(ENV_AUTH0_AUDIENCE, "")
 WIDGET_SITE_KEYS = [k.strip() for k in os.getenv(ENV_WIDGET_SITE_KEYS, "").split(",") if k.strip()]
 AUTH0_ISSUER = f"https://{AUTH0_DOMAIN}/" if AUTH0_DOMAIN else ""
 ACCESS_TOKEN_MINUTES = int(os.getenv(ENV_ACCESS_TOKEN_MINUTES, "45"))
+
+# Presence ("who's online") — heartbeat interval the frontend is expected to
+# use, and how far past the last heartbeat a session is still counted as
+# online (3x the heartbeat, so one missed beat doesn't flip someone offline).
+PRESENCE_HEARTBEAT_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_SECONDS", "30"))
+PRESENCE_STALE_SECONDS = int(os.getenv("PRESENCE_STALE_SECONDS", "90"))
 REFRESH_TOKEN_DAYS = int(os.getenv(ENV_REFRESH_TOKEN_DAYS, "7"))
 WEBSOCKET_ENABLED = os.getenv(ENV_WEBSOCKET_ENABLED, "1") not in ("0", "false", "False")
 PROCUREMENT_CLEARANCE_DELAY_DAYS = int(os.getenv(ENV_PROCUREMENT_CLEARANCE_DELAY_DAYS, "5"))
 PROCUREMENT_DAILY_DELAY_COST = float(os.getenv(ENV_PROCUREMENT_DAILY_DELAY_COST, "250000"))
+
+# Pharmacy Inventory workspace — risk-tier / reorder-math defaults
+PHARMACY_DEFAULT_LEAD_TIME_DAYS    = int(os.getenv("PHARMACY_DEFAULT_LEAD_TIME_DAYS", "14"))
+PHARMACY_DEFAULT_SAFETY_STOCK_DAYS = int(os.getenv("PHARMACY_DEFAULT_SAFETY_STOCK_DAYS", "7"))
+PHARMACY_REVIEW_CYCLE_DAYS         = int(os.getenv("PHARMACY_REVIEW_CYCLE_DAYS", "14"))
+PHARMACY_DEMAND_WINDOW_DAYS        = int(os.getenv("PHARMACY_DEMAND_WINDOW_DAYS", "30"))
+PHARMACY_EXPIRING_SOON_DAYS        = int(os.getenv("PHARMACY_EXPIRING_SOON_DAYS", "30"))
+INVENTORY_RISK_TIERS       = ["CRITICAL", "WARNING", "MONITOR", "ADEQUATE"]
+INVENTORY_CATEGORY_ALLOWED = {"drug", "vaccine", "consumable", "other"}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Schema-namespaced tables — Migration 136 enterprise schemas
@@ -550,6 +581,7 @@ PROCUREMENT_DAILY_DELAY_COST = float(os.getenv(ENV_PROCUREMENT_DAILY_DELAY_COST,
 TABLE_DEPARTMENTS      = "royan_departments"       # public — also readable as master entity
 TABLE_LAB_CATALOG      = "royan_lab_catalog"
 TABLE_DRUG_FORMULARY   = "royan_drug_formulary"
+TABLE_INVENTORY_BATCHES = "royan_inventory_batches"
 TABLE_DIAGNOSIS_CATALOG= "royan_diagnosis_catalog"
 TABLE_PROCEDURE_CATALOG= "royan_procedure_catalog"
 TABLE_MDM_CHANGE_REQS  = "royan_mdm_change_requests"

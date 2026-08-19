@@ -324,7 +324,7 @@ def get_bed_status(client: DBClient = db) -> List[Dict[str, Any]]:
     try:
         resp = (
             client.table("royan_beds")
-            .select("id,ward_id,bed_number,status,patient_id")
+            .select("id,ward_id,bed_number,status,current_patient_id")
             .order("ward_id")
             .limit(200)
             .execute()
@@ -346,6 +346,135 @@ def get_bed_status(client: DBClient = db) -> List[Dict[str, Any]]:
             ward_map[wid]["available"] += 1
 
     return [{"ward_id": wid, **counts} for wid, counts in ward_map.items()]
+
+
+def get_patient_record(identifier: str, client: DBClient = db) -> Dict[str, Any]:
+    """Resolve a patient by MRN or name fragment and return a Roy-facing
+    summary — demographics, active encounter, and open clinical items.
+
+    This is the tool `getActiveEncounters` (list of currently-open encounters)
+    could never answer: "pull up patient X" needs to search the FULL patient
+    roster, not just who happens to be mid-visit right now. Not cached —
+    a stale "patient not found" would be worse than an extra query.
+    """
+    term = (identifier or "").strip()
+    if not term:
+        return {"found": False, "query": identifier, "message": "No patient name or MRN was given."}
+
+    try:
+        # MRN is the unambiguous fast path — exact match, case-insensitive.
+        exact = (
+            client.table("royan_patients")
+            .select("id,mrn,first_name,last_name,date_of_birth,gender,phone,hmo_provider,hmo_id")
+            .ilike("mrn", term)
+            .limit(1)
+            .execute()
+        )
+        matches = exact.data or []
+        if not matches:
+            # Name search — every word must appear somewhere in first/last name,
+            # matching the same "AND-across-words" approach proven in the
+            # Front Desk / patient registration search (a naive single ILIKE
+            # on a full "First Last" string misses reordered or partial names).
+            words = [w for w in term.split() if w]
+            query = (
+                client.table("royan_patients")
+                .select("id,mrn,first_name,last_name,date_of_birth,gender,phone,hmo_provider,hmo_id")
+            )
+            for w in words[:4]:
+                query = query.or_(f"first_name.ilike.%{w}%,last_name.ilike.%{w}%")
+            resp = query.order("registered_at", desc=True).limit(5).execute()
+            matches = resp.data or []
+    except Exception as exc:
+        logger.warning(f"get_patient_record({identifier!r}): search failed ({exc})")
+        return {"found": False, "query": identifier, "message": "Patient search failed due to a system error."}
+
+    if not matches:
+        return {"found": False, "query": identifier, "message": f"No patient matching '{identifier}' was found in the system."}
+
+    if len(matches) > 1:
+        return {
+            "found": False,
+            "query": identifier,
+            "message": f"Multiple patients match '{identifier}' — ask the user to confirm which one by MRN.",
+            "candidates": [
+                {"mrn": m.get("mrn"), "name": f"{m.get('first_name', '')} {m.get('last_name', '')}".strip()}
+                for m in matches
+            ],
+        }
+
+    patient = matches[0]
+    patient_id = patient.get("id")
+    mrn = patient.get("mrn")
+    name = f"{patient.get('first_name', '')} {patient.get('last_name', '')}".strip()
+
+    active_encounter = None
+    notes_count = 0
+    active_prescriptions: List[str] = []
+    pending_labs: List[str] = []
+    try:
+        enc = (
+            client.table("royan_encounters")
+            .select("id,status,department,encounter_type,chief_complaint,created_at")
+            .eq("patient_id", patient_id)
+            .neq("status", "discharged")
+            .is_("external_source", None)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if enc.data:
+            active_encounter = enc.data[0]
+    except Exception as exc:
+        logger.debug(f"get_patient_record: active encounter lookup failed ({exc})")
+
+    try:
+        notes = client.table("royan_encounter_notes").select("id", count="exact").eq("patient_id", patient_id).execute()
+        notes_count = notes.count or 0
+    except Exception as exc:
+        logger.debug(f"get_patient_record: notes count failed ({exc})")
+
+    try:
+        rx = (
+            client.table("royan_prescriptions")
+            .select("drug_name")
+            .eq("patient_id", patient_id)
+            .in_("status", ["pending", "partially_dispensed"])
+            .limit(10)
+            .execute()
+        )
+        active_prescriptions = [r.get("drug_name") for r in (rx.data or []) if r.get("drug_name")]
+    except Exception as exc:
+        logger.debug(f"get_patient_record: prescriptions lookup failed ({exc})")
+
+    try:
+        labs = (
+            client.table("royan_lab_orders")
+            .select("test_name")
+            .eq("patient_id", patient_id)
+            .in_("status", ["ordered", "sample_collected", "processing"])
+            .limit(10)
+            .execute()
+        )
+        pending_labs = [r.get("test_name") for r in (labs.data or []) if r.get("test_name")]
+    except Exception as exc:
+        logger.debug(f"get_patient_record: lab orders lookup failed ({exc})")
+
+    return {
+        "found": True,
+        "patient_id": patient_id,
+        "mrn": mrn,
+        "name": name,
+        "date_of_birth": patient.get("date_of_birth"),
+        "gender": patient.get("gender"),
+        "phone": patient.get("phone"),
+        "hmo_provider": patient.get("hmo_provider"),
+        "active_encounter": active_encounter,
+        "clinical_notes_count": notes_count,
+        "active_prescriptions": active_prescriptions,
+        "pending_lab_orders": pending_labs,
+        "profile_url": f"/hospital/patients/{mrn}" if mrn else None,
+    }
 
 
 @ttl_cache(ttl_seconds=60, ignore_kwargs=("client",), tags=("hospital", "encounters"))

@@ -13,7 +13,7 @@
  *   - /appointments/doctors   → distinct doctor list for filters
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   format,
@@ -38,8 +38,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  X,
   Check,
+  UserX,
   Bell,
   Stethoscope,
   LayoutGrid,
@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -201,7 +203,13 @@ const SchedulingCenter = () => {
   const [filterDoctor, setFilterDoctor] = useState("all");
   const [filterDept, setFilterDept] = useState("all");
   const [showApptDialog, setShowApptDialog] = useState(false);
-  const [newAppt, setNewAppt] = useState({ patient_id: "", slot_id: "", reason: "" });
+  const [newApptDate, setNewApptDate] = useState("");
+  const [newApptSlotId, setNewApptSlotId] = useState("");
+  const [newApptReason, setNewApptReason] = useState("");
+  const [apptPatientQuery, setApptPatientQuery] = useState("");
+  const [apptDebouncedQuery, setApptDebouncedQuery] = useState("");
+  const apptSearchDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [selectedApptPatient, setSelectedApptPatient] = useState<any | null>(null);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", description: "", priority: "medium", due_date: "" });
 
@@ -245,6 +253,35 @@ const SchedulingCenter = () => {
     queryFn: () => (api.hospital.appointments as any).doctors(),
     staleTime: 300_000,
   });
+
+  const { data: apptPatientSearchData, isFetching: apptPatientSearching } = useQuery({
+    queryKey: ["sched-patient-search", apptDebouncedQuery],
+    queryFn: () => api.hospital.patients.search(apptDebouncedQuery),
+    enabled: showApptDialog && !selectedApptPatient && apptDebouncedQuery.length >= 2,
+  });
+  const apptPatientResults: any[] = Array.isArray(apptPatientSearchData) ? apptPatientSearchData : (apptPatientSearchData?.patients ?? []);
+
+  const { data: newApptSlotsData, isFetching: newApptSlotsLoading } = useQuery({
+    queryKey: ["sched-new-appt-slots", newApptDate],
+    queryFn: () => api.hospital.appointments.listSlots({ date: newApptDate }),
+    enabled: showApptDialog && !!newApptDate,
+  });
+  const newApptSlots: any[] = Array.isArray(newApptSlotsData?.slots) ? newApptSlotsData.slots : [];
+
+  function handleApptPatientQueryChange(val: string) {
+    setApptPatientQuery(val);
+    if (apptSearchDebounceRef.current) clearTimeout(apptSearchDebounceRef.current);
+    apptSearchDebounceRef.current = setTimeout(() => setApptDebouncedQuery(val), 400);
+  }
+
+  function resetNewApptForm() {
+    setNewApptDate(format(new Date(), "yyyy-MM-dd"));
+    setNewApptSlotId("");
+    setNewApptReason("");
+    setApptPatientQuery("");
+    setApptDebouncedQuery("");
+    setSelectedApptPatient(null);
+  }
 
   useRealtimeChannel("calendar_tasks", (msg: any) => {
     if (msg?.event?.startsWith("calendar_event_")) queryClient.invalidateQueries({ queryKey: ["sched-events"] });
@@ -290,11 +327,47 @@ const SchedulingCenter = () => {
 
   const itemsForDate = useCallback((d: Date): ScheduledItem[] => allItems.filter(item => isSameDay(item.start, d)), [allItems]);
 
-  const invalidateAppts = () => queryClient.invalidateQueries({ queryKey: ["sched-appointments"] });
+  // The Appointments page (HospitalAppointments.tsx) keeps its own separate
+  // React Query cache for the same underlying data ("appointments",
+  // "appointments-day", "appointments-calendar", "appointment-slots") — a
+  // booking or status change made here left that page showing stale data
+  // until its own staleTime expired, since the two pages never shared a
+  // query key. Invalidate both sets so either page stays in sync with
+  // changes made on the other.
+  const invalidateAppts = () => {
+    queryClient.invalidateQueries({ queryKey: ["sched-appointments"] });
+    queryClient.invalidateQueries({ queryKey: ["appointments"] });
+    queryClient.invalidateQueries({ queryKey: ["appointments-day"] });
+    queryClient.invalidateQueries({ queryKey: ["appointments-calendar"] });
+    queryClient.invalidateQueries({ queryKey: ["appointment-slots"] });
+  };
 
-  const arriveMutation = useMutation({ mutationFn: (id: string) => api.hospital.appointments.arrive(id), onSuccess: () => { invalidateAppts(); toast({ title: "Patient marked as arrived" }); setSelectedItem(null); }, onError: () => toast({ title: "Failed to update", variant: "destructive" }) });
+  // An appointment booked/arrived/completed/cancelled anywhere else in the
+  // app (front desk, patient profile, the queue on discharge) used to only
+  // show up here after a manual refresh — nothing pushed a live update to
+  // this page at all.
+  useRealtimeChannel("appointment_updates", () => {
+    invalidateAppts();
+  });
+
+  const arriveMutation = useMutation({
+    mutationFn: (id: string) => api.hospital.appointments.arrive(id),
+    onSuccess: (data: any) => {
+      invalidateAppts();
+      void queryClient.invalidateQueries({ queryKey: ["clinical-queue"] });
+      toast({
+        title: "Patient marked as arrived",
+        description: data?.queue_number
+          ? `Now on the queue as ${data.queue_number}`
+          : data?.already_active ? "Already on the queue from an earlier visit today" : undefined,
+      });
+      setSelectedItem(null);
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
   const completeMutation = useMutation({ mutationFn: (id: string) => api.hospital.appointments.complete(id), onSuccess: () => { invalidateAppts(); toast({ title: "Appointment completed" }); setSelectedItem(null); }, onError: () => toast({ title: "Failed to update", variant: "destructive" }) });
   const cancelMutation = useMutation({ mutationFn: (id: string) => api.hospital.appointments.cancel(id, {}), onSuccess: () => { invalidateAppts(); toast({ title: "Appointment cancelled" }); setSelectedItem(null); }, onError: () => toast({ title: "Failed to cancel", variant: "destructive" }) });
+  const noShowMutation = useMutation({ mutationFn: (id: string) => api.hospital.appointments.noShow(id), onSuccess: () => { invalidateAppts(); toast({ title: "Marked as no-show" }); setSelectedItem(null); }, onError: () => toast({ title: "Failed to update", variant: "destructive" }) });
   const remindMutation = useMutation({
     mutationFn: (id: string) => (api.hospital.appointments as any).remind(id),
     onSuccess: (data: any) => {
@@ -343,11 +416,11 @@ const SchedulingCenter = () => {
                 </div>
                 <div className="space-y-px">
                   {dayItems.slice(0, 3).map(item => (
-                    <div key={item.id} onClick={e => { e.stopPropagation(); setSelectedItem(item); }} className="truncate rounded px-1 py-px text-[10px] text-white font-medium cursor-pointer hover:opacity-90" style={{ backgroundColor: item.color }}>
+                    <div key={item.id} onClick={e => { e.stopPropagation(); setSelectedItem(item); }} className="truncate rounded px-1 py-px text-[12px] text-white font-medium cursor-pointer hover:opacity-90" style={{ backgroundColor: item.color }}>
                       {item.kind === "appointment" ? `${format(item.start, "HH:mm")} ${item.title}` : item.title}
                     </div>
                   ))}
-                  {dayItems.length > 3 && <div className="pl-1 text-[10px] text-muted-foreground">+{dayItems.length - 3} more</div>}
+                  {dayItems.length > 3 && <div className="pl-1 text-[12px] text-muted-foreground">+{dayItems.length - 3} more</div>}
                 </div>
               </div>
             );
@@ -375,7 +448,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: "3.5rem repeat(7, 1fr)" }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[10px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           {weekDays.map(d => {
             const dayAppts = itemsForDate(d).filter(i => i.kind === "appointment");
@@ -389,14 +462,14 @@ const SchedulingCenter = () => {
                   const height = heightPxForDuration(item.durationMins ?? 15);
                   if (top < 0 || top >= TOTAL_GRID_HEIGHT) return null;
                   return (
-                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[10px] text-white font-medium overflow-hidden cursor-pointer hover:opacity-90 z-10 border border-white/20" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
+                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[12px] text-white font-medium overflow-hidden cursor-pointer hover:opacity-90 z-10 border border-white/20" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
                       <div className="truncate font-semibold">{format(item.start, "HH:mm")} {item.title}</div>
                       {height > 28 && item.doctor && <div className="truncate opacity-80">{item.doctor}</div>}
                     </div>
                   );
                 })}
                 {dayOthers.slice(0, 2).map((item, idx) => (
-                  <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1 text-[9px] text-white font-medium cursor-pointer overflow-hidden z-10" style={{ top: `${idx * 15}px`, height: "13px", backgroundColor: item.color, opacity: 0.85 }}>
+                  <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1 text-[11px] text-white font-medium cursor-pointer overflow-hidden z-10" style={{ top: `${idx * 15}px`, height: "13px", backgroundColor: item.color, opacity: 0.85 }}>
                     <div className="truncate">{item.title}</div>
                   </div>
                 ))}
@@ -420,7 +493,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: "3.5rem 1fr" }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[10px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           <div className="relative" style={{ height: `${TOTAL_GRID_HEIGHT}px` }}>
             {hours.map(h => <div key={h} className="absolute left-0 right-0 border-b border-border/40" style={{ top: `${(h - HOUR_START) * PX_PER_HOUR}px` }} />)}
@@ -470,7 +543,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: cols }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[10px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           {uniqueDoctors.map(doc => {
             const docAppts = dayAppts.filter(i => i.doctor === doc);
@@ -483,7 +556,7 @@ const SchedulingCenter = () => {
                   const height = heightPxForDuration(item.durationMins ?? 15);
                   if (top < 0 || top >= TOTAL_GRID_HEIGHT) return null;
                   return (
-                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[10px] text-white font-medium cursor-pointer hover:opacity-90 border border-white/20 overflow-hidden z-10" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
+                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[12px] text-white font-medium cursor-pointer hover:opacity-90 border border-white/20 overflow-hidden z-10" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
                       <div className="truncate font-semibold">{format(item.start, "HH:mm")}</div>
                       <div className="truncate">{item.patientName ?? "Patient"}</div>
                     </div>
@@ -507,19 +580,18 @@ const SchedulingCenter = () => {
     const rawEvent = item.raw as CalendarEvent;
     const canArrive = isAppt && ["booked", "confirmed"].includes(item.status);
     const canComplete = isAppt && ["arrived", "confirmed", "booked"].includes(item.status);
-    const canCancel = isAppt && !["completed", "cancelled"].includes(item.status);
+    const canNoShow = isAppt && ["booked", "confirmed", "arrived"].includes(item.status);
+    const canCancel = isAppt && !["completed", "cancelled", "no_show"].includes(item.status);
     return (
-      <div className="w-80 shrink-0 border-l bg-background flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
-            <span className="text-sm font-semibold capitalize">{item.kind}</span>
-          </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedItem(null)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <Sheet open={!!selectedItem} onOpenChange={(o) => { if (!o) setSelectedItem(null); }}>
+        <SheetContent className="w-80 space-y-4">
+          <SheetHeader>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+              <SheetTitle className="capitalize">{item.kind}</SheetTitle>
+            </div>
+          </SheetHeader>
+          <div className="space-y-4">
           <div>
             <h3 className="font-semibold text-base leading-tight">{item.title}</h3>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -551,6 +623,7 @@ const SchedulingCenter = () => {
                 <Button size="sm" variant="outline" className="w-full" disabled={remindMutation.isPending} onClick={() => remindMutation.mutate(item.id)}>
                   <Bell className="mr-2 h-4 w-4" />{remindMutation.isPending ? "Sending…" : "Send Reminder"}
                 </Button>
+                {canNoShow && <Button size="sm" variant="outline" className="w-full text-orange-500 border-orange-500/40 hover:bg-orange-500/10" disabled={noShowMutation.isPending} onClick={() => noShowMutation.mutate(item.id)}><UserX className="mr-2 h-4 w-4" />Mark No Show</Button>}
                 {canCancel && <Button size="sm" variant="outline" className="w-full text-destructive border-destructive/50 hover:bg-destructive/10" disabled={cancelMutation.isPending} onClick={() => cancelMutation.mutate(item.id)}>Cancel Appointment</Button>}
               </div>
             </>
@@ -571,8 +644,9 @@ const SchedulingCenter = () => {
               {rawEvent.location && <p className="text-sm text-muted-foreground">📍 {rawEvent.location}</p>}
             </div>
           )}
-        </div>
-      </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     );
   };
 
@@ -586,7 +660,7 @@ const SchedulingCenter = () => {
           <Calendar mode="single" selected={currentDate} onSelect={d => { if (d) { setCurrentDate(d); setViewMode("day"); } }} className="rounded-md" />
         </div>
         <div className="p-3 border-b space-y-3">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
             <Filter className="h-3 w-3" />Filters
           </div>
           <div className="space-y-2">
@@ -619,7 +693,7 @@ const SchedulingCenter = () => {
           </Select>
         </div>
         <div className="p-3 border-b">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Status</div>
+          <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Status</div>
           <div className="space-y-1">
             {[["booked","Booked"],["confirmed","Confirmed"],["arrived","Arrived"],["completed","Completed"],["no_show","No Show"]].map(([k,l]) => (
               <div key={k} className="flex items-center gap-2 text-xs"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[k] }} />{l}</div>
@@ -627,8 +701,8 @@ const SchedulingCenter = () => {
           </div>
         </div>
         <div className="p-3 space-y-2 mt-auto">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Quick Actions</div>
-          <Button size="sm" className="w-full text-white" style={{ backgroundColor: "#17449E" }} onClick={() => setShowApptDialog(true)}>
+          <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Quick Actions</div>
+          <Button size="sm" className="w-full text-white" style={{ backgroundColor: "#17449E" }} onClick={() => { resetNewApptForm(); setShowApptDialog(true); }}>
             <Plus className="mr-2 h-4 w-4" />New Appointment
           </Button>
           <Button size="sm" variant="outline" className="w-full" onClick={() => setShowTaskDialog(true)}>
@@ -696,23 +770,76 @@ const SchedulingCenter = () => {
       </Dialog>
 
       {/* APPOINTMENT DIALOG */}
-      <Dialog open={showApptDialog} onOpenChange={setShowApptDialog}>
+      <Dialog open={showApptDialog} onOpenChange={(o) => { setShowApptDialog(o); if (!o) resetNewApptForm(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>New Appointment</DialogTitle><DialogDescription>Book a patient into an available slot</DialogDescription></DialogHeader>
           <div className="space-y-3">
-            <Input type="number" placeholder="Patient ID *" value={newAppt.patient_id} onChange={e => setNewAppt(p => ({ ...p, patient_id: e.target.value }))} />
-            <Input type="number" placeholder="Slot ID *" value={newAppt.slot_id} onChange={e => setNewAppt(p => ({ ...p, slot_id: e.target.value }))} />
-            <Input placeholder="Reason for visit" value={newAppt.reason} onChange={e => setNewAppt(p => ({ ...p, reason: e.target.value }))} />
+            <div className="space-y-1">
+              <Label className="text-xs">Patient *</Label>
+              {!selectedApptPatient ? (
+                <>
+                  <Input placeholder="Search patient by name, phone, or HMO ID…" value={apptPatientQuery}
+                    onChange={e => handleApptPatientQueryChange(e.target.value)} />
+                  {apptPatientSearching && <p className="text-xs text-muted-foreground">Searching…</p>}
+                  {apptPatientResults.length > 0 && (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {apptPatientResults.map((p: any) => (
+                        <button key={p.id}
+                          className="w-full text-left rounded-md border px-3 py-2 text-xs hover:bg-muted/40 transition-colors"
+                          onClick={() => setSelectedApptPatient(p)}>
+                          <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
+                          <p className="text-muted-foreground">MRN: {p.mrn} · {p.gender ?? "—"} · {p.phone ?? "—"}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {apptDebouncedQuery.length >= 2 && !apptPatientSearching && apptPatientResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No patients found.</p>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{selectedApptPatient.first_name} {selectedApptPatient.last_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{selectedApptPatient.mrn}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedApptPatient(null)}>Change</Button>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Date</Label>
+              <Input type="date" value={newApptDate} onChange={e => { setNewApptDate(e.target.value); setNewApptSlotId(""); }} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Available Slot *</Label>
+              <Select value={newApptSlotId} onValueChange={setNewApptSlotId} disabled={newApptSlotsLoading || newApptSlots.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={newApptSlotsLoading ? "Loading slots…" : newApptSlots.length === 0 ? "No slots available this date" : "Select a slot"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {newApptSlots.map((s: any) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.start_time?.slice(0, 5)}{s.provider_name ? ` — ${s.provider_name}` : ""}{s.department ? ` (${s.department})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Reason for visit</Label>
+              <Input placeholder="Reason for visit" value={newApptReason} onChange={e => setNewApptReason(e.target.value)} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowApptDialog(false)}>Cancel</Button>
-            <Button disabled={!newAppt.patient_id || !newAppt.slot_id} style={{ backgroundColor: "#17449E" }} className="text-white" onClick={async () => {
+            <Button disabled={!selectedApptPatient || !newApptSlotId} style={{ backgroundColor: "#17449E" }} className="text-white" onClick={async () => {
               try {
-                await api.hospital.appointments.book({ patient_id: parseInt(newAppt.patient_id), slot_id: parseInt(newAppt.slot_id), reason: newAppt.reason || undefined });
+                await api.hospital.appointments.book({ patient_id: selectedApptPatient.id, slot_id: parseInt(newApptSlotId), reason: newApptReason || undefined });
                 invalidateAppts();
                 toast({ title: "Appointment booked successfully" });
                 setShowApptDialog(false);
-                setNewAppt({ patient_id: "", slot_id: "", reason: "" });
+                resetNewApptForm();
               } catch (err: any) {
                 toast({ title: "Booking failed", description: err?.message ?? "Unknown error", variant: "destructive" });
               }

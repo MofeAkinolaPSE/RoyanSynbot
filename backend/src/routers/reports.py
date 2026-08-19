@@ -40,6 +40,12 @@ class ReportRequest(BaseModel):
         None,
         description="Natural-language description of what report is needed. Used when report_type is absent.",
     )
+    entity_id: Optional[str] = Field(
+        None,
+        description="Optional record id to scope the report to a single row instead of an aggregate "
+                     "across recent rows — only honored by report_type entries that define id_column "
+                     "(currently facility_audit, equipment_maintenance).",
+    )
 
 
 class ReportResponse(BaseModel):
@@ -187,6 +193,7 @@ async def generate_report(
         agent = get_agent("report_generation_agent", context={
             "intent_text": intent_text,
             "report_type": body.report_type,
+            "entity_id": body.entity_id,
             "actor_id": "api_reports",
             "simulation": False,
             "enable_memory": True,
@@ -229,6 +236,7 @@ def _run_agent(body: ReportRequest) -> tuple[str, str, str]:
         agent = get_agent("report_generation_agent", context={
             "intent_text": intent_text,
             "report_type": body.report_type,
+            "entity_id": body.entity_id,
             "actor_id": "api_reports",
             "simulation": False,
             "enable_memory": True,

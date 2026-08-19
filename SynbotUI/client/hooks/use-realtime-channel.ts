@@ -19,10 +19,11 @@ function buildWsUrl(path: string, ticket: string): string {
   return withTicket.replace("http://", "ws://");
 }
 
-export function useRealtimeChannel(channel: string, onMessage: MessageHandler, enabled: boolean = true) {
+export function useRealtimeChannel(channel: string, onMessage: MessageHandler, enabled: boolean = true, options?: { heartbeatMs?: number }) {
   const onMessageRef = useRef<MessageHandler>(onMessage);
   const retriesRef = useRef(0);
   const socketRef = useRef<WebSocket | null>(null);
+  const heartbeatMs = options?.heartbeatMs;
 
   onMessageRef.current = onMessage;
 
@@ -31,6 +32,7 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
 
     let stopped = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     const connect = async () => {
       const token = authClient.getAccessToken();
@@ -44,6 +46,11 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
 
         ws.onopen = () => {
           retriesRef.current = 0;
+          if (heartbeatMs) {
+            heartbeatTimer = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+            }, heartbeatMs);
+          }
         };
 
         ws.onmessage = (evt) => {
@@ -56,6 +63,7 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
         };
 
         ws.onclose = async () => {
+          if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
           if (stopped) return;
           if (!authClient.getAccessToken()) {
             const refreshed = await authClient.refresh();
@@ -87,8 +95,9 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
     return () => {
       stopped = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [channel, enabled]);
+  }, [channel, enabled, heartbeatMs]);
 }

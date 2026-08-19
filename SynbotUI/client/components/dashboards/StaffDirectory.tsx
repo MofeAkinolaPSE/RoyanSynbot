@@ -57,21 +57,27 @@ export function StaffDirectory() {
       )}
       {isMobile ? (
         <div className="space-y-3 p-4">
-          {rows.filter((staff: any) => typeof staff?.full_name === "string" && typeof staff?.email === "string").map((staff) => (
-            <div key={staff.staff_id ?? staff.email} className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+          {rows.filter((staff: any) => typeof staff?.full_name === "string").map((staff) => (
+            <div key={staff.id ?? staff.staff_number ?? staff.email} className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-medium text-foreground">{staff.full_name}</p>
                 <Badge variant={staff.status === "active" ? "default" : "secondary"}>
                   {staff.status}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground break-all">{staff.email}</p>
+              <p className="text-xs text-muted-foreground break-all">{staff.email ?? "—"}</p>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                 <span>{staff.department}</span>
                 {typeof staff.role === "string" && staff.role ? (
                   <>
                     <span>•</span>
                     <span>{staff.role}</span>
+                  </>
+                ) : null}
+                {staff.specialty ? (
+                  <>
+                    <span>•</span>
+                    <span>{staff.specialty}</span>
                   </>
                 ) : null}
               </div>
@@ -92,16 +98,18 @@ export function StaffDirectory() {
                 <TableHead className="min-w-[220px]">Email</TableHead>
                 <TableHead className="min-w-[130px]">Department</TableHead>
                 <TableHead className="min-w-[100px]">Role</TableHead>
+                <TableHead className="min-w-[130px]">Specialty</TableHead>
                 <TableHead className="min-w-[90px]">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.filter((staff: any) => typeof staff?.full_name === "string" && typeof staff?.email === "string").map((staff) => (
-                <TableRow key={staff.staff_id ?? staff.email}>
+              {rows.filter((staff: any) => typeof staff?.full_name === "string").map((staff) => (
+                <TableRow key={staff.id ?? staff.staff_number ?? staff.email}>
                   <TableCell className="sticky left-0 z-10 bg-background font-medium">{staff.full_name}</TableCell>
-                  <TableCell>{staff.email}</TableCell>
+                  <TableCell>{staff.email ?? "—"}</TableCell>
                   <TableCell>{staff.department}</TableCell>
                   <TableCell>{typeof staff.role === "string" ? staff.role : ""}</TableCell>
+                  <TableCell>{staff.specialty ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={staff.status === "active" ? "default" : "secondary"}>
                       {staff.status}
@@ -111,7 +119,7 @@ export function StaffDirectory() {
               ))}
               {rows.length === 0 && (
                  <TableRow>
-                    <TableCell colSpan={5} className="text-center h-24">
+                    <TableCell colSpan={6} className="text-center h-24">
                        No staff records found. Import them via the Sage Import page.
                     </TableCell>
                  </TableRow>

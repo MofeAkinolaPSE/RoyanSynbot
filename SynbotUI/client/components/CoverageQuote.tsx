@@ -105,7 +105,7 @@ export function CoverageQuote({
 
   if (noRule) {
     return (
-      <div className={cn("flex items-center gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2.5 text-xs text-yellow-400", className)}>
+      <div className={cn("flex items-center gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2.5 text-xs text-yellow-700 dark:text-yellow-400", className)}>
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
         <span>
           <strong>{data.insurance.hmo_name}</strong> — no coverage rule for this service
@@ -121,8 +121,8 @@ export function CoverageQuote({
     ? "bg-orange-500/5"
     : "bg-green-500/5";
   const headerCls = data.requires_approval
-    ? "text-orange-400"
-    : "text-green-400";
+    ? "text-orange-700 dark:text-orange-400"
+    : "text-green-700 dark:text-green-400";
   const HeaderIcon = data.requires_approval ? AlertTriangle : ShieldCheck;
 
   return (
@@ -140,12 +140,12 @@ export function CoverageQuote({
       {/* HMO / Patient split */}
       <div className="grid grid-cols-2 divide-x divide-border/50 border-t border-border/50">
         <div className="px-3 py-2 text-center">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">HMO Pays</p>
-          <p className="font-semibold text-green-400">{naira(data.covered_amount)}</p>
+          <p className="text-[12px] uppercase tracking-wide text-muted-foreground">HMO Pays</p>
+          <p className="font-semibold text-green-700 dark:text-green-400">{naira(data.covered_amount)}</p>
         </div>
         <div className="px-3 py-2 text-center">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Patient Pays</p>
-          <p className={cn("font-semibold", data.patient_amount > 0 ? "text-foreground" : "text-green-400")}>
+          <p className="text-[12px] uppercase tracking-wide text-muted-foreground">Patient Pays</p>
+          <p className={cn("font-semibold", data.patient_amount > 0 ? "text-foreground" : "text-green-700 dark:text-green-400")}>
             {naira(data.patient_amount)}
           </p>
         </div>
@@ -153,14 +153,14 @@ export function CoverageQuote({
 
       {/* Approval warning */}
       {data.requires_approval && (
-        <div className="border-t border-orange-500/30 px-3 py-2 text-orange-300">
+        <div className="border-t border-orange-500/30 px-3 py-2 text-orange-700 dark:text-orange-300">
           Pre-authorization required — obtain HMO approval code before proceeding
         </div>
       )}
 
       {/* Limit warning */}
       {data.limit_exceeded && !data.requires_approval && (
-        <div className="border-t border-yellow-500/30 px-3 py-2 text-yellow-300">
+        <div className="border-t border-yellow-500/30 px-3 py-2 text-yellow-700 dark:text-yellow-300">
           Coverage limit applied — patient co-pay reflects the cap
         </div>
       )}

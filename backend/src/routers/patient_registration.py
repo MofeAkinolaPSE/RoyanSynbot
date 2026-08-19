@@ -52,6 +52,7 @@ class PatientCreate(BaseModel):
     allergies: Optional[list[str]] = None
     hmo_provider: Optional[str] = None
     hmo_id: Optional[str] = None
+    patient_type: Optional[str] = None  # cash | private | hmo — defaults from hmo_provider when omitted
     external_source: Optional[str] = None
     external_id: Optional[str] = None
 
@@ -63,6 +64,14 @@ class PatientCreate(BaseModel):
         allowed = {"male", "female", "other", "prefer_not_to_say"}
         if v and v not in allowed:
             raise ValueError(f"gender must be one of {allowed}")
+        return v
+
+    @field_validator("patient_type")
+    @classmethod
+    def _valid_patient_type(cls, v):
+        allowed = {"cash", "private", "hmo"}
+        if v and v not in allowed:
+            raise ValueError(f"patient_type must be one of {allowed}")
         return v
 
     @field_validator("blood_group")
@@ -80,8 +89,11 @@ class PatientUpdate(BaseModel):
     address: Optional[str] = Field(None, max_length=500)
     next_of_kin_name: Optional[str] = Field(None, max_length=200)
     next_of_kin_phone: Optional[str] = Field(None, max_length=20)
+    father_name: Optional[str] = Field(None, max_length=200)
+    place_of_birth: Optional[str] = Field(None, max_length=200)
     hmo_provider: Optional[str] = Field(None, max_length=200)
     hmo_id: Optional[str] = Field(None, max_length=100)
+    patient_type: Optional[str] = Field(None, max_length=20)
     allergies: Optional[list[str]] = None
     blood_group: Optional[str] = Field(None, max_length=10)
     blood_type: Optional[str] = Field(None, max_length=10)
@@ -258,7 +270,7 @@ def _search_patients_by_term(term: str, limit: int) -> list[dict]:
     safe = term.strip()
     if not safe:
         return []
-    columns = "id,mrn,first_name,last_name,date_of_birth,gender,phone,email,address,next_of_kin_name,next_of_kin_phone,hmo_provider,hmo_id,is_active,blood_group,genotype,allergies,registered_at"
+    columns = "id,mrn,first_name,last_name,date_of_birth,gender,phone,email,address,next_of_kin_name,next_of_kin_phone,father_name,place_of_birth,hmo_provider,hmo_id,is_active,blood_group,genotype,allergies,registered_at"
     parts = safe.split()
 
     seen_ids: set = set()
@@ -401,6 +413,8 @@ async def register_patient(
     data.pop("blood_type", None)
     data["mrn"] = mrn
     data["registered_by"] = user.get("sub") or user.get("email") or "system"
+    if "patient_type" not in data:
+        data["patient_type"] = "hmo" if (payload.hmo_provider or payload.hmo_id) else "cash"
 
     try:
         result = db.table(TABLE_PATIENTS).insert(data).execute()

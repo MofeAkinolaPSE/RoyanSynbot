@@ -16,13 +16,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Sun, Moon, Clock, CheckCircle2, AlertCircle,
   ChevronRight, TrendingUp, Loader2, PlusCircle,
-  Activity, Target, Briefcase, ArrowRight,
+  Activity, Target, ArrowRight, CalendarClock, Building2,
 } from "lucide-react";
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ──────────────────────────────────────────────────────────────
 
 function formatName(subject: string | null): string {
   if (!subject) return "there";
@@ -58,13 +59,13 @@ function pctColor(v: number): string {
 }
 
 function scoreLabel(s: number): string {
-  if (s >= 85) return "ðŸ”¥ Fantastic job";
-  if (s >= 70) return "âš¡ Keep it up";
-  if (s >= 50) return "ðŸ’ª Good progress";
-  return "ðŸ“‹ Let's get moving";
+  if (s >= 85) return "🔥 Fantastic job";
+  if (s >= 70) return "⚡ Keep it up";
+  if (s >= 50) return "💪 Good progress";
+  return "📋 Let's get moving";
 }
 
-// â”€â”€ SVG micro-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SVG micro-components ────────────────────────────────────────────────
 
 function RingProgress({ value, size = 48 }: { value: number; size?: number }) {
   const r = (size - 8) / 2;
@@ -117,14 +118,12 @@ function Sparkline({ values, color = "#22c55e" }: { values: number[]; color?: st
   );
 }
 
-// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main component ──────────────────────────────────────────────────────
 
 export default function StaffDashboard() {
   const queryClient = useQueryClient();
   const subject = authClient.getSubject();
   const { toast } = useToast();
-  const name = formatName(subject);
-  const { text: greetText, Icon: GreetIcon, color: greetColor } = getGreeting(name);
 
   const [logHoursOpen, setLogHoursOpen] = useState(false);
   const [timesheetForm, setTimesheetForm] = useState({
@@ -158,6 +157,11 @@ export default function StaffDashboard() {
   const activities    = Array.isArray(data?.activities)         ? data.activities         : [];
   const pending       = Array.isArray(data?.pending_approvals)  ? data.pending_approvals  : [];
   const kpis          = Array.isArray(data?.kpis)               ? data.kpis               : [];
+  const identity      = data?.identity as { full_name?: string; role?: string; department?: string } | undefined;
+  const upcoming      = Array.isArray(data?.upcoming)           ? data.upcoming           : [];
+
+  const name = identity?.full_name || formatName(subject);
+  const { text: greetText, Icon: GreetIcon, color: greetColor } = getGreeting(name);
 
   // handle {data:[]} or [] return shape from timesheets
   const timesheets = useMemo(() => {
@@ -166,7 +170,7 @@ export default function StaffDashboard() {
     return [];
   }, [tsRaw]);
 
-  // â”€â”€ Derived metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived metrics ───────────────────────────────────────────────────
   const completedCount = tasks.filter((t: any) =>
     t.status === "completed" || t.status === "done").length;
   const activeCount = tasks.filter((t: any) =>
@@ -174,8 +178,11 @@ export default function StaffDashboard() {
   const today = new Date();
   const dueTodayCount = tasks.filter((t: any) =>
     t.due_date && new Date(t.due_date).toDateString() === today.toDateString()).length;
-  const score    = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 72;
-  const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 40;
+  // No fallback score when there are zero assigned tasks — a fabricated
+  // 72%/40% would show a fake-looking number for someone with genuinely no
+  // task data yet, rather than an honest "nothing to score."
+  const score    = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+  const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   const hoursThisWeek = useMemo(() => {
     const wkStart = new Date();
@@ -186,12 +193,22 @@ export default function StaffDashboard() {
       .reduce((s: number, t: any) => s + (Number(t.hours_worked) || 0), 0);
   }, [timesheets]);
 
+  // Real 7-day daily activity counts bucketed from actual event timestamps —
+  // the previous version padded a single real number with 6 fabricated ones.
   const actSparkline = useMemo(() => {
-    const base = [2, 3, 2, 4, 3, 4];
-    return [...base, Math.max(activities.length, 1)];
-  }, [activities.length]);
+    const days = 7;
+    const buckets = Array(days).fill(0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    for (const a of activities) {
+      if (!a.timestamp) continue;
+      const diffDays = Math.floor((endOfToday.getTime() - new Date(a.timestamp).getTime()) / 86_400_000);
+      if (diffDays >= 0 && diffDays < days) buckets[days - 1 - diffDays] += 1;
+    }
+    return buckets;
+  }, [activities]);
 
-  // â”€â”€ Timesheet mutation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Timesheet mutation ─────────────────────────────────────────────────
   const tsSubmit = useMutation({
     mutationFn: () =>
       api.staff.submitTimesheet({
@@ -217,35 +234,36 @@ export default function StaffDashboard() {
   const resumeTask = tasks.find((t: any) => t.status === "in_progress") ?? tasks[0];
 
   const statCards = [
-    { label: "Active Goals",  value: activeCount,       icon: Target,       color: "text-blue-400"    },
-    { label: "Progress",      value: `${progress}%`,    icon: TrendingUp,   color: "text-green-400"   },
-    { label: "Completed",     value: completedCount,    icon: CheckCircle2, color: "text-emerald-400" },
-    { label: "Due Today",     value: dueTodayCount,     icon: AlertCircle,  color: "text-orange-400"  },
+    { label: "Active Goals",  value: activeCount,       icon: Target,       color: "text-blue-700 dark:text-blue-400"    },
+    { label: "Progress",      value: `${progress}%`,    icon: TrendingUp,   color: "text-green-700 dark:text-green-400"   },
+    { label: "Completed",     value: completedCount,    icon: CheckCircle2, color: "text-emerald-700 dark:text-emerald-400" },
+    { label: "Due Today",     value: dueTodayCount,     icon: AlertCircle,  color: "text-orange-700 dark:text-orange-400"  },
   ];
 
+  // Only Activity has genuine historical data (real event timestamps) to
+  // chart — Task Completion / Open Projects are current-snapshot counts with
+  // no trend to show, so they render as plain values instead of a fabricated
+  // sparkline.
   const statsPanel = [
     {
-      label: "Performance",  sub: "Based on tasks",
-      change: `+${Math.min(activeCount * 7 + 12, 48)}%`,
+      label: "Task Completion", sub: "All assigned tasks",
+      display: `${progress}%`,
       color: "#f59e0b",
-      values: [2, 3, 2, 4, 3, activeCount + 2, activeCount + 3],
     },
     {
-      label: "Projects",    sub: "Completion rate",
-      change: `+${Math.min(completedCount * 8 + 15, 62)}%`,
+      label: "Open Projects", sub: "Active assignments",
+      display: String(projects.filter((p: any) => !["completed", "cancelled"].includes(p.status)).length),
       color: "#22c55e",
-      tag: completedCount >= 3 ? "keep going ðŸ”¥" : undefined,
-      values: [1, 2, 2, 3, 2, completedCount, completedCount + 1],
     },
     {
-      label: "Activity",    sub: "Recent events",
-      change: `+${Math.min(activities.length * 4 + 8, 35)}%`,
+      label: "Activity", sub: "Last 7 days",
+      display: `${activities.length} events`,
       color: "#38bdf8",
       values: actSparkline,
     },
   ];
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -334,15 +352,15 @@ export default function StaffDashboard() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-lg font-bold truncate">{name}</p>
-              <p className="text-sm text-muted-foreground">{kpis[0]?.label || "Staff Member"}</p>
+              <p className="text-sm text-muted-foreground capitalize">{identity?.role?.replace(/_/g, " ") || "Staff Member"}</p>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> Royan Hospital</span>
+                <span className="flex items-center gap-1"><Building2 className="h-3 w-3" /> {identity?.department || "Royan Hospital"}</span>
                 <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {hoursThisWeek.toFixed(1)}h this week</span>
               </div>
             </div>
             {resumeTask && (
               <div className="hidden md:flex flex-col items-start gap-1.5 rounded-xl border border-border/50 bg-muted/30 p-3 min-w-[180px] max-w-[220px]">
-                <p className="text-xs font-medium text-muted-foreground">Continue where you left off â†©</p>
+                <p className="text-xs font-medium text-muted-foreground">Continue where you left off ↩</p>
                 <p className="text-sm font-semibold line-clamp-2 leading-snug">{resumeTask.title}</p>
                 <Button variant="outline" size="sm" className="mt-0.5 h-7 gap-1 text-xs">
                   Jump to task <ArrowRight className="h-3 w-3" />
@@ -369,7 +387,7 @@ export default function StaffDashboard() {
               <CardContent className="flex items-center justify-between p-4">
                 <div>
                   <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className={`text-2xl font-bold mt-0.5 ${s.color}`}>{isLoading ? "â€“" : s.value}</p>
+                  <p className={`text-2xl font-bold mt-0.5 ${s.color}`}>{isLoading ? "–" : s.value}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <Icon className={`h-5 w-5 ${s.color} opacity-70`} />
@@ -395,7 +413,7 @@ export default function StaffDashboard() {
             <CardContent className="space-y-2.5">
               {isLoading ? (
                 <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading tasksâ€¦
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading tasks…
                 </div>
               ) : tasks.length === 0 ? (
                 <p className="py-4 text-sm text-muted-foreground text-center">No assigned tasks. You're all caught up!</p>
@@ -416,7 +434,7 @@ export default function StaffDashboard() {
                           </span>
                         )}
                         {task.priority && task.priority !== "medium" && (
-                          <Badge variant="outline" className="h-4 px-1 text-[10px]">{task.priority}</Badge>
+                          <Badge variant="outline" className="h-4 px-1 text-[12px]">{task.priority}</Badge>
                         )}
                       </div>
                     </div>
@@ -488,16 +506,39 @@ export default function StaffDashboard() {
                 <div key={stat.label}
                   className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-muted/20 p-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold">{stat.label}</p>
-                      {stat.tag && <span className="text-[10px] text-muted-foreground">{stat.tag}</span>}
-                    </div>
+                    <p className="text-sm font-semibold">{stat.label}</p>
                     <p className="text-xs text-muted-foreground">{stat.sub}</p>
-                    <p className="text-sm font-bold mt-0.5" style={{ color: stat.color }}>{stat.change}</p>
+                    <p className="text-sm font-bold mt-0.5" style={{ color: stat.color }}>{stat.display}</p>
                   </div>
-                  <Sparkline values={stat.values} color={stat.color} />
+                  {"values" in stat && <Sparkline values={stat.values} color={stat.color} />}
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Upcoming */}
+          <Card className="pw-surface-interactive">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarClock className="h-4 w-4" /> Upcoming
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Calendar mode="single" selected={new Date()} className="rounded-md border p-2 mx-auto" />
+              {upcoming.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-1">Nothing on the horizon.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {upcoming.map((u: any, i: number) => (
+                    <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate">{u.title}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {u.when ? new Date(u.when).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
 
@@ -516,7 +557,7 @@ export default function StaffDashboard() {
                   <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary/60" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium truncate">{a.event_type}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       {a.timestamp ? new Date(a.timestamp).toLocaleString() : "-"}
                     </p>
                   </div>

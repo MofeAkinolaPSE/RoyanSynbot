@@ -1,5 +1,6 @@
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 
 type AuthContextValue = {
   isAuthenticated: boolean;
@@ -29,6 +30,8 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
   const [isLoading, setIsLoading] = useState(!authClient.isAuthenticated());
   const [isAuthenticated, setIsAuthenticated] = useState(authClient.isAuthenticated());
   const [roles, setRoles] = useState<string[]>(authClient.getRoles());
+
+  usePresenceHeartbeat(isAuthenticated);
 
   useEffect(() => {
     let active = true;

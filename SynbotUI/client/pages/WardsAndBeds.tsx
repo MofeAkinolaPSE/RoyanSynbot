@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,20 +10,21 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  BedDouble, Building2, Users, RefreshCw, Loader2, Plus, UserPlus, Trash2,
+  BedDouble, Building2, Users, RefreshCw, Loader2, Plus,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { BedWorkspacePanel } from "@/components/wards/BedWorkspacePanel";
+import { BedBadge } from "@/components/wards/wards-shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Ward {
@@ -42,27 +42,11 @@ interface Bed {
   bed_number?: string;
   bed_type?: string;
   status?: string;
-  patient_id?: string;
   current_patient_id?: string;
+  patient_name?: string;
+  patient_mrn?: string;
   admitted_at?: string;
   notes?: string;
-}
-
-const BED_STATUS_COLORS: Record<string, string> = {
-  available:   "bg-green-500/20 text-green-400 border-green-500/30",
-  occupied:    "bg-red-500/20 text-red-400 border-red-500/30",
-  maintenance: "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  reserved:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-};
-
-function BedBadge({ status }: { status?: string }) {
-  const s = status ?? "available";
-  const cls = BED_STATUS_COLORS[s] ?? BED_STATUS_COLORS.maintenance;
-  return (
-    <Badge variant="outline" className={cn("text-xs capitalize", cls)}>
-      {s}
-    </Badge>
-  );
 }
 
 function occupancyColor(pct: number) {
@@ -78,11 +62,11 @@ export default function WardsAndBeds() {
 
   const [tab, setTab] = useState("wards");
   const [selectedWard, setSelectedWard] = useState<string>("all");
-  const [admitOpen, setAdmitOpen] = useState(false);
   const [createWardOpen, setCreateWardOpen] = useState(false);
-  const [activeBed, setActiveBed] = useState<Bed | null>(null);
-  const [admitForm, setAdmitForm] = useState({ patient_id: "", notes: "" });
   const [wardForm, setWardForm] = useState({ name: "", ward_type: "general", total_beds: 10, description: "" });
+  const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
+  const [addBedOpen, setAddBedOpen] = useState(false);
+  const [addBedForm, setAddBedForm] = useState({ bed_number: "", bed_type: "standard" });
 
   // Wards query
   const { data: wardsData, isLoading: wardsLoading, refetch: refetchWards } = useQuery({
@@ -105,38 +89,28 @@ export default function WardsAndBeds() {
   const occupiedBeds  = wards.reduce((s, w) => s + (w.occupied_beds ?? 0), 0);
   const availableBeds = totalBeds - occupiedBeds;
 
-  // Mutations
-  const admitMut = useMutation({
-    mutationFn: () => {
-      if (!activeBed) return Promise.reject();
-      return api.hospital.wards.admitBed(activeBed.ward_id, activeBed.id, admitForm);
-    },
-    onSuccess: () => {
-      toast({ title: "Patient admitted to bed" });
-      setAdmitOpen(false);
-      setAdmitForm({ patient_id: "", notes: "" });
-      void qc.invalidateQueries({ queryKey: ["beds"] });
-      void qc.invalidateQueries({ queryKey: ["wards"] });
-    },
-    onError: (e: any) => toast({ title: "Admission failed", description: e.message, variant: "destructive" }),
-  });
+  const selectedWardObj = wards.find(w => w.id === selectedWard);
 
-  const freeMut = useMutation({
-    mutationFn: (bed: Bed) => api.hospital.wards.freeBed(bed.ward_id, bed.id),
-    onSuccess: () => {
-      toast({ title: "Bed freed" });
-      void qc.invalidateQueries({ queryKey: ["beds"] });
+  // Mutations
+  const createWardMut = useMutation({
+    mutationFn: () => api.hospital.wards.create(wardForm),
+    onSuccess: (res: any) => {
+      const bedsProvisioned = Array.isArray(res?.beds) ? res.beds.length : 0;
+      toast({ title: "Ward created", description: bedsProvisioned > 0 ? `${bedsProvisioned} bed(s) provisioned` : undefined });
+      setCreateWardOpen(false);
+      setWardForm({ name: "", ward_type: "general", total_beds: 10, description: "" });
       void qc.invalidateQueries({ queryKey: ["wards"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const createWardMut = useMutation({
-    mutationFn: () => api.hospital.wards.create(wardForm),
+  const addBedMut = useMutation({
+    mutationFn: () => api.hospital.wards.addBed(selectedWard, addBedForm),
     onSuccess: () => {
-      toast({ title: "Ward created" });
-      setCreateWardOpen(false);
-      setWardForm({ name: "", ward_type: "general", total_beds: 10, description: "" });
+      toast({ title: "Bed added" });
+      setAddBedOpen(false);
+      setAddBedForm({ bed_number: "", bed_type: "standard" });
+      void qc.invalidateQueries({ queryKey: ["beds", selectedWard] });
       void qc.invalidateQueries({ queryKey: ["wards"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -214,7 +188,7 @@ export default function WardsAndBeds() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span>{occupied} / {total} beds</span>
-                        <span className={cn("font-semibold", pct >= 90 ? "text-red-400" : pct >= 75 ? "text-amber-400" : "text-green-400")}>
+                        <span className={cn("font-semibold", pct >= 90 ? "text-red-700 dark:text-red-400" : pct >= 75 ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400")}>
                           {pct}%
                         </span>
                       </div>
@@ -232,7 +206,7 @@ export default function WardsAndBeds() {
 
         {/* Beds tab */}
         <TabsContent value="beds" className="space-y-4">
-          <div className="flex items-center gap-3 mt-4">
+          <div className="flex items-center gap-3 mt-4 flex-wrap">
             <Label className="shrink-0 text-sm">Filter by Ward</Label>
             <Select value={selectedWard} onValueChange={setSelectedWard}>
               <SelectTrigger className="w-64">
@@ -243,7 +217,39 @@ export default function WardsAndBeds() {
                 {wards.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {selectedWard !== "all" && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAddBedOpen(o => !o)}>
+                <Plus className="h-3.5 w-3.5" /> Add Bed
+              </Button>
+            )}
           </div>
+
+          {selectedWard !== "all" && addBedOpen && (
+            <Card className="border-primary/30">
+              <CardContent className="pt-4 flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Bed Number *</Label>
+                  <Input className="w-40" placeholder="e.g. 006" value={addBedForm.bed_number}
+                    onChange={e => setAddBedForm(f => ({ ...f, bed_number: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Bed Type</Label>
+                  <Select value={addBedForm.bed_type} onValueChange={v => setAddBedForm(f => ({ ...f, bed_type: v }))}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["standard", "icu", "isolation", "maternity", "recovery"].map(t => (
+                        <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" disabled={!addBedForm.bed_number.trim() || addBedMut.isPending} onClick={() => addBedMut.mutate()}>
+                  {addBedMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}Add
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddBedOpen(false)}>Cancel</Button>
+              </CardContent>
+            </Card>
+          )}
 
           {selectedWard === "all" ? (
             <div className="py-12 text-center text-sm text-muted-foreground">Select a ward to view beds</div>
@@ -258,43 +264,36 @@ export default function WardsAndBeds() {
                       <TableHead>Bed No.</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Patient MRN</TableHead>
+                      <TableHead>Patient</TableHead>
                       <TableHead>Admitted</TableHead>
                       <TableHead>Notes</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {beds.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No beds found for this ward</TableCell>
+                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No beds found for this ward</TableCell>
                       </TableRow>
                     ) : beds.map(bed => (
-                      <TableRow key={bed.id}>
+                      <TableRow key={bed.id} className="cursor-pointer hover:bg-muted/40"
+                        onClick={() => setSelectedBed({ ...bed, ward_name: selectedWardObj?.name } as any)}>
                         <TableCell className="font-mono text-sm">{bed.bed_number ?? String(bed.id).slice(0, 6)}</TableCell>
                         <TableCell className="capitalize text-xs">{bed.bed_type ?? "standard"}</TableCell>
                         <TableCell><BedBadge status={bed.status} /></TableCell>
-                        <TableCell className="font-mono text-xs">{bed.current_patient_id ?? bed.patient_id ?? "—"}</TableCell>
+                        <TableCell className="text-xs">
+                          {bed.patient_name ? (
+                            <div className="flex flex-col">
+                              <span className="font-medium">{bed.patient_name}</span>
+                              {bed.patient_mrn && <span className="font-mono text-[12px] text-muted-foreground">{bed.patient_mrn}</span>}
+                            </div>
+                          ) : bed.current_patient_id ? (
+                            <span className="text-muted-foreground/50 italic">Empty</span>
+                          ) : "—"}
+                        </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {bed.admitted_at ? new Date(bed.admitted_at).toLocaleDateString() : "—"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{bed.notes ?? "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {bed.status === "available" && (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1"
-                                onClick={() => { setActiveBed(bed); setAdmitOpen(true); }}>
-                                <UserPlus className="h-3 w-3" /> Admit
-                              </Button>
-                            )}
-                            {bed.status === "occupied" && (
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-400 hover:bg-green-500/10"
-                                onClick={() => freeMut.mutate(bed)} disabled={freeMut.isPending}>
-                                <Trash2 className="h-3 w-3" /> Free
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -304,32 +303,6 @@ export default function WardsAndBeds() {
           )}
         </TabsContent>
       </Tabs>
-
-      {/* ── Admit Dialog ───────────────────────────────────────────────── */}
-      <Dialog open={admitOpen} onOpenChange={setAdmitOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Admit Patient</DialogTitle>
-            <DialogDescription>Bed {activeBed?.bed_number ?? String(activeBed?.id ?? "").slice(0, 6)}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label>Patient MRN *</Label>
-              <Input value={admitForm.patient_id} onChange={e => setAdmitForm(f => ({ ...f, patient_id: e.target.value }))} placeholder="e.g. RHN-000001" />
-            </div>
-            <div className="space-y-1">
-              <Label>Notes</Label>
-              <Input value={admitForm.notes} onChange={e => setAdmitForm(f => ({ ...f, notes: e.target.value }))} placeholder="Admission notes (optional)" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAdmitOpen(false)}>Cancel</Button>
-            <Button disabled={!admitForm.patient_id.trim() || admitMut.isPending} onClick={() => admitMut.mutate()}>
-              {admitMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirm Admission
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ── Create Ward Dialog ─────────────────────────────────────────── */}
       <Dialog open={createWardOpen} onOpenChange={setCreateWardOpen}>
@@ -371,6 +344,10 @@ export default function WardsAndBeds() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {selectedBed && (
+        <BedWorkspacePanel bed={selectedBed} onClose={() => setSelectedBed(null)} />
+      )}
     </motion.div>
   );
 }

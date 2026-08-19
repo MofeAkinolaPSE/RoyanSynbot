@@ -1,0 +1,7 @@
+[2026-07-30T20:02:44] Starting scan of Docs\NEw Dump (fresh=True, max_parse_mb=2048)
+[2026-07-30T20:02:44]   DIR Docs\NEw Dump  (1 files, 0 subdirs) -> directory
+[2026-07-30T20:02:44]   SQL  Docs\NEw Dump\hope_master_nigeria-20260125.sql.gz  (0.2 MB)
+[2026-07-30T20:02:45]     -> re-parsing 22 candidate table(s) for exact row counts: ['assigned_module_permissions', 'audit_trails', 'cake_sessions', 'cities', 'countries', 'currencies', 'facilities', 'facilities_new', 'facility_database_mappings', 'facility_user_mappings', 'hospital_rates', 'icds', 'initials', 'languages', 'linked_modules', 'login_attempts', 'module_permissions', 'roles', 'states', 'testmaster24', 'testmaster25', 'testmaster26']
+[2026-07-30T20:02:46] Scan complete.
+[2026-07-30T20:02:46] Building SUMMARY.md and keyword_matches.json ...
+[2026-07-30T20:02:46] Done. Read scan_reports\hope_master_local\SUMMARY.md first.

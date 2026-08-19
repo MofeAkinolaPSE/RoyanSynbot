@@ -143,6 +143,28 @@ _REPORT_REGISTRY: Dict[str, Dict[str, Any]] = {
         ],
         "section_title": "Frontdesk & Daily Operations Report",
     },
+    "facility_audit": {
+        "keywords": [
+            "facility audit", "hospital audit", "audits and maintenance", "audit findings report",
+        ],
+        "tables": [
+            {"table": "royan_facility_audits", "select": "*", "order": "scheduled_date", "limit": 50},
+        ],
+        # Lets `entity_id` scope this to a single row instead of the usual
+        # aggregate-across-recent-rows behavior — see _fetch_live_data.
+        "id_column": "id",
+        "section_title": "Facility Audit Report",
+    },
+    "equipment_maintenance": {
+        "keywords": [
+            "equipment maintenance certificate", "biomedical maintenance", "maintenance task report",
+        ],
+        "tables": [
+            {"table": "royan_equipment_maintenance", "select": "*", "order": "due_date", "limit": 50},
+        ],
+        "id_column": "id",
+        "section_title": "Equipment Maintenance Certificate",
+    },
 }
 
 # Default if nothing matches
@@ -328,6 +350,14 @@ class ReportGenerationAgent(BaseAgent):
         if cfg.get("is_executive"):
             return self._pull_executive_data()
 
+        # Optional single-record scope: report_type entries that define
+        # id_column let a caller pass entity_id to get a report about ONE
+        # specific row instead of the usual aggregate-across-recent-rows
+        # narrative — used by per-record "Generate Report"/"Certificate"
+        # actions rather than broad intelligence summaries.
+        entity_id = self.context.get("entity_id")
+        id_column = cfg.get("id_column")
+
         rows: List[Dict] = []
         try:
             from src.db import db
@@ -337,9 +367,13 @@ class ReportGenerationAgent(BaseAgent):
                 lim = tbl_cfg.get("limit", 50)
                 order = tbl_cfg.get("order")
                 try:
-                    q = db.table(tbl).select(sel).limit(lim)
-                    if order:
-                        q = q.order(order, desc=True)
+                    q = db.table(tbl).select(sel)
+                    if entity_id and id_column:
+                        q = q.eq(id_column, entity_id)
+                    else:
+                        q = q.limit(lim)
+                        if order:
+                            q = q.order(order, desc=True)
                     res = q.execute()
                     rows.extend(res.data or [])
                 except Exception as exc:
@@ -461,7 +495,7 @@ class ReportGenerationAgent(BaseAgent):
                 "This is how the system demonstrates continuous improvement."
             )
 
-        prompt = f"""You are {BOT_NAME}, the AI executive intelligence system for {BOT_BRAND} (pharmaceutical distribution).
+        prompt = f"""You are {BOT_NAME}, the AI executive intelligence system for {BOT_BRAND}.
 Generate a professional {section_title}.
 {rag_block}
 {past_block}

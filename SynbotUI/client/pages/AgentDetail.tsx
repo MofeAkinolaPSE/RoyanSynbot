@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/BackButton";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Bot, Loader2, Play } from "lucide-react";
+import { Bot, Loader2, Play } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -79,10 +80,7 @@ export default function AgentDetail() {
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => navigate("/agents")}> 
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Agent Stack
-        </Button>
+        <BackButton fallback="/agents" variant="outline">Back to Agent Stack</BackButton>
         <Button onClick={runAgent} disabled={executing}>
           {executing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
           Run Agent

@@ -25,14 +25,14 @@ import { cn } from "@/lib/utils";
 const FEE_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "pharmacy", "nursing", "theatre", "ward", "other"];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  consultation: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  lab:          "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  pharmacy:     "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  radiology:    "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  theatre:      "bg-red-500/20 text-red-400 border-red-500/30",
-  ward:         "bg-green-500/20 text-green-400 border-green-500/30",
-  nursing:      "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  procedure:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  consultation: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  lab:          "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
+  pharmacy:     "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30",
+  radiology:    "bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border-cyan-500/30",
+  theatre:      "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+  ward:         "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  nursing:      "bg-pink-500/20 text-pink-700 dark:text-pink-400 border-pink-500/30",
+  procedure:    "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
 };
 
 const EMPTY_FORM = { service_name: "", category: "consultation", base_price: "", unit: "per visit", notes: "" };
@@ -121,10 +121,10 @@ export default function FeeSchedule() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Active Services", value: totalActive, color: "text-blue-400" },
-          { label: "Total Entries", value: totalServices, color: "text-slate-400" },
-          { label: "Categories", value: categories, color: "text-purple-400" },
-          { label: "Avg Price (₦)", value: `₦${avgPrice.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`, color: "text-green-400" },
+          { label: "Active Services", value: totalActive, color: "text-blue-700 dark:text-blue-400" },
+          { label: "Total Entries", value: totalServices, color: "text-slate-700 dark:text-slate-400" },
+          { label: "Categories", value: categories, color: "text-purple-700 dark:text-purple-400" },
+          { label: "Avg Price (₦)", value: `₦${avgPrice.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`, color: "text-green-700 dark:text-green-400" },
         ].map(k => (
           <Card key={k.label}>
             <CardContent className="pt-5">
@@ -195,7 +195,7 @@ export default function FeeSchedule() {
                     <TableCell className="font-mono">₦{Number(fee.base_price ?? 0).toLocaleString()}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{fee.unit}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-xs", fee.active ? "border-green-500/30 text-green-400 bg-green-500/10" : "border-slate-500/30 text-slate-400")}>
+                      <Badge variant="outline" className={cn("text-xs", fee.active ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" : "border-slate-500/30 text-slate-700 dark:text-slate-400")}>
                         {fee.active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>

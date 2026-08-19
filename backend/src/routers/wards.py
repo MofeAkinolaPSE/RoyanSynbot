@@ -10,11 +10,13 @@ Endpoints:
   POST /wards/{ward_id}/beds            – Add a bed to a ward (admin)
   POST /wards/{ward_id}/beds/{bed_id}/admit    – Admit patient to bed
   POST /wards/{ward_id}/beds/{bed_id}/discharge – Free a bed
+  PATCH /wards/{ward_id}/beds/{bed_id}/status  – Set bed to available/reserved/maintenance
   GET  /wards/occupancy                 – Aggregated bed occupancy view
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,9 +24,30 @@ from pydantic import BaseModel, Field
 
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
+from src.services.event_service import emit_clinical_event
 from src.constants import TABLE_WARDS, TABLE_BEDS, TABLE_ENCOUNTERS, TABLE_PATIENTS
 
 logger = logging.getLogger(__name__)
+
+
+def _natural_sort_key(bed_number: object):
+    """Sort key that treats embedded digit runs as numbers, not characters —
+    bed_number is a text column, so a plain ORDER BY sorts lexicographically
+    ("1", "10", "2", "3", ...) instead of numerically. Splits "10" into
+    [10] and "ICU-2" into ["icu-", 2] so mixed alphanumeric bed labels still
+    compare consistently within a ward."""
+    s = str(bed_number or "")
+    return [int(chunk) if chunk.isdigit() else chunk.lower() for chunk in re.split(r"(\d+)", s)]
+
+
+def _sort_beds_naturally(beds: list) -> list:
+    try:
+        return sorted(beds, key=lambda b: _natural_sort_key(b.get("bed_number")))
+    except TypeError:
+        # Mixed key shapes that don't compare (rare) — fall back to the
+        # original (already lexicographically-ordered) sequence rather than
+        # raising and breaking the endpoint.
+        return beds
 
 router = APIRouter(prefix="/wards", tags=["Wards & Beds"])
 
@@ -57,6 +80,7 @@ class BedCreate(BaseModel):
 class AdmitRequest(BaseModel):
     patient_id: int
     encounter_id: Optional[int] = None
+    notes: Optional[str] = None
 
 
 class BedStatusUpdate(BaseModel):
@@ -131,14 +155,69 @@ async def create_ward(payload: WardCreate, user=Depends(require_role("admin"))):
         logger.error("Ward create failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to create ward")
     ward = result.data[0] if result.data else data
-    audit_event("ward_created", {"name": payload.name}, actor_id=user.get("sub"), subject_type="ward", subject_id=str(ward.get("id") or ""))
-    return {"ok": True, "ward": ward}
+    ward_id = ward.get("id")
+
+    # Auto-provision `total_beds` real royan_beds rows. Previously only
+    # add_bed() (POST /{ward_id}/beds) could create a real bed, and nothing
+    # in the frontend ever called it — every new ward was permanently
+    # admission-dead. bed_number is a simple zero-padded sequence; uniqueness
+    # is guaranteed since this is a brand-new ward with no prior beds.
+    beds_created: list = []
+    total_beds = payload.total_beds or 0
+    if ward_id and total_beds > 0:
+        bed_rows = [
+            {"ward_id": ward_id, "bed_number": f"{i:03d}", "bed_type": "standard", "status": "available"}
+            for i in range(1, total_beds + 1)
+        ]
+        try:
+            bed_result = db.table(TABLE_BEDS).insert(bed_rows).execute()
+            beds_created = bed_result.data or []
+        except Exception as exc:
+            logger.error("Bed auto-provisioning failed for ward %s: %s", ward_id, exc)
+            # db.table() has no cross-call transaction — compensate manually
+            # rather than leaving a half-provisioned, admission-dead ward.
+            try:
+                db.table(TABLE_WARDS).delete().eq("id", ward_id).execute()
+            except Exception:
+                logger.error("Ward %s left behind after failed bed provisioning — needs manual cleanup", ward_id)
+            raise HTTPException(status_code=500, detail="Ward created but bed provisioning failed; ward was rolled back")
+
+    audit_event(
+        "ward_created",
+        {"name": payload.name, "beds_provisioned": len(beds_created)},
+        actor_id=user.get("sub"), subject_type="ward", subject_id=str(ward_id or ""),
+    )
+    return {"ok": True, "ward": ward, "beds": beds_created}
+
+
+def _enrich_bed_patients(beds: list) -> None:
+    """Batch-merge patient_name/patient_mrn onto bed rows in place, keyed off
+    current_patient_id — royan_beds has no patient identity columns of its
+    own."""
+    if not beds:
+        return
+    try:
+        pid_set = list({b["current_patient_id"] for b in beds if b.get("current_patient_id") is not None})
+        if not pid_set:
+            return
+        pt_rows = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name").in_("id", pid_set).execute()
+        pt_map = {p["id"]: p for p in (pt_rows.data or [])}
+        for b in beds:
+            p = pt_map.get(b.get("current_patient_id"))
+            if p:
+                fn, ln = (p.get("first_name") or "").strip(), (p.get("last_name") or "").strip()
+                b["patient_name"] = f"{fn} {ln}".strip() or None
+                b["patient_mrn"] = p.get("mrn")
+    except Exception as exc:
+        logger.warning("bed patient enrichment failed: %s", exc)
 
 
 @router.get("/{ward_id}/beds")
 async def list_beds(ward_id: int, user=Depends(verify_jwt)):
-    result = db.table(TABLE_BEDS).select("*").eq("ward_id", ward_id).order("bed_number").execute()
-    return {"beds": result.data, "count": len(result.data)}
+    result = db.table(TABLE_BEDS).select("*").eq("ward_id", ward_id).execute()
+    beds = _sort_beds_naturally(result.data or [])
+    _enrich_bed_patients(beds)
+    return {"beds": beds, "count": len(beds)}
 
 
 @router.post("/{ward_id}/beds", status_code=201)
@@ -176,10 +255,18 @@ async def admit_patient(ward_id: int, bed_id: int, payload: AdmitRequest, user=D
         "current_encounter_id": payload.encounter_id,
         "admitted_at": datetime.now(timezone.utc).isoformat(),
     }
+    if payload.notes is not None:
+        updates["notes"] = payload.notes
     db.table(TABLE_BEDS).update(updates).eq("id", bed_id).execute()
 
-    # Update encounter with bed/ward assignment
+    # Update encounter with bed/ward assignment — validated so a stale or
+    # mismatched encounter_id doesn't silently attach itself to this patient.
     if payload.encounter_id:
+        enc = db.table(TABLE_ENCOUNTERS).select("id,patient_id").eq("id", payload.encounter_id).execute()
+        if not enc.data:
+            raise HTTPException(status_code=404, detail=f"Encounter {payload.encounter_id} not found")
+        if enc.data[0].get("patient_id") != payload.patient_id:
+            raise HTTPException(status_code=409, detail="encounter_id does not belong to this patient")
         db.table(TABLE_ENCOUNTERS).update({"bed_id": bed_id, "ward_id": ward_id}).eq("id", payload.encounter_id).execute()
 
     audit_event(
@@ -188,6 +275,14 @@ async def admit_patient(ward_id: int, bed_id: int, payload: AdmitRequest, user=D
         actor_id=user.get("sub"),
         subject_type="bed",
         subject_id=str(bed_id),
+    )
+    emit_clinical_event(
+        event_type="ENCOUNTER_ADMITTED",
+        encounter_id=payload.encounter_id,
+        patient_id=payload.patient_id,
+        entity_type="bed", entity_id=bed_id,
+        performed_by=user.get("sub"),
+        event_data={"ward_id": ward_id, "bed_id": bed_id},
     )
     return {"ok": True, "bed_id": bed_id, "patient_id": payload.patient_id, "status": "occupied"}
 
@@ -208,3 +303,39 @@ async def free_bed(ward_id: int, bed_id: int, user=Depends(verify_jwt)):
 
     audit_event("bed_freed", {"ward_id": ward_id}, actor_id=user.get("sub"), subject_type="bed", subject_id=str(bed_id))
     return {"ok": True, "bed_id": bed_id, "status": "available"}
+
+
+BED_STATUS_TRANSITIONS = {
+    "available":   {"reserved", "maintenance"},
+    "reserved":    {"available", "maintenance"},
+    "maintenance": {"available", "reserved"},
+    "occupied":    set(),
+}
+
+
+@router.patch("/{ward_id}/beds/{bed_id}/status")
+async def update_bed_status(ward_id: int, bed_id: int, payload: BedStatusUpdate, user=Depends(verify_jwt)):
+    """Set a bed to available/reserved/maintenance. Occupying is admit's job;
+    freeing an occupied bed is discharge's job — both already own clearing
+    current_patient_id/admitted_at correctly."""
+    if payload.status not in {"available", "reserved", "maintenance"}:
+        raise HTTPException(status_code=422, detail="status must be one of {'available','reserved','maintenance'} — use /admit to occupy a bed")
+
+    bed = db.table(TABLE_BEDS).select("*").eq("id", bed_id).eq("ward_id", ward_id).execute()
+    if not bed.data:
+        raise HTTPException(status_code=404, detail="Bed not found in this ward")
+    current = bed.data[0]["status"]
+
+    if payload.status not in BED_STATUS_TRANSITIONS.get(current, set()):
+        if current == "occupied":
+            raise HTTPException(status_code=409, detail="Bed is occupied — discharge the patient first")
+        raise HTTPException(status_code=409, detail=f"Cannot change bed status from '{current}' to '{payload.status}'")
+
+    updates: dict = {"status": payload.status}
+    if payload.notes is not None:
+        updates["notes"] = payload.notes
+    db.table(TABLE_BEDS).update(updates).eq("id", bed_id).execute()
+
+    audit_event("bed_status_updated", {"from": current, "to": payload.status},
+                actor_id=user.get("sub"), subject_type="bed", subject_id=str(bed_id))
+    return {"ok": True, "bed_id": bed_id, "status": payload.status}

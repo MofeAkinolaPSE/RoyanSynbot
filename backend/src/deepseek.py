@@ -42,7 +42,7 @@ class DeepSeek:
         }
         logging.info(f"Calling DeepSeek with model: {self.model}")
         try:
-            response = requests.post(self.url, headers=headers, json=data)
+            response = requests.post(self.url, headers=headers, json=data, timeout=45)
             if response.status_code == 200:
                 content = response.json()["choices"][0]["message"]["content"]
                 return content

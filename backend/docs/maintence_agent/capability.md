@@ -1,5 +1,7 @@
 Good instinct emphasizing **efficiency**. Autonomous discovery can easily become expensive or chaotic if done wrong. The key is to make it **controlled, scheduled, and EOS-governed**.
 
+-- Make sure it runs at interval, so it doesnt overlaod the backend, with the continous running. 
+
 What we’re adding is a **Capability Discovery Agent (CDA)** — a lightweight agent that helps Synbot **discover, evaluate, and integrate new capabilities** without breaking the system.
 
 Think of it as **Synbot’s internal R&D department**, but operating safely.

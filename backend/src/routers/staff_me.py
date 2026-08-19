@@ -59,6 +59,7 @@ def ensure_profile(body: ProfilePatch, user: dict = Depends(verify_jwt)):
     roles = user.get("roles") or []
     role = roles[0] if roles else None
     department = body.department.strip()
+    metadata = body.metadata or {}
     record = {
         "email": email,
         "full_name": body.full_name or email.split("@")[0],
@@ -68,7 +69,9 @@ def ensure_profile(body: ProfilePatch, user: dict = Depends(verify_jwt)):
         "role": role,
         "user_id": user_id,
         "staff_number": f"SELF-{email.split('@')[0].upper()}",
-        "metadata": body.metadata or {},
+        "metadata": metadata,
+        "specialty": metadata.get("specialty"),
+        "license_number": metadata.get("medical_council_number"),
     }
     try:
         resp = db.table(TABLE_STAFF).insert(record).execute()

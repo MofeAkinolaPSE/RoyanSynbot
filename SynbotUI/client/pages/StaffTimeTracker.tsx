@@ -61,7 +61,7 @@ function WeeklyBars({ data }: { data: { day: string; hours: number; isToday: boo
         const h = max > 0 ? (d.hours / max) * 52 : 0;
         return (
           <div key={d.day} className="flex flex-col items-center gap-1 flex-1">
-            <span className="text-[10px] text-muted-foreground leading-none min-h-[12px]">
+            <span className="text-[12px] text-muted-foreground leading-none min-h-[12px]">
               {d.hours > 0 ? `${d.hours.toFixed(1)}` : ""}
             </span>
             <div className="w-full flex flex-col justify-end" style={{ height: "52px" }}>
@@ -70,7 +70,7 @@ function WeeklyBars({ data }: { data: { day: string; hours: number; isToday: boo
                 style={{ height: `${Math.max(h, d.hours > 0 ? 4 : 0)}px` }}
               />
             </div>
-            <span className={`text-[10px] leading-none ${d.isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
+            <span className={`text-[12px] leading-none ${d.isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
               {d.day}
             </span>
           </div>
@@ -395,7 +395,7 @@ export default function StaffTimeTracker() {
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Weekly goal</span>
-                <span className={weekPct >= 100 ? "text-green-400 font-semibold" : ""}>{weekPct}%</span>
+                <span className={weekPct >= 100 ? "text-green-700 dark:text-green-400 font-semibold" : ""}>{weekPct}%</span>
               </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <div
@@ -416,7 +416,7 @@ export default function StaffTimeTracker() {
               ].map((s) => (
                 <div key={s.label} className="rounded-lg border border-border/40 bg-muted/20 p-2.5 text-center">
                   <p className="text-lg font-bold text-primary">{s.value}<span className="text-xs font-normal text-muted-foreground ml-0.5">{s.unit}</span></p>
-                  <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                  <p className="text-[12px] text-muted-foreground">{s.label}</p>
                 </div>
               ))}
             </div>

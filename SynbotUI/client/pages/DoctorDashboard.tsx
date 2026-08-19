@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
+import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
+import { LabWorkspacePanel } from "@/components/lab/LabWorkspacePanel";
+import { RadiologyWorkspacePanel } from "@/components/radiology/RadiologyWorkspacePanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import {
   Stethoscope, CalendarCheck, FlaskConical, Clock, User, ArrowRight, Loader2,
-  CheckCircle2, Video, FileText, PhoneCall, Play,
+  CheckCircle2, Video, FileText, PhoneCall, Play, ScanLine,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
@@ -20,6 +23,7 @@ import { authClient } from "@/lib/auth-client";
 import { AlertBanner } from "@/components/AlertBanner";
 import { InlineWarning } from "@/components/InlineWarning";
 import { cn } from "@/lib/utils";
+import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
 
 function getJwtEmail(): string | null {
   const token = authClient.getAccessToken();
@@ -38,15 +42,7 @@ function toISO(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  patient_registered: "bg-blue-100 text-blue-700",
-  triaged: "bg-yellow-100 text-yellow-700",
-  consulting: "bg-green-100 text-green-700",
-  lab_ordered: "bg-purple-100 text-purple-700",
-  pharmacy_dispensing: "bg-orange-100 text-orange-700",
-  billing_pending: "bg-red-100 text-red-700",
-  discharged: "bg-slate-100 text-slate-600",
-};
+const STATUS_COLORS = ENCOUNTER_STATUS_COLORS;
 
 const LAB_STATUS_COLORS: Record<string, string> = {
   ordered: "bg-yellow-100 text-yellow-700",
@@ -59,12 +55,19 @@ const LAB_STATUS_COLORS: Record<string, string> = {
 export default function DoctorDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const navigate = useNavigate();
   const today = toISO(new Date());
   // Display/telemedicine identity — telemedicine sessions are still keyed by
   // whatever free-text "Doctor ID" was typed when the session was scheduled
   // (see DigitalEngagement.tsx), so this stays as email/sub for now.
   const doctorId = getJwtEmail() ?? authClient.getSubject() ?? "";
+  // Lab/radiology orders store ordered_by as the raw JWT `sub` (a user id,
+  // populated server-side from user.get("sub")) — NOT email. Filtering by
+  // doctorId (which prefers email) would silently match nothing for any
+  // user with an email claim, so this needs the untranslated sub.
+  const jwtSub = authClient.getSubject() ?? "";
+  const [opdPanelEnc, setOpdPanelEnc] = useState<any | null>(null);
+  const [labPanelOrder, setLabPanelOrder] = useState<any | null>(null);
+  const [radPanelOrder, setRadPanelOrder] = useState<any | null>(null);
 
   // Encounters and appointments, however, key off the doctor's actual
   // royan_staff.id (the doctor_id FK both tables use) — not email — so we
@@ -115,20 +118,32 @@ export default function DoctorDashboard() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  // Begin Consultation → consult API then navigate to CPRS
+  // Begin Consultation → consult API, then open the OPD workspace panel inline
+  // (no navigation away — this used to route to the full CPRS page).
   const consultMut = useMutation({
     mutationFn: (enc: any) => api.hospital.queue.consult(enc.id, { doctor_id: doctorStaffId || undefined }),
     onSuccess: (_, enc) => {
       toast({ title: "Consultation started" });
       void qc.invalidateQueries({ queryKey: ["doctor-ready-queue"] });
-      if (enc.mrn) navigate(`/hospital/patients/${enc.mrn}`);
+      void qc.invalidateQueries({ queryKey: ["doctor-encounters", doctorStaffId] });
+      if (enc.mrn) setOpdPanelEnc({ ...enc, status: "consulting" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const { data: labData, isLoading: labLoading } = useQuery({
-    queryKey: ["doctor-lab-pending"],
-    queryFn: () => api.hospital.lab.listOrders({ status: "ordered" }),
+  const { data: labData } = useQuery({
+    queryKey: ["doctor-lab-pending", jwtSub],
+    // Scoped to orders this doctor actually placed — otherwise this card
+    // shows the whole hospital's lab queue, not "your" results.
+    queryFn: () => api.hospital.lab.listOrders({ ordered_by: jwtSub || undefined }),
+    enabled: !!jwtSub,
+    staleTime: 60_000,
+  });
+
+  const { data: radData } = useQuery({
+    queryKey: ["doctor-radiology-pending", jwtSub],
+    queryFn: () => api.hospital.radiology.listOrders({ ordered_by: jwtSub || undefined }),
+    enabled: !!jwtSub,
     staleTime: 60_000,
   });
 
@@ -157,15 +172,15 @@ export default function DoctorDashboard() {
     );
   }, [encData]);
 
-  const pendingLabs = useMemo(() => {
-    const list = Array.isArray(labData?.orders) ? labData.orders : [];
-    return list.filter((o: any) => ["ordered", "sample_collected", "processing"].includes(o.status));
-  }, [labData]);
-
   const resultedLabs = useMemo(() => {
     const list = Array.isArray(labData?.orders) ? labData.orders : [];
     return list.filter((o: any) => o.status === "resulted");
   }, [labData]);
+
+  const reportedRadiology = useMemo(() => {
+    const list = Array.isArray(radData?.orders) ? radData.orders : [];
+    return list.filter((o: any) => o.status === "reported");
+  }, [radData]);
 
   const teleSessions: any[] = Array.isArray(teleData?.sessions) ? teleData.sessions : [];
   const consultNotes: any[] = Array.isArray(consultData?.notes) ? consultData.notes : [];
@@ -173,8 +188,8 @@ export default function DoctorDashboard() {
   const kpis = [
     { label: "Today's Appointments", value: todayApts.length, icon: CalendarCheck, color: "text-blue-600" },
     { label: "Active Encounters", value: activeEncounters.length, icon: Stethoscope, color: "text-green-600" },
-    { label: "Pending Lab Orders", value: pendingLabs.length, icon: FlaskConical, color: "text-orange-600" },
-    { label: "Results to Review", value: resultedLabs.length, icon: CheckCircle2, color: resultedLabs.length > 0 ? "text-red-600" : "text-slate-600" },
+    { label: "Lab Results to Review", value: resultedLabs.length, icon: FlaskConical, color: resultedLabs.length > 0 ? "text-red-600" : "text-slate-600" },
+    { label: "Image Results to Review", value: reportedRadiology.length, icon: ScanLine, color: reportedRadiology.length > 0 ? "text-red-600" : "text-slate-600" },
     { label: "Completed Today", value: todayApts.filter((a: any) => a.status === "completed").length, icon: Clock, color: "text-slate-600" },
   ];
 
@@ -190,6 +205,13 @@ export default function DoctorDashboard() {
         <p className="text-sm text-muted-foreground mt-0.5">
           {doctorId ? `Signed in as ${doctorId}` : "Doctor view"} — {new Date().toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
         </p>
+        {(meData?.data?.specialty || meData?.data?.license_number) && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {meData.data.specialty && <span>{meData.data.specialty}</span>}
+            {meData.data.specialty && meData.data.license_number && <span> · </span>}
+            {meData.data.license_number && <span>License: {meData.data.license_number}</span>}
+          </p>
+        )}
       </div>
 
       <AlertBanner />
@@ -219,7 +241,7 @@ export default function DoctorDashboard() {
               <Stethoscope className={readyForDoctor.length > 0 ? "h-4 w-4 text-blue-500" : "h-4 w-4 text-muted-foreground"} />
               Ready for Consultation
               {readyForDoctor.length > 0 && (
-                <span className="rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-semibold px-2 py-0.5">
+                <span className="rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 text-[12px] font-semibold px-2 py-0.5">
                   {readyForDoctor.length}
                 </span>
               )}
@@ -259,7 +281,7 @@ export default function DoctorDashboard() {
                             <span className="text-sm font-medium">
                               {enc.patient_name ?? <span className="text-muted-foreground italic text-xs">Unknown</span>}
                             </span>
-                            {enc.mrn && <span className="font-mono text-[10px] text-muted-foreground">{enc.mrn}</span>}
+                            {enc.mrn && <span className="font-mono text-[12px] text-muted-foreground">{enc.mrn}</span>}
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[160px] truncate">
@@ -271,7 +293,7 @@ export default function DoctorDashboard() {
                         <TableCell>
                           <div className="flex gap-1.5">
                             <Button size="sm" variant="outline"
-                              className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10"
+                              className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/10"
                               onClick={() => callMut.mutate(enc)}
                               disabled={callMut.isPending}>
                               <PhoneCall className="h-3 w-3" /> Call
@@ -342,7 +364,7 @@ export default function DoctorDashboard() {
                       <TableCell>
                         <Badge
                           className={cn(
-                            "text-[10px] capitalize",
+                            "text-[12px] capitalize",
                             apt.status === "arrived" ? "bg-yellow-100 text-yellow-700" :
                             apt.status === "completed" ? "bg-green-100 text-green-700" :
                             apt.status === "cancelled" ? "bg-slate-100 text-slate-500" :
@@ -355,7 +377,7 @@ export default function DoctorDashboard() {
                       <TableCell>
                         {(apt.patient_mrn ?? apt.mrn) && (
                           <Button variant="outline" size="sm" asChild className="h-6 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10">
-                            <Link to={`/hospital/patients/${apt.patient_mrn ?? apt.mrn}`}>CPRS</Link>
+                            <Link to={`/hospital/patients/${apt.patient_mrn ?? apt.mrn}`}>PCE</Link>
                           </Button>
                         )}
                       </TableCell>
@@ -410,14 +432,15 @@ export default function DoctorDashboard() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{enc.department ?? "—"}</TableCell>
                       <TableCell>
-                        <Badge className={cn("text-[10px] capitalize", STATUS_COLORS[enc.status] ?? "")}>
+                        <Badge className={cn("text-[12px] capitalize", STATUS_COLORS[enc.status] ?? "")}>
                           {enc.status?.replace(/_/g, " ")}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         {enc.mrn && (
-                          <Button variant="outline" size="sm" asChild className="h-6 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10">
-                            <Link to={`/hospital/patients/${enc.mrn}`}>CPRS</Link>
+                          <Button variant="outline" size="sm" className="h-6 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                            onClick={() => setOpdPanelEnc(enc)}>
+                            Workspace
                           </Button>
                         )}
                       </TableCell>
@@ -429,79 +452,10 @@ export default function DoctorDashboard() {
           </CardContent>
         </Card>
 
-        {/* Pending Lab Orders */}
-        <Card className="shadow-elevation-1 lg:col-span-2">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <FlaskConical className="h-4 w-4 text-purple-500" />
-              Pending Lab Orders
-            </CardTitle>
-            <Button variant="ghost" size="sm" asChild className="h-7 text-xs gap-1">
-              <Link to="/hospital/lab">
-                Lab module <ArrowRight className="h-3 w-3" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            {labLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : pendingLabs.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-center text-muted-foreground">No pending lab orders</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Test</TableHead>
-                    <TableHead>Urgency</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Ordered</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingLabs.slice(0, 15).map((order: any) => (
-                    <TableRow key={order.id} className={order.urgency === "stat" ? "bg-red-50/40 dark:bg-red-950/20" : ""}>
-                      <TableCell className="text-xs font-mono">#{order.id}</TableCell>
-                      <TableCell className="text-sm">
-                        {order.patient_name ?? order.patient_mrn ?? `#${order.patient_id}`}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {order.test_name}
-                        {order.urgency === "stat" && (
-                          <InlineWarning message="STAT" severity="critical" className="ml-2" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className={cn(
-                          "text-xs font-medium capitalize",
-                          order.urgency === "stat" ? "text-destructive" :
-                          order.urgency === "urgent" ? "text-yellow-600" : "text-muted-foreground",
-                        )}>
-                          {order.urgency}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={cn("text-[10px] capitalize", LAB_STATUS_COLORS[order.status] ?? "")}>
-                          {order.status?.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {order.ordered_at ? new Date(order.ordered_at).toLocaleDateString("en-NG") : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ── Action Inbox ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
 
         {/* Lab Results to Review */}
         <Card className="shadow-elevation-1">
@@ -510,7 +464,7 @@ export default function DoctorDashboard() {
               <CheckCircle2 className={cn("h-4 w-4", resultedLabs.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               Lab Results to Review
               {resultedLabs.length > 0 && (
-                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[10px] font-semibold px-2 py-0.5">{resultedLabs.length}</span>
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{resultedLabs.length}</span>
               )}
             </CardTitle>
           </CardHeader>
@@ -520,14 +474,52 @@ export default function DoctorDashboard() {
             ) : (
               <ul className="divide-y divide-border">
                 {resultedLabs.slice(0, 8).map((o: any) => (
-                  <li key={o.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors">
+                  <li key={o.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors cursor-pointer"
+                    onClick={() => setLabPanelOrder(o)}>
                     <div className="min-w-0">
                       <p className="text-xs font-medium truncate">{o.test_name}</p>
-                      <p className="text-[10px] text-muted-foreground">Patient #{o.patient_id} · {o.result_summary ?? "—"}</p>
+                      <p className="text-[12px] text-muted-foreground">Patient #{o.patient_id} · {o.result_summary ?? "—"}</p>
                     </div>
                     {o.patient_mrn && (
-                      <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary">
-                        <Link to={`/hospital/patients/${o.patient_mrn}`}>CPRS</Link>
+                      <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
+                        onClick={e => e.stopPropagation()}>
+                        <Link to={`/hospital/patients/${o.patient_mrn}`}>PCE</Link>
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Imaging Reports to Review */}
+        <Card className="shadow-elevation-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <ScanLine className={cn("h-4 w-4", reportedRadiology.length > 0 ? "text-red-500" : "text-muted-foreground")} />
+              Imaging Reports to Review
+              {reportedRadiology.length > 0 && (
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{reportedRadiology.length}</span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {reportedRadiology.length === 0 ? (
+              <p className="px-4 py-5 text-sm text-center text-muted-foreground">No new reports</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {reportedRadiology.slice(0, 8).map((o: any) => (
+                  <li key={o.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors cursor-pointer"
+                    onClick={() => setRadPanelOrder(o)}>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{o.modality?.toUpperCase()} {o.body_part ? `— ${o.body_part}` : ""}</p>
+                      <p className="text-[12px] text-muted-foreground">Patient #{o.patient_id} · {o.impression ?? "—"}</p>
+                    </div>
+                    {o.patient_mrn && (
+                      <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
+                        onClick={e => e.stopPropagation()}>
+                        <Link to={`/hospital/patients/${o.patient_mrn}`}>PCE</Link>
                       </Button>
                     )}
                   </li>
@@ -554,7 +546,7 @@ export default function DoctorDashboard() {
                   <li key={s.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
                     <div>
                       <p className="text-xs font-medium">Patient #{s.patient_id}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{s.scheduled_time ?? "—"}</p>
+                      <p className="text-[12px] text-muted-foreground font-mono">{s.scheduled_time ?? "—"}</p>
                     </div>
                     {["scheduled","active"].includes(s.status) && (
                       <Button size="sm" variant="outline" asChild className="h-6 px-2 text-xs gap-1">
@@ -587,11 +579,11 @@ export default function DoctorDashboard() {
                   <li key={n.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors">
                     <div className="min-w-0">
                       <p className="text-xs font-medium capitalize truncate">{n.specialty ?? "Specialist"}</p>
-                      <p className="text-[10px] text-muted-foreground">Patient #{n.patient_id}</p>
+                      <p className="text-[12px] text-muted-foreground">Patient #{n.patient_id}</p>
                     </div>
                     {n.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary">
-                        <Link to={`/hospital/patients/${n.patient_mrn}`}>CPRS</Link>
+                        <Link to={`/hospital/patients/${n.patient_mrn}`}>PCE</Link>
                       </Button>
                     )}
                   </li>
@@ -602,6 +594,30 @@ export default function DoctorDashboard() {
         </Card>
 
       </div>
+
+      {/* ── OPD Encounter Workspace panel (inline consultation) ──────────── */}
+      {opdPanelEnc && opdPanelEnc.mrn && (
+        <OpdEncounterPanel
+          encounter={{
+            id: opdPanelEnc.id,
+            mrn: opdPanelEnc.mrn,
+            patient_id: opdPanelEnc.patient_id,
+            patient_name: opdPanelEnc.patient_name,
+            queue_number: opdPanelEnc.queue_number,
+            status: opdPanelEnc.status,
+          }}
+          onClose={() => setOpdPanelEnc(null)}
+        />
+      )}
+
+      {/* ── Lab Workspace panel (inline order lifecycle) ──────────────────── */}
+      {labPanelOrder && (
+        <LabWorkspacePanel order={labPanelOrder} onClose={() => setLabPanelOrder(null)} />
+      )}
+
+      {radPanelOrder && (
+        <RadiologyWorkspacePanel order={radPanelOrder} onClose={() => setRadPanelOrder(null)} />
+      )}
     </motion.div>
   );
 }

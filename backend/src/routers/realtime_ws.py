@@ -8,7 +8,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from src.constants import WEBSOCKET_ENABLED
-from src.middleware import verify_jwt
+from src.middleware import require_role, verify_jwt
+from src.services import presence
 from src.services.realtime import realtime_hub
 from src.services.ws_ticket import TICKET_TTL_SECONDS, issue_ticket, redeem_ticket
 
@@ -26,11 +27,18 @@ _ALLOWED_CHANNELS: dict[str, set[str]] = {
     "crm_updates":       {"admin", "management", "crm", "sales"},
     "chat_updates":      {"admin", "management", "hr", "ops", "crm", "sales", "staff"},
     "encounter_updates": {"admin", "management", "doctor", "nurse", "clinical", "clinical_staff", "ops", "hr"},
+    "appointment_updates": {"admin", "management", "receptionist", "doctor", "nurse", "ops", "hr"},
 }
+
+# Channels open to any authenticated ticket holder, regardless of role — no
+# role list to keep in sync as roles evolve. "presence" needs every staff
+# role to connect (a doctor/nurse/pharmacist is exactly who should show up
+# as "online"), unlike the admin/hr/ops-only channels above.
+_OPEN_CHANNELS: set[str] = {"presence"}
 
 
 async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, Any]:
-    if channel not in _ALLOWED_CHANNELS:
+    if channel not in _ALLOWED_CHANNELS and channel not in _OPEN_CHANNELS:
         await websocket.close(code=4404)
         raise RuntimeError("Unknown channel")
 
@@ -47,11 +55,12 @@ async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, An
         await websocket.close(code=4401)
         raise RuntimeError("Invalid or expired ticket")
 
-    roles = set(payload.get("roles") or [])
-    allowed = _ALLOWED_CHANNELS[channel]
-    if not roles.intersection(allowed):
-        await websocket.close(code=4403)
-        raise RuntimeError("Insufficient role")
+    if channel not in _OPEN_CHANNELS:
+        roles = set(payload.get("roles") or [])
+        allowed = _ALLOWED_CHANNELS[channel]
+        if not roles.intersection(allowed):
+            await websocket.close(code=4403)
+            raise RuntimeError("Insufficient role")
 
     return payload
 
@@ -67,6 +76,13 @@ async def get_ws_ticket(user: dict = Depends(verify_jwt)):
         "email": user.get("email"),
     })
     return {"ticket": ticket, "expires_in": TICKET_TTL_SECONDS}
+
+
+@router.get("/presence/summary")
+async def presence_summary(user: dict = Depends(require_role("admin", "management", "hr", "ops"))):
+    """Live count + roster of who's currently online — same audience as
+    staff_updates, since that's who should see a headcount card."""
+    return presence.online_summary()
 
 
 @router.websocket("/ws/{channel}")
@@ -91,6 +107,18 @@ async def realtime_channel_ws(websocket: WebSocket, channel: str):
         },
     )
 
+    presence_session_id: str | None = None
+    if channel == "presence" and payload.get("sub"):
+        presence_session_id = presence.record_connect(
+            payload["sub"],
+            websocket.headers.get("user-agent"),
+            websocket.client.host if websocket.client else None,
+        )
+        await realtime_hub.broadcast(
+            "staff_updates",
+            {"event": "staff_presence_joined", "user": payload.get("sub")},
+        )
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -101,9 +129,23 @@ async def realtime_channel_ws(websocket: WebSocket, channel: str):
             except Exception:
                 message = {"type": "ping"}
             if message.get("type") == "ping":
+                if presence_session_id:
+                    presence.touch(presence_session_id)
                 await websocket.send_text(json.dumps({"event": "pong", "channel": channel}))
     except WebSocketDisconnect:
         await realtime_hub.disconnect(channel, websocket)
+        if presence_session_id:
+            presence.record_disconnect(presence_session_id)
+            await realtime_hub.broadcast(
+                "staff_updates",
+                {"event": "staff_presence_left", "user": payload.get("sub")},
+            )
     except Exception as exc:
         logger.warning(f"realtime websocket error channel={channel}: {exc}")
         await realtime_hub.disconnect(channel, websocket)
+        if presence_session_id:
+            presence.record_disconnect(presence_session_id)
+            await realtime_hub.broadcast(
+                "staff_updates",
+                {"event": "staff_presence_left", "user": payload.get("sub")},
+            )

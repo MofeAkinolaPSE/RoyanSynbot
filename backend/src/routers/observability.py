@@ -110,14 +110,18 @@ async def clinical_kpis(
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
 
-            # Active queue size & avg wait
+            # Active queue size & avg wait. Real status enum (see
+            # ENCOUNTER_STATUS_ALLOWED in constants.py) has no 'waiting' or
+            # 'in_consultation' value — "active" here means anything short
+            # of discharged, which also covers the intent more robustly than
+            # naming specific mid-flow statuses that could change.
             cur.execute("""
                 SELECT
                     COUNT(*) AS active_encounters,
                     ROUND(AVG(EXTRACT(EPOCH FROM (now() - triage_at)) / 60)::numeric, 1)
                         AS avg_wait_minutes
                 FROM public.royan_encounters
-                WHERE status IN ('waiting', 'triaged', 'in_consultation')
+                WHERE status != 'discharged'
                   AND discharge_at IS NULL
             """)
             queue = cur.fetchone() or {}
@@ -136,11 +140,11 @@ async def clinical_kpis(
             cur.execute("""
                 SELECT
                     ROUND(AVG(
-                        EXTRACT(EPOCH FROM (lr.created_at - lo.ordered_at)) / 3600
+                        EXTRACT(EPOCH FROM (lr.resulted_at - lo.ordered_at)) / 3600
                     )::numeric, 2) AS avg_lab_tat_hours,
                     COUNT(lr.id) AS results_today
                 FROM public.royan_lab_orders lo
-                JOIN public.royan_lab_results lr ON lr.order_id = lo.id
+                JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
                 WHERE DATE(lo.ordered_at) >= %s::date
             """, (since_date,))
             lab = cur.fetchone() or {}
@@ -154,12 +158,14 @@ async def clinical_kpis(
             """)
             beds = cur.fetchone() or {}
 
-            # Pending critical lab results
+            # Pending critical lab results — royan_lab_results has no
+            # acknowledged_at column; verified_at is the real analog
+            # (a clinician hasn't reviewed/signed off on the result yet).
             cur.execute("""
                 SELECT COUNT(*) AS critical_unacked
                 FROM public.royan_lab_results
                 WHERE is_critical = true
-                  AND acknowledged_at IS NULL
+                  AND verified_at IS NULL
             """)
             critical = cur.fetchone() or {}
 
@@ -363,7 +369,7 @@ async def data_quality_live(user=Depends(verify_jwt)):
                 SELECT
                     COUNT(*) AS total,
                     COUNT(*) FILTER (WHERE patient_id IS NOT NULL) AS has_patient,
-                    COUNT(*) FILTER (WHERE total_amount > 0) AS has_amount
+                    COUNT(*) FILTER (WHERE subtotal > 0) AS has_amount
                 FROM public.royan_billing
             """)
             bill = cur.fetchone() or {}
@@ -487,15 +493,15 @@ async def lab_performance(
                     COUNT(lo.id) AS orders,
                     COUNT(lr.id) AS resulted,
                     ROUND(AVG(
-                        EXTRACT(EPOCH FROM (lr.created_at - lo.ordered_at)) / 3600
+                        EXTRACT(EPOCH FROM (lr.resulted_at - lo.ordered_at)) / 3600
                     )::numeric, 2) AS avg_tat_hours,
                     ROUND(PERCENTILE_CONT(0.9) WITHIN GROUP (
-                        ORDER BY EXTRACT(EPOCH FROM (lr.created_at - lo.ordered_at)) / 3600
+                        ORDER BY EXTRACT(EPOCH FROM (lr.resulted_at - lo.ordered_at)) / 3600
                     )::numeric, 2) AS p90_tat_hours,
                     COUNT(lr.id) FILTER (WHERE lr.is_critical = true) AS critical_count
                 FROM public.royan_lab_orders lo
                 LEFT JOIN public.royan_lab_catalog lc ON lc.code = lo.test_code
-                LEFT JOIN public.royan_lab_results lr ON lr.order_id = lo.id
+                LEFT JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
                 WHERE lo.ordered_at >= %s::date
                 GROUP BY COALESCE(lc.category, 'Uncategorised'), lo.urgency
                 ORDER BY orders DESC
@@ -543,32 +549,62 @@ async def revenue_snapshot(
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
 
-            # Revenue by payment method
+            # Revenue by payment method. royan_billing tracks charges only
+            # (subtotal/discount/hmo_covered) — actual money collected lives
+            # in royan_payments, joined via billing_id, so "billed" and
+            # "collected" are aggregated at separate grains (per-bill,
+            # per-payment) via CTEs rather than a naive single-query JOIN,
+            # which would double-count billed amounts for bills with more
+            # than one payment.
             cur.execute("""
-                SELECT
-                    COALESCE(payment_method, 'Unknown') AS payer,
-                    COUNT(*) AS bill_count,
-                    COALESCE(SUM(total_amount), 0) AS billed,
-                    COALESCE(SUM(paid_amount), 0) AS collected,
-                    COALESCE(SUM(hmo_covered), 0) AS hmo_covered
-                FROM public.royan_billing
-                WHERE billed_at >= %s::date
-                GROUP BY payment_method
-                ORDER BY billed DESC
-            """, (since,))
+                WITH billed AS (
+                    SELECT COALESCE(payment_method, 'Unknown') AS payer,
+                           COUNT(*) AS bill_count,
+                           SUM(subtotal - discount) AS billed,
+                           SUM(hmo_covered) AS hmo_covered
+                    FROM public.royan_billing
+                    WHERE billed_at >= %s::date
+                    GROUP BY payment_method
+                ),
+                collected AS (
+                    SELECT COALESCE(b.payment_method, 'Unknown') AS payer,
+                           SUM(p.amount) AS collected
+                    FROM public.royan_payments p
+                    JOIN public.royan_billing b ON b.id = p.billing_id
+                    WHERE b.billed_at >= %s::date
+                    GROUP BY b.payment_method
+                )
+                SELECT billed.payer, billed.bill_count, billed.billed, billed.hmo_covered,
+                       COALESCE(collected.collected, 0) AS collected
+                FROM billed
+                LEFT JOIN collected ON collected.payer = billed.payer
+                ORDER BY billed.billed DESC
+            """, (since, since))
             payer_rows = cur.fetchall()
 
             # Daily revenue trend (last N days)
             cur.execute("""
-                SELECT
-                    DATE(billed_at) AS bill_date,
-                    COALESCE(SUM(total_amount), 0) AS daily_billed,
-                    COALESCE(SUM(paid_amount), 0) AS daily_collected
-                FROM public.royan_billing
-                WHERE billed_at >= %s::date
-                GROUP BY DATE(billed_at)
-                ORDER BY bill_date
-            """, (since,))
+                WITH billed AS (
+                    SELECT DATE(billed_at) AS bill_date,
+                           SUM(subtotal - discount) AS daily_billed
+                    FROM public.royan_billing
+                    WHERE billed_at >= %s::date
+                    GROUP BY DATE(billed_at)
+                ),
+                collected AS (
+                    SELECT DATE(b.billed_at) AS bill_date,
+                           SUM(p.amount) AS daily_collected
+                    FROM public.royan_payments p
+                    JOIN public.royan_billing b ON b.id = p.billing_id
+                    WHERE b.billed_at >= %s::date
+                    GROUP BY DATE(b.billed_at)
+                )
+                SELECT billed.bill_date, billed.daily_billed,
+                       COALESCE(collected.daily_collected, 0) AS daily_collected
+                FROM billed
+                LEFT JOIN collected ON collected.bill_date = billed.bill_date
+                ORDER BY billed.bill_date
+            """, (since, since))
             trend_rows = cur.fetchall()
 
     finally:

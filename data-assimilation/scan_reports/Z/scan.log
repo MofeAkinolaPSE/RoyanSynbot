@@ -1,0 +1,14 @@
+[2026-07-30T18:20:08] Starting scan of Z:\ (fresh=False, max_parse_mb=2048)
+[2026-07-30T18:20:08]   DIR Z:\  (6 files, 9 subdirs) -> directory
+[2026-07-30T18:20:08]   DIR Z:\data  (0 files, 0 subdirs) -> directory
+[2026-07-30T18:20:08]   SQL  Z:\db_drmnigeria-20260125.sql.gz  (685.5 MB)
+[2026-07-30T19:34:13] Interrupted by user — progress is saved in inventory.jsonl, re-run the same command to resume.
+[2026-07-30T19:45:59] Starting scan of Z:\ (fresh=False, max_parse_mb=2048)
+[2026-07-30T19:45:59]   SQL  Z:\db_drmnigeria-20260125.sql.gz  (685.5 MB)
+[2026-07-30T19:45:59]     staging locally -> C:\Users\DELL\Desktop\Moe\RoyanSynbot\data-assimilation\scan_reports\Z\_staged\db_drmnigeria-20260125.sql.gz (starting, 685.5 MB total)
+[2026-07-30T19:46:16]       ... 8 / 686 MB (1%, ~0.50 MB/s)
+[2026-07-30T19:46:43]       ... 17 / 686 MB (2%, ~0.38 MB/s)
+[2026-07-30T19:47:12]       ... 25 / 686 MB (4%, ~0.34 MB/s)
+[2026-07-30T19:47:36]       ... 42 / 686 MB (6%, ~0.43 MB/s)
+[2026-07-30T19:47:53]       ... 50 / 686 MB (7%, ~0.44 MB/s)
+[2026-07-30T19:48:36]       ... 67 / 686 MB (10%, ~0.43 MB/s)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,16 +20,20 @@ import {
 } from "@/components/ui/table";
 import {
   Activity, Users, Clock, AlertTriangle, RefreshCw, Loader2,
-  ClipboardCheck, Stethoscope, LogOut, ChevronRight, Plus, LayoutGrid, List,
-  FileText, Copy, Syringe, PhoneCall, HeartPulse,
+  ClipboardCheck, Stethoscope, LogOut, Plus, LayoutGrid, List,
+  Syringe, PhoneCall, HeartPulse, UserCog, FlaskConical, ScanLine, FileCheck2,
+  ReceiptText, Pill,
 } from "lucide-react";
 import { PatientCprsPanel } from "@/components/PatientCprsPanel";
+import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
+import { GenerateBillPanel } from "@/components/billing/GenerateBillPanel";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AlertBanner } from "@/components/AlertBanner";
+import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Encounter {
@@ -50,28 +54,30 @@ interface Encounter {
   consulting_room?: string;
   called_at?: string;
   nurse_done_at?: string;
+  paused_at?: string;
+  hmo_provider?: string;
+  patient_type?: string;
+  assigned_nurse_id?: string;
+  assigned_nurse_name?: string;
+  lab_order_count?: number;
+  lab_resulted_count?: number;
+  radiology_order_count?: number;
+  radiology_resulted_count?: number;
+  prescription_count?: number;
+  prescription_dispensed_count?: number;
+  has_assessment_note?: boolean;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  patient_registered:  "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  triaged:             "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  nurse_assessment:    "bg-teal-500/20 text-teal-400 border-teal-500/30",
-  called:              "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  consulting:          "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  lab_ordered:         "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  pharmacy_dispensing: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  billing_pending:     "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  discharged:          "bg-green-500/20 text-green-400 border-green-500/30",
-};
+const STATUS_COLORS = ENCOUNTER_STATUS_COLORS;
 
 const TRIAGE_COLORS: Record<string, string> = {
-  immediate: "bg-red-500/20 text-red-400 border-red-500/30",
-  urgent:    "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  non_urgent:  "bg-green-500/20 text-green-400 border-green-500/30",
+  immediate: "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
+  urgent:    "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30",
+  non_urgent:  "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cls = STATUS_COLORS[status] ?? "bg-slate-500/20 text-slate-300 border-slate-500/30";
+  const cls = STATUS_COLORS[status] ?? "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30";
   return (
     <Badge variant="outline" className={cn("text-xs capitalize whitespace-nowrap", cls)}>
       {status.replace(/_/g, " ")}
@@ -93,35 +99,35 @@ const KANBAN_COLUMNS = [
     key: "waiting",
     label: "Waiting",
     color: "border-yellow-500/30 bg-yellow-500/5",
-    headerColor: "text-yellow-400",
+    headerColor: "text-yellow-700 dark:text-yellow-400",
     statuses: ["patient_registered"],
   },
   {
     key: "triaged",
     label: "Triaged",
     color: "border-orange-500/30 bg-orange-500/5",
-    headerColor: "text-orange-400",
+    headerColor: "text-orange-700 dark:text-orange-400",
     statuses: ["triaged"],
   },
   {
     key: "nurse",
     label: "Nurse / Called",
     color: "border-teal-500/30 bg-teal-500/5",
-    headerColor: "text-teal-400",
+    headerColor: "text-teal-700 dark:text-teal-400",
     statuses: ["nurse_assessment", "called"],
   },
   {
     key: "consulting",
     label: "Consulting",
     color: "border-blue-500/30 bg-blue-500/5",
-    headerColor: "text-blue-400",
+    headerColor: "text-blue-700 dark:text-blue-400",
     statuses: ["consulting", "lab_ordered", "pharmacy_dispensing"],
   },
   {
     key: "billing",
     label: "Billing / Done",
     color: "border-green-500/30 bg-green-500/5",
-    headerColor: "text-green-400",
+    headerColor: "text-green-700 dark:text-green-400",
     statuses: ["billing_pending", "discharged"],
   },
 ] as const;
@@ -132,25 +138,21 @@ export default function ClinicalQueue() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const nextStatus = (status: string) => ({
-    consulting: "lab_ordered",
-    lab_ordered: "pharmacy_dispensing",
-    pharmacy_dispensing: "billing_pending",
-  } as Record<string, string>)[status] ?? "billing_pending";
 
   const [viewMode, setViewMode] = useState<"table" | "board">("table");
   const [filter, setFilter] = useState<string>("all");
   const [triageOpen, setTriageOpen] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
   const [openEncOpen, setOpenEncOpen] = useState(false);
   const [activeEnc, setActiveEnc] = useState<Encounter | null>(null);
   const [cprsMrn, setCprsMrn] = useState<string | null>(null);
+  const [opdPanelEnc, setOpdPanelEnc] = useState<Encounter | null>(null);
+  const [opdPanelInitialTab, setOpdPanelInitialTab] = useState<string | undefined>(undefined);
   const [callRoomEnc, setCallRoomEnc] = useState<Encounter | null>(null);
+  const [billEnc, setBillEnc] = useState<Encounter | null>(null);
   const [selectedRoom, setSelectedRoom] = useState("Room 1");
   const [consultForm, setConsultForm] = useState({ doctor_id: "", diagnosis_notes: "", icd10_search: "" });
-  const [noteForm, setNoteForm] = useState({ note_type: "soap", content: "" });
   const [icd10Search, setIcd10Search] = useState("");
 
   const [triageForm, setTriageForm] = useState({ triage_level: "non_urgent", chief_complaint: "" });
@@ -182,6 +184,9 @@ export default function ClinicalQueue() {
   });
   const doctorOptions: any[] = (Array.isArray(staffData) ? staffData : []).filter(
     (s: any) => s.role === "doctor",
+  );
+  const nurseOptions: any[] = (Array.isArray(staffData) ? staffData : []).filter(
+    (s: any) => s.role === "nurse",
   );
 
   // Real-time: invalidate queue instantly on any encounter event
@@ -215,18 +220,11 @@ export default function ClinicalQueue() {
     onSuccess: () => {
       toast({ title: "Moved to consulting" });
       setConsultOpen(false);
+      const startedEnc = activeEnc;
       setConsultForm({ doctor_id: "", diagnosis_notes: "", icd10_search: "" });
       void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const addNoteMut = useMutation({
-    mutationFn: () => activeEnc ? api.hospital.queue.addNote(activeEnc.id, noteForm) : Promise.reject(),
-    onSuccess: () => {
-      toast({ title: "Note saved" });
-      setNoteOpen(false);
-      setNoteForm({ note_type: "soap", content: "" });
+      // "Start Consultation" opens the workspace panel inline — no navigation away.
+      if (startedEnc) setOpdPanelEnc(startedEnc);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -240,19 +238,24 @@ export default function ClinicalQueue() {
   });
   const icd10Results: any[] = Array.isArray(icd10Data?.codes) ? icd10Data.codes : [];
 
-  // Copy-forward: fetch last note for the active encounter's patient
-  const { data: lastNoteData, refetch: fetchLastNote } = useQuery({
-    queryKey: ["last-note", activeEnc?.id],
-    queryFn: () => api.hospital.queue.listNotes(String(activeEnc!.id)),
-    enabled: false,
-    staleTime: 0,
+  // Non-blocking heads-up in the discharge dialog — the discharge action
+  // itself never checks billing status, this is purely informational.
+  const { data: dischargeBillCheck } = useQuery({
+    queryKey: ["discharge-bill-check", activeEnc?.id],
+    queryFn: () => api.hospital.billing.listBills({ encounter_id: Number(activeEnc!.id) }),
+    enabled: dischargeOpen && !!activeEnc,
   });
+  const dischargeHasBill = (dischargeBillCheck?.bills?.length ?? 0) > 0;
 
-  const advanceMut = useMutation({
-    mutationFn: (enc: Encounter) => api.hospital.queue.advance(enc.id, { new_status: nextStatus(enc.status) }),
-    onSuccess: () => { toast({ title: "Stage advanced" }); void qc.invalidateQueries({ queryKey: ["clinical-queue"] }); },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  // The backend hard-blocks discharge without at least one clinical note
+  // (compliance requirement) — surface that proactively instead of letting
+  // staff fill out the whole dialog and hit a 422 with no idea why.
+  const { data: dischargeNotesCheck } = useQuery({
+    queryKey: ["discharge-notes-check", activeEnc?.id],
+    queryFn: () => api.hospital.queue.listNotes(String(activeEnc!.id)),
+    enabled: dischargeOpen && !!activeEnc,
   });
+  const dischargeHasNote = (dischargeNotesCheck?.count ?? 0) > 0;
 
   const dischargeMut = useMutation({
     mutationFn: () => activeEnc ? api.hospital.queue.discharge(activeEnc.id, dischargeForm) : Promise.reject(),
@@ -260,9 +263,36 @@ export default function ClinicalQueue() {
     onError: (e: any) => toast({ title: "Discharge failed", description: e.message, variant: "destructive" }),
   });
 
+  // Debounced proactive check — locks the form when the typed patient already
+  // has an active encounter, instead of only discovering that after submit.
+  const [debouncedOpenEncPatientId, setDebouncedOpenEncPatientId] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedOpenEncPatientId(openEncForm.patient_id.trim()), 400);
+    return () => clearTimeout(t);
+  }, [openEncForm.patient_id]);
+  const { data: openEncActiveCheck } = useQuery({
+    queryKey: ["open-enc-active-check", debouncedOpenEncPatientId],
+    queryFn: () => api.hospital.queue.getActiveEncounter(debouncedOpenEncPatientId),
+    enabled: openEncOpen && debouncedOpenEncPatientId.length > 0,
+  });
+  const openEncActiveEncounter = openEncActiveCheck?.active_encounter;
+
   const openEncMut = useMutation({
     mutationFn: () => api.hospital.queue.open(openEncForm),
-    onSuccess: () => { toast({ title: "Encounter opened" }); setOpenEncOpen(false); setOpenEncForm({ patient_id: "", encounter_type: "outpatient", department: "OPD" }); void qc.invalidateQueries({ queryKey: ["clinical-queue"] }); },
+    onSuccess: (res: any) => {
+      if (res?.already_active) {
+        toast({
+          title: "Patient already on the queue",
+          description: `${res.encounter?.queue_number ?? "Their encounter"} is still active (${res.encounter?.status?.replace(/_/g, " ") ?? "in progress"}) — no new encounter was created.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Encounter opened" });
+      }
+      setOpenEncOpen(false);
+      setOpenEncForm({ patient_id: "", encounter_type: "outpatient", department: "OPD" });
+      void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -303,6 +333,16 @@ export default function ClinicalQueue() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const assignNurseMut = useMutation({
+    mutationFn: ({ encId, nurseId }: { encId: string; nurseId: string | null }) =>
+      api.hospital.queue.assignNurse(encId, nurseId),
+    onSuccess: () => {
+      toast({ title: "Nurse assigned" });
+      void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const statuses = ["all", "patient_registered", "triaged", "nurse_assessment", "called", "consulting", "lab_ordered", "pharmacy_dispensing", "billing_pending"];
 
   return (
@@ -311,7 +351,7 @@ export default function ClinicalQueue() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clinical Queue</h1>
+          <h1 className="text-2xl font-bold tracking-tight">OPD Workspace</h1>
           <p className="text-sm text-muted-foreground">Active patient encounters and workflow progression</p>
         </div>
         <div className="flex gap-2">
@@ -416,7 +456,7 @@ export default function ClinicalQueue() {
                           <span className="font-mono text-xs text-muted-foreground">{String(enc.id).slice(0, 8)}</span>
                         )}
                         {(enc.triage_level || enc.triage_priority) && (
-                          <Badge variant="outline" className={cn("shrink-0 text-[10px] capitalize", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
+                          <Badge variant="outline" className={cn("shrink-0 text-[12px] capitalize", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
                             {(enc.triage_level || enc.triage_priority || "").replace(/_/g, " ")}
                           </Badge>
                         )}
@@ -424,7 +464,7 @@ export default function ClinicalQueue() {
                       <p className="text-sm font-medium leading-tight truncate mb-1">
                         {enc.patient_name || enc.mrn || `…${String(enc.patient_id ?? "").slice(-6)}`}
                       </p>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />{waitMins(enc.created_at)}
                         </span>
@@ -434,47 +474,48 @@ export default function ClinicalQueue() {
                       {/* Quick actions */}
                       <div className="mt-2 flex flex-wrap gap-1" onClick={e => e.stopPropagation()}>
                         {enc.status === "patient_registered" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => { setActiveEnc(enc); setTriageOpen(true); }}>
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setTriageOpen(true); }}>
                             <ClipboardCheck className="h-3 w-3" /> Triage
                           </Button>
                         )}
                         {enc.status === "triaged" && (
                           <>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-teal-500/40 text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
                               onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
                               <Syringe className="h-3 w-3" /> Vitals
                             </Button>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
                               <Stethoscope className="h-3 w-3" /> Consult
                             </Button>
                           </>
                         )}
                         {enc.status === "nurse_assessment" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10"
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/10"
                             onClick={() => { setCallRoomEnc(enc); setSelectedRoom("Room 1"); }}>
                             <PhoneCall className="h-3 w-3" /> Call
                           </Button>
                         )}
                         {enc.status === "called" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
                             <Stethoscope className="h-3 w-3" /> Start
                           </Button>
                         )}
                         {["consulting", "lab_ordered", "pharmacy_dispensing"].includes(enc.status) && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => { setActiveEnc(enc); setNoteOpen(true); }}>
-                              <FileText className="h-3 w-3" /> Note
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => advanceMut.mutate(enc)} disabled={advanceMut.isPending}>
-                              <ChevronRight className="h-3 w-3" /> Advance
-                            </Button>
-                          </>
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => setOpdPanelEnc(enc)}>
+                            <Stethoscope className="h-3 w-3" /> Workspace
+                          </Button>
                         )}
                         {enc.status === "billing_pending" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1 border-green-500/40 text-green-400 hover:bg-green-500/10"
-                            onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
-                            <LogOut className="h-3 w-3" /> Discharge
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
+                              onClick={() => setBillEnc(enc)}>
+                              <ReceiptText className="h-3 w-3" /> Generate Bill
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
+                              onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
+                              <LogOut className="h-3 w-3" /> Discharge
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -502,14 +543,18 @@ export default function ClinicalQueue() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Queue #</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Triage</TableHead>
-                  <TableHead>Wait</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="whitespace-nowrap">Queue #</TableHead>
+                  <TableHead className="whitespace-nowrap">Patient</TableHead>
+                  <TableHead className="whitespace-nowrap">Payer</TableHead>
+                  <TableHead className="whitespace-nowrap">Type</TableHead>
+                  <TableHead className="whitespace-nowrap">Department</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Nurse</TableHead>
+                  <TableHead className="whitespace-nowrap">Labs / Rad / Rx</TableHead>
+                  <TableHead className="whitespace-nowrap">Assmt</TableHead>
+                  <TableHead className="whitespace-nowrap">Triage</TableHead>
+                  <TableHead className="whitespace-nowrap">Wait</TableHead>
+                  <TableHead className="whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -522,18 +567,101 @@ export default function ClinicalQueue() {
                     <TableCell className="font-mono text-xs font-bold text-primary">
                       {enc.queue_number ?? String(enc.id).slice(0, 8)}
                     </TableCell>
-                    <TableCell className="text-sm">{enc.patient_name || enc.mrn || (enc.patient_id ? String(enc.patient_id).slice(0, 8) : "—")}</TableCell>
-                    <TableCell className="capitalize text-xs">{enc.encounter_type ?? "—"}</TableCell>
-                    <TableCell className="text-xs">{enc.department ?? "—"}</TableCell>
-                    <TableCell><StatusBadge status={enc.status} /></TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{enc.patient_name || enc.mrn || (enc.patient_id ? String(enc.patient_id).slice(0, 8) : "—")}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {enc.hmo_provider ? (
+                        <Badge variant="outline" className="text-[12px] whitespace-nowrap">{enc.hmo_provider}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground capitalize">{enc.patient_type ?? "Private"}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="capitalize text-xs whitespace-nowrap">{enc.encounter_type ?? "—"}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">{enc.department ?? "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <StatusBadge status={enc.status} />
+                        {enc.paused_at && <Badge variant="outline" className="text-[12px] bg-amber-500/10 text-amber-500 border-amber-500/30">Paused</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <Select
+                        value={enc.assigned_nurse_id ?? "__none"}
+                        onValueChange={v => assignNurseMut.mutate({ encId: enc.id, nurseId: v === "__none" ? null : v })}
+                      >
+                        <SelectTrigger className="h-7 w-[140px] text-xs gap-1">
+                          <UserCog className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <SelectValue placeholder="Assign nurse">
+                            {enc.assigned_nurse_name ?? "Unassigned"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">Unassigned</SelectItem>
+                          {nurseOptions.map((n: any) => (
+                            <SelectItem key={n.id} value={n.id}>{n.full_name ?? n.email}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      {(() => {
+                        const labReady = (enc.lab_order_count ?? 0) > 0 && (enc.lab_resulted_count ?? 0) > 0;
+                        const radReady = (enc.radiology_order_count ?? 0) > 0 && (enc.radiology_resulted_count ?? 0) > 0;
+                        const rxReady = (enc.prescription_count ?? 0) > 0 && (enc.prescription_dispensed_count ?? 0) > 0;
+                        const openTab = (tab: string) => { setOpdPanelInitialTab(tab); setOpdPanelEnc(enc); };
+                        return (
+                          <div className="space-y-0.5">
+                            <button
+                              className={cn(
+                                "flex items-center gap-1 rounded px-1 -mx-1",
+                                labReady ? "text-green-700 dark:text-green-400 font-medium hover:bg-green-500/10 cursor-pointer" : "text-muted-foreground",
+                              )}
+                              disabled={!(enc.lab_order_count ?? 0)}
+                              onClick={() => openTab("orders")}
+                            >
+                              <FlaskConical className="h-3 w-3" />{enc.lab_resulted_count ?? 0}/{enc.lab_order_count ?? 0}
+                              {labReady && <span className="text-[10px] uppercase tracking-wide">· Ready</span>}
+                            </button>
+                            <button
+                              className={cn(
+                                "flex items-center gap-1 rounded px-1 -mx-1",
+                                radReady ? "text-green-700 dark:text-green-400 font-medium hover:bg-green-500/10 cursor-pointer" : "text-muted-foreground",
+                              )}
+                              disabled={!(enc.radiology_order_count ?? 0)}
+                              onClick={() => openTab("orders")}
+                            >
+                              <ScanLine className="h-3 w-3" />{enc.radiology_resulted_count ?? 0}/{enc.radiology_order_count ?? 0}
+                              {radReady && <span className="text-[10px] uppercase tracking-wide">· Ready</span>}
+                            </button>
+                            <button
+                              className={cn(
+                                "flex items-center gap-1 rounded px-1 -mx-1",
+                                rxReady ? "text-green-700 dark:text-green-400 font-medium hover:bg-green-500/10 cursor-pointer" : "text-muted-foreground",
+                              )}
+                              disabled={!(enc.prescription_count ?? 0)}
+                              onClick={() => openTab("prescribe")}
+                            >
+                              <Pill className="h-3 w-3" />{enc.prescription_dispensed_count ?? 0}/{enc.prescription_count ?? 0}
+                              {rxReady && <span className="text-[10px] uppercase tracking-wide">· Dispensed</span>}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell>
+                      {enc.has_assessment_note ? (
+                        <FileCheck2 className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <FileCheck2 className="h-4 w-4 text-muted-foreground/30" />
+                      )}
+                    </TableCell>
                     <TableCell>
                       {(enc.triage_level || enc.triage_priority) ? (
-                        <Badge variant="outline" className={cn("text-xs capitalize", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
+                        <Badge variant="outline" className={cn("text-xs capitalize whitespace-nowrap", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
                           {(enc.triage_level || enc.triage_priority || "").replace(/_/g, " ")}
                         </Badge>
                       ) : "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{waitMins(enc.created_at)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{waitMins(enc.created_at)}</TableCell>
                     <TableCell onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
                         {enc.status === "patient_registered" && (
@@ -543,7 +671,7 @@ export default function ClinicalQueue() {
                         )}
                         {enc.status === "triaged" && (
                           <>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-teal-500/40 text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
                               onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
                               <Syringe className="h-3 w-3" /> Vitals
                             </Button>
@@ -553,7 +681,7 @@ export default function ClinicalQueue() {
                           </>
                         )}
                         {enc.status === "nurse_assessment" && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10"
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/10"
                             onClick={() => { setCallRoomEnc(enc); setSelectedRoom("Room 1"); }}>
                             <PhoneCall className="h-3 w-3" /> Call
                           </Button>
@@ -564,20 +692,21 @@ export default function ClinicalQueue() {
                           </Button>
                         )}
                         {["consulting", "lab_ordered", "pharmacy_dispensing"].includes(enc.status) && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setActiveEnc(enc); setNoteOpen(true); }}>
-                              <FileText className="h-3 w-3" /> Note
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => advanceMut.mutate(enc)} disabled={advanceMut.isPending}>
-                              <ChevronRight className="h-3 w-3" /> Advance
-                            </Button>
-                          </>
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpdPanelEnc(enc)}>
+                            <Stethoscope className="h-3 w-3" /> Workspace
+                          </Button>
                         )}
                         {enc.status === "billing_pending" && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-400 hover:bg-green-500/10"
-                            onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
-                            <LogOut className="h-3 w-3" /> Discharge
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
+                              onClick={() => setBillEnc(enc)}>
+                              <ReceiptText className="h-3 w-3" /> Generate Bill
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
+                              onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
+                              <LogOut className="h-3 w-3" /> Discharge
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -601,6 +730,12 @@ export default function ClinicalQueue() {
               <Label>Patient MRN *</Label>
               <Input value={openEncForm.patient_id} onChange={e => setOpenEncForm(f => ({ ...f, patient_id: e.target.value }))} placeholder="e.g. RHN-000001" />
             </div>
+            {openEncActiveEncounter && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600">
+                This patient already has an active encounter — <strong>{openEncActiveEncounter.queue_number ?? `#${openEncActiveEncounter.id}`}</strong>{" "}
+                ({String(openEncActiveEncounter.status).replace(/_/g, " ")}). A new encounter can't be opened until they're discharged.
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Encounter Type</Label>
               <Select value={openEncForm.encounter_type} onValueChange={v => setOpenEncForm(f => ({ ...f, encounter_type: v }))}>
@@ -620,7 +755,7 @@ export default function ClinicalQueue() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenEncOpen(false)}>Cancel</Button>
-            <Button disabled={!openEncForm.patient_id.trim() || openEncMut.isPending} onClick={() => openEncMut.mutate()}>
+            <Button disabled={!openEncForm.patient_id.trim() || openEncMut.isPending || !!openEncActiveEncounter} onClick={() => openEncMut.mutate()}>
               {openEncMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Open Encounter
             </Button>
           </DialogFooter>
@@ -701,66 +836,6 @@ export default function ClinicalQueue() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Clinical Note Dialog ────────────────────────────────────────── */}
-      <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Clinical Note</DialogTitle>
-            <DialogDescription>Enc #{activeEnc?.id?.toString().slice(0, 8)} — {activeEnc?.patient_name ?? "Patient"}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1 flex-1 mr-3">
-                <Label>Note Type</Label>
-                <Select value={noteForm.note_type} onValueChange={v => setNoteForm(f => ({ ...f, note_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="soap">SOAP</SelectItem>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="assessment">Assessment</SelectItem>
-                    <SelectItem value="plan">Plan</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-5 gap-1.5 text-xs"
-                onClick={async () => {
-                  const result = await fetchLastNote();
-                  const notes = result.data?.notes ?? [];
-                  if (notes.length > 0) {
-                    setNoteForm(f => ({ ...f, content: notes[notes.length - 1].content }));
-                  } else {
-                    void 0;
-                  }
-                }}
-              >
-                <Copy className="h-3 w-3" /> Copy Last Note
-              </Button>
-            </div>
-            <div className="space-y-1">
-              <Label>Content *</Label>
-              <Textarea
-                value={noteForm.content}
-                onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
-                placeholder={noteForm.note_type === "soap"
-                  ? "S: Subjective...\nO: Objective...\nA: Assessment...\nP: Plan..."
-                  : "Clinical note content..."}
-                rows={8}
-                className="font-mono text-sm"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoteOpen(false)}>Cancel</Button>
-            <Button disabled={!noteForm.content.trim() || addNoteMut.isPending} onClick={() => addNoteMut.mutate()}>
-              {addNoteMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Note
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Triage Dialog ──────────────────────────────────────────────── */}
       <Dialog open={triageOpen} onOpenChange={setTriageOpen}>
         <DialogContent className="sm:max-w-md">
@@ -816,13 +891,34 @@ export default function ClinicalQueue() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Discharge Summary</Label>
-              <Textarea value={dischargeForm.discharge_summary} onChange={e => setDischargeForm(f => ({ ...f, discharge_summary: e.target.value }))} placeholder="Clinical summary, follow-up instructions..." rows={4} />
+              <Label>Discharge Summary <span className="text-red-500">*</span></Label>
+              <Textarea value={dischargeForm.discharge_summary} onChange={e => setDischargeForm(f => ({ ...f, discharge_summary: e.target.value }))} placeholder="Clinical summary, follow-up instructions..." rows={4} required />
+              <p className="text-xs text-muted-foreground">Required — discharge can't be confirmed without a summary.</p>
             </div>
+            {dischargeNotesCheck && !dischargeHasNote && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm flex items-center justify-between gap-2">
+                <span className="text-amber-600">No clinical note on file yet — required before discharge.</span>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 shrink-0"
+                  onClick={() => { if (activeEnc) { setOpdPanelInitialTab("notes"); setOpdPanelEnc(activeEnc); } }}>
+                  <ClipboardCheck className="h-3 w-3" /> Add Note
+                </Button>
+              </div>
+            )}
+            {dischargeBillCheck && !dischargeHasBill && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm flex items-center justify-between gap-2">
+                <span className="text-amber-600">No bill generated yet for this encounter.</span>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 shrink-0"
+                  onClick={() => { if (activeEnc) setBillEnc(activeEnc); }}>
+                  <ReceiptText className="h-3 w-3" /> Generate Bill
+                </Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDischargeOpen(false)}>Cancel</Button>
-            <Button className="bg-green-600 hover:bg-green-700" disabled={dischargeMut.isPending} onClick={() => dischargeMut.mutate()}>
+            <Button className="bg-green-600 hover:bg-green-700"
+              disabled={dischargeMut.isPending || !dischargeForm.discharge_summary.trim()}
+              onClick={() => dischargeMut.mutate()}>
               {dischargeMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirm Discharge
             </Button>
           </DialogFooter>
@@ -922,9 +1018,40 @@ export default function ClinicalQueue() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Patient CPRS slide panel ───────────────────────────────────── */}
+      {/* ── Patient CPRS slide panel (read-only quick peek) ─────────────── */}
       {cprsMrn && (
         <PatientCprsPanel patientMrn={cprsMrn} onClose={() => setCprsMrn(null)} />
+      )}
+
+      {/* ── OPD Encounter Workspace panel (inline consultation) ──────────── */}
+      {opdPanelEnc && opdPanelEnc.mrn && (
+        <OpdEncounterPanel
+          encounter={{
+            id: opdPanelEnc.id,
+            mrn: opdPanelEnc.mrn,
+            patient_id: opdPanelEnc.patient_id,
+            patient_name: opdPanelEnc.patient_name,
+            queue_number: opdPanelEnc.queue_number,
+            status: opdPanelEnc.status,
+          }}
+          initialTab={opdPanelInitialTab}
+          onClose={() => { setOpdPanelEnc(null); setOpdPanelInitialTab(undefined); void qc.invalidateQueries({ queryKey: ["discharge-notes-check"] }); }}
+        />
+      )}
+
+      {/* ── Generate Bill panel (quick action from billing_pending rows) ── */}
+      {billEnc && (
+        <GenerateBillPanel
+          encounter={{
+            id: billEnc.id,
+            patient_id: billEnc.patient_id ?? "",
+            patient_name: billEnc.patient_name,
+            patient_mrn: billEnc.mrn,
+            queue_number: billEnc.queue_number,
+            chief_complaint: billEnc.chief_complaint,
+          }}
+          onClose={() => setBillEnc(null)}
+        />
       )}
     </motion.div>
   );

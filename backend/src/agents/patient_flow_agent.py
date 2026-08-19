@@ -44,10 +44,16 @@ class PatientFlowAgent(BaseAgent):
     def collect_data(self) -> Dict[str, Any]:
         try:
             from src.db import db
+            # external_source IS NULL restricts this to the live native queue —
+            # without it, this also counts historical Hope-import encounters
+            # that were never marked "discharged" during ETL, inflating the
+            # "active encounters" count by orders of magnitude (the same
+            # native-vs-imported distinction getActiveEncounters/getBedStatus
+            # already apply elsewhere in the app).
             result = db.table(TABLE_ENCOUNTERS).select(
                 "id", "patient_id", "status", "department",
                 "encounter_type", "created_at", "triage_at", "consultation_at"
-            ).neq("status", "discharged").order("created_at").execute()
+            ).neq("status", "discharged").is_("external_source", None).order("created_at").execute()
             return {"encounters": result.data or []}
         except Exception as exc:
             logger.error("PatientFlowAgent.collect_data failed: %s", exc)

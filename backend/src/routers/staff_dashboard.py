@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
-from src.schemas.staff_dashboard import StaffDashboard, ActivityItem, PendingApproval, TaskItem, KPIWidget, Badge, AssignedProjectItem
+from src.schemas.staff_dashboard import StaffDashboard, ActivityItem, PendingApproval, TaskItem, KPIWidget, Badge, AssignedProjectItem, StaffIdentity, UpcomingItem
 from src.middleware import verify_jwt, require_role
+from src.services.staff_ops import get_staff_by_user_id
 from typing import List
 import asyncio, os, json, logging
 import datetime as dt
 from src.db import db
+from src.constants import TABLE_APPOINTMENT_SLOTS, TABLE_APPOINTMENTS, TABLE_PATIENTS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -69,6 +71,55 @@ def _write_tasks(tasks: list):
         os.makedirs(parent, exist_ok=True)
     with open(TASKS_PATH, "w", encoding="utf-8") as fh:
         json.dump(tasks, fh, indent=2)
+
+
+def _build_upcoming_appointments(staff_id: str, limit: int = 3) -> List[UpcomingItem]:
+    """A doctor's own soonest booked appointments — royan_appointment_slots.
+    doctor_id FKs to royan_staff.id (migration 146), an exact match unlike
+    the free-text doctor_name column elsewhere in this router."""
+    today = dt.date.today().isoformat()
+    try:
+        slots = (
+            db.table(TABLE_APPOINTMENT_SLOTS)
+            .select("id,slot_date,slot_time")
+            .eq("doctor_id", staff_id)
+            .gte("slot_date", today)
+            .order("slot_date")
+            .limit(200)
+            .execute()
+        ).data or []
+        if not slots:
+            return []
+        slot_map = {s["id"]: s for s in slots}
+        appts = (
+            db.table(TABLE_APPOINTMENTS)
+            .select("id,slot_id,patient_id,status")
+            .in_("slot_id", list(slot_map.keys()))
+            .eq("status", "booked")
+            .execute()
+        ).data or []
+        if not appts:
+            return []
+        patient_ids = list({a["patient_id"] for a in appts if a.get("patient_id")})
+        patients = {}
+        if patient_ids:
+            rows = db.table(TABLE_PATIENTS).select("id,first_name,last_name").in_("id", patient_ids).execute().data or []
+            patients = {p["id"]: p for p in rows}
+
+        items = []
+        for a in appts:
+            slot = slot_map.get(a.get("slot_id")) or {}
+            patient = patients.get(a.get("patient_id")) or {}
+            name = f"{patient.get('first_name', '')} {patient.get('last_name', '')}".strip() or "Patient"
+            items.append((slot.get("slot_date") or "", slot.get("slot_time") or "", name))
+        items.sort(key=lambda t: (t[0], t[1]))
+        return [
+            UpcomingItem(type="appointment", title=f"Appointment with {name}", when=f"{date} {time}".strip())
+            for date, time, name in items[:limit]
+        ]
+    except Exception as exc:
+        logger.warning(f"Could not build upcoming appointments for staff {staff_id}: {exc}")
+        return []
 
 
 @router.get("/staff/{user_id}/dashboard", response_model=StaffDashboard)
@@ -193,8 +244,34 @@ async def get_staff_dashboard(request: Request, user_id: str):
     if len([t for t in tasks if t.status == "done"]) >= 10:
         badges.append(Badge(id="task_master", name="Task Master", description="Completed 10+ tasks"))
 
+    # Real identity (not the raw JWT `sub` UUID) — null-safe when the account
+    # has no linked royan_staff row, e.g. a bare admin login.
+    staff_row = get_staff_by_user_id(user_id)
+    identity = None
+    upcoming: List[UpcomingItem] = []
+    if staff_row:
+        identity = StaffIdentity(
+            staff_id=str(staff_row["id"]),
+            full_name=staff_row.get("full_name") or "Staff Member",
+            role=staff_row.get("role"),
+            department=staff_row.get("department"),
+        )
+        if staff_row.get("role") == "doctor":
+            upcoming = _build_upcoming_appointments(str(staff_row["id"]))
+
+    if not upcoming:
+        # Fall back to (or supplement, for non-doctors) the soonest-due open
+        # tasks already fetched above — zero extra backend calls.
+        dated = sorted(
+            (t for t in tasks if t.due_date and t.status != "done"),
+            key=lambda t: t.due_date,
+        )
+        upcoming = [UpcomingItem(type="task", title=t.title, when=t.due_date) for t in dated[:3]]
+
     dashboard = StaffDashboard(
         user_id=user_id,
+        identity=identity,
+        upcoming=upcoming,
         activities=activities,
         pending_approvals=pending[:10],
         tasks=tasks,

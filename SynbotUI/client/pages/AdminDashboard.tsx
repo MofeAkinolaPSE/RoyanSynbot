@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
 import { AlertBanner } from "@/components/AlertBanner";
+import { OnlineStaffCard } from "@/components/dashboard/OnlineStaffCard";
 import { cn } from "@/lib/utils";
 
 function fmtCurrency(n: number) {
@@ -210,8 +211,10 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Row 4 — Staff + Lab TAT + Critical Alerts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* Row 4 — Live Presence + Staff + Lab TAT + Critical Alerts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <OnlineStaffCard />
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -273,7 +276,7 @@ export default function AdminDashboard() {
               <AlertTriangle className={cn("h-4 w-4", criticalAlerts.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               System Alerts
               {criticalAlerts.length > 0 && (
-                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[10px] font-semibold px-2 py-0.5">{criticalAlerts.length}</span>
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{criticalAlerts.length}</span>
               )}
             </CardTitle>
           </CardHeader>
@@ -285,7 +288,7 @@ export default function AdminDashboard() {
                 {criticalAlerts.slice(0, 5).map((a: any, i: number) => (
                   <div key={i} className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
                     <p className="text-xs font-medium text-red-800">{a.title ?? a.type ?? "Alert"}</p>
-                    <p className="text-[10px] text-red-600 mt-0.5">{a.message ?? a.detail ?? ""}</p>
+                    <p className="text-[12px] text-red-600 mt-0.5">{a.message ?? a.detail ?? ""}</p>
                   </div>
                 ))}
               </div>
@@ -323,7 +326,7 @@ export default function AdminDashboard() {
                         {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString("en-NG") : "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[10px] capitalize bg-yellow-50 text-yellow-700 border-yellow-300">{c.status}</Badge>
+                        <Badge variant="outline" className="text-[12px] capitalize bg-yellow-50 text-yellow-700 border-yellow-300">{c.status}</Badge>
                       </TableCell>
                     </TableRow>
                   ))}

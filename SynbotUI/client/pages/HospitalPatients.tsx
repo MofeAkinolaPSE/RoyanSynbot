@@ -52,9 +52,9 @@ const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"
 function genderBadge(g?: string) {
   if (!g) return null;
   const map: Record<string, string> = {
-    male:   "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    female: "bg-pink-500/20 text-pink-400 border-pink-500/30",
-    other:  "bg-slate-500/20 text-slate-300 border-slate-500/30",
+    male:   "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+    female: "bg-pink-500/20 text-pink-700 dark:text-pink-400 border-pink-500/30",
+    other:  "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30",
   };
   return (
     <Badge variant="outline" className={cn("text-xs capitalize", map[g.toLowerCase()] ?? map.other)}>
@@ -211,46 +211,61 @@ export default function HospitalPatients() {
         </CardContent>
       </Card>
 
-      {/* Default card grid — recent patients when no search active */}
+      {/* Default list — recent patients when no search active */}
       {search.trim().length === 0 && recentPatients.length > 0 && (
-        <>
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Recent Patients</h2>
-            <span className="text-xs text-muted-foreground">({recentPatients.length})</span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {recentPatients.map(p => (
-              <button
-                key={p.id}
-                className="text-left rounded-xl border border-border bg-card p-4 hover:bg-muted/30 hover:border-primary/30 transition-all shadow-sm group"
-                onClick={() => setCprsMrn(p.mrn)}
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
-                </div>
-                <p className="font-semibold text-sm leading-tight">{displayName(p)}</p>
-                <p className="text-xs font-mono text-primary mt-0.5">{p.mrn}</p>
-                <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                  <span className="text-xs text-muted-foreground">{calcAge(p.date_of_birth)}</span>
-                  {p.gender && <span className="text-xs text-muted-foreground">· {p.gender}</span>}
-                  {p.blood_group && (
-                    <span className="flex items-center gap-0.5 text-xs text-red-400">
-                      <Droplets className="h-3 w-3" />{p.blood_group}
-                    </span>
-                  )}
-                </div>
-                {(p.hmo_provider || p.insurance?.hmo_name) && (
-                  <Badge variant="outline" className="mt-2 text-xs">
-                    {p.hmo_provider ?? p.insurance?.hmo_name}
-                  </Badge>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="h-4 w-4" />
+              Recent Patients
+              <span className="text-xs font-normal text-muted-foreground">({recentPatients.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>MRN</TableHead>
+                  <TableHead>Full Name</TableHead>
+                  <TableHead>Age</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>Blood Group</TableHead>
+                  <TableHead>HMO</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentPatients.map(p => (
+                  <TableRow
+                    key={p.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setCprsMrn(p.mrn)}
+                  >
+                    <TableCell className="font-mono text-xs font-semibold text-primary">{p.mrn}</TableCell>
+                    <TableCell className="font-medium">{displayName(p)}</TableCell>
+                    <TableCell>{calcAge(p.date_of_birth)}</TableCell>
+                    <TableCell>{genderBadge(p.gender)}</TableCell>
+                    <TableCell className="text-sm">
+                      {p.blood_group ? (
+                        <span className="flex items-center gap-1">
+                          <Droplets className="h-3 w-3 text-red-700 dark:text-red-400" />{p.blood_group}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {(p.hmo_provider || p.insurance?.hmo_name) ? (
+                        <Badge variant="outline" className="text-xs">{p.hmo_provider ?? p.insurance?.hmo_name}</Badge>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {search.trim().length === 0 && recentPatients.length === 0 && !loadingRecent && (

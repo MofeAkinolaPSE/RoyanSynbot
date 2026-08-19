@@ -12,6 +12,16 @@ export function WorkforceDashboard({ data: initialData }: { data?: WorkforceDash
     enabled: !initialData
   });
 
+  // "Active Staff" used to mean whatever royan_staff.is_active row count
+  // happened to be (a headcount of registered accounts, not who's actually
+  // signed in) — refetch on an interval since presence changes constantly.
+  const { data: presenceData, isLoading: presenceLoading } = useQuery({
+    queryKey: ["presence-summary"],
+    queryFn: () => api.presence.summary(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
   const data = initialData || fetchedData;
 
   const workforceValid =
@@ -47,8 +57,8 @@ export function WorkforceDashboard({ data: initialData }: { data?: WorkforceDash
             </div>
           </CardHeader>
           <CardContent className="pb-4">
-            <div className="text-3xl font-bold tabular-nums">{workforceValid ? data.active_staff_count : (isLoading ? "Loading..." : "—")}</div>
-            <p className="mt-1 text-xs text-muted-foreground">Registered in system</p>
+            <div className="text-3xl font-bold tabular-nums">{presenceData ? presenceData.count : (presenceLoading ? "…" : "—")}</div>
+            <p className="mt-1 text-xs text-muted-foreground">Currently signed in</p>
           </CardContent>
         </Card>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -163,7 +163,7 @@ function TemplateCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <Badge variant="outline" className={`text-[10px] ${color}`}>
+              <Badge variant="outline" className={`text-[12px] ${color}`}>
                 {SPECIALTY_LABELS[tmpl.specialty] ?? tmpl.specialty}
               </Badge>
             </div>
@@ -196,15 +196,38 @@ function NoteWriter({
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [patientId,   setPatientId]   = useState("");
-  const [encounterId, setEncounterId] = useState("");
-  const [icd10,       setIcd10]       = useState("");
-  const [noteData,    setNoteData]    = useState<Record<string, any>>({});
+  const [patientQuery,    setPatientQuery]    = useState("");
+  const [debouncedQuery,  setDebouncedQuery]  = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
+  const [encounterId,     setEncounterId]     = useState("none");
+  const [icd10,           setIcd10]           = useState("");
+  const [noteData,        setNoteData]        = useState<Record<string, any>>({});
+
+  function handleQueryChange(val: string) {
+    setPatientQuery(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(val), 400);
+  }
+
+  const { data: searchData, isFetching: searching } = useQuery({
+    queryKey: ["specialist-patient-search", debouncedQuery],
+    queryFn: () => api.hospital.patients.search(debouncedQuery),
+    enabled: !selectedPatient && debouncedQuery.length >= 2,
+  });
+  const searchResults: any[] = Array.isArray(searchData) ? searchData : (searchData?.patients ?? []);
+
+  const { data: encountersData } = useQuery({
+    queryKey: ["specialist-encounters", selectedPatient?.id],
+    queryFn: () => api.hospital.queue.list({ patient_id: Number(selectedPatient.id), active_only: true }),
+    enabled: !!selectedPatient,
+  });
+  const activeEncounters: any[] = encountersData?.encounters ?? [];
 
   const submitMut = useMutation({
     mutationFn: () => api.specialist.submitNote({
-      patient_id:   Number(patientId),
-      encounter_id: encounterId ? Number(encounterId) : undefined,
+      patient_id:   Number(selectedPatient.id),
+      encounter_id: encounterId !== "none" ? Number(encounterId) : undefined,
       template_id:  template.id,
       specialty:    template.specialty,
       note_data:    noteData,
@@ -233,16 +256,57 @@ function NoteWriter({
         <span className="text-sm font-medium">{template.template_name}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs">Patient ID *</Label>
-          <Input value={patientId} onChange={e => setPatientId(e.target.value)} className="h-9" placeholder="Patient ID" />
-        </div>
-        <div>
-          <Label className="text-xs">Encounter ID</Label>
-          <Input value={encounterId} onChange={e => setEncounterId(e.target.value)} className="h-9" placeholder="Encounter ID" />
-        </div>
+      <div className="space-y-2">
+        <Label className="text-xs">Patient *</Label>
+        {!selectedPatient ? (
+          <>
+            <Input placeholder="Search patient by name, phone, or HMO ID…" value={patientQuery}
+              onChange={e => handleQueryChange(e.target.value)} className="h-9" />
+            {searching && <p className="text-xs text-muted-foreground">Searching…</p>}
+            {searchResults.length > 0 && (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {searchResults.map((p: any) => (
+                  <button key={p.id} type="button"
+                    className="w-full text-left rounded-md border px-3 py-2 text-xs hover:bg-muted/40 transition-colors"
+                    onClick={() => { setSelectedPatient(p); setEncounterId("none"); }}>
+                    <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
+                    <p className="text-muted-foreground">MRN: {p.mrn} · {p.gender ?? "—"} · {p.phone ?? "—"}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {debouncedQuery.length >= 2 && !searching && searchResults.length === 0 && (
+              <p className="text-xs text-muted-foreground">No patients found.</p>
+            )}
+          </>
+        ) : (
+          <div className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">{selectedPatient.first_name} {selectedPatient.last_name}</p>
+              <p className="text-xs text-muted-foreground font-mono">{selectedPatient.mrn}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { setSelectedPatient(null); setEncounterId("none"); }}>Change</Button>
+          </div>
+        )}
       </div>
+
+      {selectedPatient && (
+        <div>
+          <Label className="text-xs">Active Encounter (optional)</Label>
+          <Select value={encounterId} onValueChange={setEncounterId}>
+            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {activeEncounters.map((enc: any) => (
+                <SelectItem key={enc.id} value={String(enc.id)}>
+                  {enc.queue_number ?? `Encounter #${enc.id}`} — {enc.department ?? "—"} ({enc.status?.replace(/_/g, " ")})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div>
         <Label className="text-xs">ICD-10 Codes (comma-separated)</Label>
         <Input value={icd10} onChange={e => setIcd10(e.target.value)} className="h-9" placeholder="I10, J45.0" />
@@ -259,7 +323,7 @@ function NoteWriter({
           <p className="text-xs font-medium text-muted-foreground mb-1.5">Default Order Sets</p>
           <div className="flex flex-wrap gap-1.5">
             {(template.default_order_sets as string[]).map(o => (
-              <Badge key={o} variant="secondary" className="text-[10px]">{o}</Badge>
+              <Badge key={o} variant="secondary" className="text-[12px]">{o}</Badge>
             ))}
           </div>
         </div>
@@ -270,7 +334,7 @@ function NoteWriter({
         <Button
           size="sm"
           onClick={() => submitMut.mutate()}
-          disabled={submitMut.isPending || !patientId}
+          disabled={submitMut.isPending || !selectedPatient}
         >
           <Save className="h-3.5 w-3.5 mr-1.5" />
           {submitMut.isPending ? "Saving…" : "Save Note"}
@@ -327,7 +391,7 @@ function NotesTab() {
                 <td className="px-4 py-2.5">{n.patient_id}</td>
                 <td className="px-4 py-2.5 text-xs text-muted-foreground">{n.encounter_id ?? "—"}</td>
                 <td className="px-4 py-2.5">
-                  <Badge variant="outline" className={`text-[10px] ${SPECIALTY_COLORS[n.specialty] ?? ""}`}>
+                  <Badge variant="outline" className={`text-[12px] ${SPECIALTY_COLORS[n.specialty] ?? ""}`}>
                     {SPECIALTY_LABELS[n.specialty] ?? n.specialty}
                   </Badge>
                 </td>
@@ -363,7 +427,7 @@ function NotesTab() {
               {viewNote.icd10_codes?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {viewNote.icd10_codes.map((c: string) => (
-                    <Badge key={c} variant="outline" className="text-[10px]">{c}</Badge>
+                    <Badge key={c} variant="outline" className="text-[12px]">{c}</Badge>
                   ))}
                 </div>
               )}
@@ -385,7 +449,7 @@ function NotesTab() {
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(viewNote.note_data).map(([k, v]) => (
                       <div key={k} className="bg-muted/40 rounded p-2">
-                        <p className="text-[10px] text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
+                        <p className="text-[12px] text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
                         <p className="text-xs font-medium">{String(v)}</p>
                       </div>
                     ))}

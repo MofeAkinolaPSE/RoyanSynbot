@@ -23,11 +23,12 @@ import {
 } from "@/components/ui/sheet";
 import {
   CalendarDays, Clock, RefreshCw, Loader2, Plus, CheckCircle2,
-  UserCheck, XCircle, CalendarPlus, List, LayoutGrid,
+  UserCheck, UserX, XCircle, CalendarPlus, List, LayoutGrid,
   ChevronLeft, ChevronRight, Stethoscope, MapPin, Zap, CalendarSearch,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -63,11 +64,11 @@ interface Slot {
 }
 
 const APT_STATUS_COLORS: Record<string, string> = {
-  scheduled:  "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  arrived:    "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  completed:  "bg-green-500/20 text-green-400 border-green-500/30",
-  cancelled:  "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  no_show:    "bg-red-500/20 text-red-400 border-red-500/30",
+  scheduled:  "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  arrived:    "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  completed:  "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  cancelled:  "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30",
+  no_show:    "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
 };
 
 const APT_BLOCK_COLORS: Record<string, string> = {
@@ -141,10 +142,15 @@ export default function HospitalAppointments() {
   const weekEnd = addDays(weekStart, 6);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  // List view query
+  // List view query — a single day looked "empty" every time the next
+  // booked appointment (e.g. a follow-up) fell on any day but today, even
+  // though it was booked correctly. Defaults to a 30-day forward window from
+  // the picked date so upcoming appointments actually show up here without
+  // the user having to already know which day to jump to.
+  const dateFilterTo = toISO(addDays(new Date(dateFilter + "T00:00:00"), 30));
   const { data: aptData, isLoading: aptLoading, refetch: refetchApts, isFetching: aptFetching } = useQuery({
-    queryKey: ["appointments", dateFilter],
-    queryFn: () => api.hospital.appointments.list({ date: dateFilter }),
+    queryKey: ["appointments", dateFilter, dateFilterTo],
+    queryFn: () => api.hospital.appointments.list({ date: dateFilter, date_to: dateFilterTo }),
     staleTime: 30_000,
     enabled: viewMode === "list" || tab !== "today",
   });
@@ -180,7 +186,7 @@ export default function HospitalAppointments() {
   // Slots query
   const { data: slotsData, isLoading: slotsLoading, refetch: refetchSlots } = useQuery({
     queryKey: ["appointment-slots", slotDate],
-    queryFn: () => api.hospital.appointments.listSlots({ date: slotDate }),
+    queryFn: () => api.hospital.appointments.listSlots({ date: slotDate, availableOnly: false }),
     enabled: tab === "slots",
     staleTime: 30_000,
   });
@@ -215,21 +221,56 @@ export default function HospitalAppointments() {
     (a.slot?.start_time ?? "").localeCompare(b.slot?.start_time ?? ""),
   );
 
-  // Counts
+  // Counts — safe to compute client-side here (unlike Billing's equivalent
+  // bug): `appointments` comes from a date-only query with no status filter,
+  // so it always contains every status for the day already.
   const scheduled = appointments.filter(a => ["scheduled", "booked", "confirmed"].includes(a.status ?? "")).length;
   const arrived   = appointments.filter(a => a.status === "arrived").length;
   const completed = appointments.filter(a => a.status === "completed").length;
+  const noShow    = appointments.filter(a => a.status === "no_show").length;
+
+  // The Calendar page (CalendarTaskManager.tsx) keeps its own separate React
+  // Query cache ("sched-appointments") for the same underlying appointment
+  // data — a change made here left the Calendar showing stale data until its
+  // own staleTime expired, since the two pages never shared a query key.
+  // Invalidate both sets so either page reflects changes made on the other.
+  const invalidateAppts = () => {
+    void qc.invalidateQueries({ queryKey: ["appointments"] });
+    void qc.invalidateQueries({ queryKey: ["appointments-day"] });
+    void qc.invalidateQueries({ queryKey: ["appointments-calendar"] });
+    void qc.invalidateQueries({ queryKey: ["sched-appointments"] });
+  };
+
+  // An appointment booked/arrived/completed/cancelled anywhere else in the
+  // app (Calendar, patient profile, the queue on discharge) used to only
+  // show up here after a manual refresh — nothing pushed a live update to
+  // this page at all.
+  useRealtimeChannel("appointment_updates", () => {
+    invalidateAppts();
+  });
 
   // Mutations
   const arriveMut = useMutation({
     mutationFn: (apt: Appointment) => api.hospital.appointments.arrive(apt.id),
-    onSuccess: () => { toast({ title: "Patient arrived" }); void qc.invalidateQueries({ queryKey: ["appointments"] }); },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Patient arrived",
+        description: data?.queue_number
+          ? `Now on the queue as ${data.queue_number}`
+          : data?.already_active ? "Already on the queue from an earlier visit today" : undefined,
+      });
+      invalidateAppts();
+      void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const completeMut = useMutation({
     mutationFn: (apt: Appointment) => api.hospital.appointments.complete(apt.id),
-    onSuccess: () => { toast({ title: "Appointment completed" }); void qc.invalidateQueries({ queryKey: ["appointments"] }); },
+    onSuccess: () => {
+      toast({ title: "Appointment completed" });
+      invalidateAppts();
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -240,8 +281,19 @@ export default function HospitalAppointments() {
       setCancelOpen(false);
       setCancelReason("");
       setDetailOpen(false);
-      void qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: ["appointments-calendar"] });
+      invalidateAppts();
+      void qc.invalidateQueries({ queryKey: ["appointment-slots"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const noShowMut = useMutation({
+    mutationFn: (apt: Appointment) => api.hospital.appointments.noShow(apt.id),
+    onSuccess: () => {
+      toast({ title: "Marked as no-show" });
+      setDetailOpen(false);
+      invalidateAppts();
+      void qc.invalidateQueries({ queryKey: ["appointment-slots"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -266,8 +318,8 @@ export default function HospitalAppointments() {
       toast({ title: "Appointment booked" });
       setBookOpen(false);
       setBookForm({ ...EMPTY_BOOK });
-      void qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: ["appointments-calendar"] });
+      invalidateAppts();
+      void qc.invalidateQueries({ queryKey: ["appointment-slots"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -311,11 +363,12 @@ export default function HospitalAppointments() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Scheduled",  value: scheduled,  icon: <Clock className="h-4 w-4" />,        color: "text-blue-400"  },
           { label: "Arrived",    value: arrived,    icon: <UserCheck className="h-4 w-4" />,     color: "text-yellow-400" },
           { label: "Completed",  value: completed,  icon: <CheckCircle2 className="h-4 w-4" />, color: "text-green-400" },
+          { label: "No Show",    value: noShow,     icon: <XCircle className="h-4 w-4" />,       color: "text-red-400" },
         ].map(k => (
           <Card key={k.label}>
             <CardContent className="pt-5">
@@ -343,8 +396,9 @@ export default function HospitalAppointments() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             {viewMode === "list" ? (
               <div className="flex items-center gap-3">
-                <Label className="shrink-0 text-sm">Date</Label>
+                <Label className="shrink-0 text-sm">From</Label>
                 <Input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="w-44" />
+                <span className="text-xs text-muted-foreground">Showing next 30 days</span>
               </div>
             ) : viewMode === "day" ? (
               <div className="flex items-center gap-2">
@@ -432,7 +486,7 @@ export default function HospitalAppointments() {
                       {appointments.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                            <CalendarDays className="mx-auto mb-2 h-6 w-6 opacity-30" />No appointments for {dateFilter}
+                            <CalendarDays className="mx-auto mb-2 h-6 w-6 opacity-30" />No appointments from {dateFilter} to {dateFilterTo}
                           </TableCell>
                         </TableRow>
                       ) : appointments.map(apt => (
@@ -442,7 +496,7 @@ export default function HospitalAppointments() {
                           <TableCell className="font-mono text-xs">{apt.patient_id != null ? String(apt.patient_id).slice(0, 8) : "—"}</TableCell>
                           <TableCell className="text-sm">{apt.slot?.provider_name ?? "—"}</TableCell>
                           <TableCell className="text-xs">{apt.slot?.department ?? "—"}</TableCell>
-                          <TableCell className="capitalize text-xs">{apt.appointment_type ?? "—"}</TableCell>
+                          <TableCell className="capitalize text-xs">{apt.appointment_type?.replace(/_/g, " ") ?? "—"}</TableCell>
                           <TableCell><AptBadge status={apt.ui_status ?? apt.status} /></TableCell>
                           <TableCell onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1">
@@ -453,7 +507,7 @@ export default function HospitalAppointments() {
                                 </Button>
                               )}
                               {apt.status === "arrived" && (
-                                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-400 hover:bg-green-500/10"
+                                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
                                   onClick={() => completeMut.mutate(apt)} disabled={completeMut.isPending}>
                                   <CheckCircle2 className="h-3 w-3" /> Complete
                                 </Button>
@@ -512,10 +566,10 @@ export default function HospitalAppointments() {
                             <TableCell className="text-xs text-muted-foreground">
                               {apt.slot?.provider_name ?? "—"}
                             </TableCell>
-                            <TableCell className="text-xs capitalize">{apt.appointment_type ?? "—"}</TableCell>
+                            <TableCell className="text-xs capitalize">{apt.appointment_type?.replace(/_/g, " ") ?? "—"}</TableCell>
                             <TableCell>
-                              <Badge className={cn("text-[10px] capitalize", APT_STATUS_COLORS[ns] ?? "")}>
-                                {ns}
+                              <Badge className={cn("text-[12px] capitalize", APT_STATUS_COLORS[ns] ?? "")}>
+                                {ns.replace(/_/g, " ")}
                               </Badge>
                             </TableCell>
                             <TableCell onClick={e => e.stopPropagation()}>
@@ -536,6 +590,13 @@ export default function HospitalAppointments() {
                                   <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive"
                                     onClick={() => { setActiveApt(apt); setCancelOpen(true); }}>
                                     <XCircle className="h-3 w-3" />
+                                  </Button>
+                                )}
+                                {(ns === "scheduled" || ns === "arrived") && (
+                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-orange-500 hover:text-orange-600"
+                                    onClick={() => noShowMut.mutate(apt)} disabled={noShowMut.isPending}
+                                    title="Mark No Show">
+                                    <UserX className="h-3 w-3" />
                                   </Button>
                                 )}
                               </div>
@@ -572,7 +633,7 @@ export default function HospitalAppointments() {
                         <p className={cn("text-lg font-bold mt-0.5", isToday && "text-primary")}>
                           {day.getDate()}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[12px] text-muted-foreground">
                           {day.toLocaleDateString("en-NG", { month: "short" })}
                         </p>
                       </div>
@@ -592,7 +653,7 @@ export default function HospitalAppointments() {
                           isToday && "bg-primary/5",
                         )}>
                         {dayApts.length === 0 ? (
-                          <p className="py-4 text-center text-[11px] text-muted-foreground/40">—</p>
+                          <p className="py-4 text-center text-[13px] text-muted-foreground/40">—</p>
                         ) : dayApts.map(apt => {
                           const ns = normalizeStatus(apt.ui_status ?? apt.status);
                           const blockCls = APT_BLOCK_COLORS[ns] ?? APT_BLOCK_COLORS.scheduled;
@@ -601,13 +662,13 @@ export default function HospitalAppointments() {
                               key={apt.id}
                               onClick={() => openDetail(apt)}
                               className={cn(
-                                "w-full rounded-md border px-2 py-1.5 text-left transition-colors text-[11px] leading-tight",
+                                "w-full rounded-md border px-2 py-1.5 text-left transition-colors text-[13px] leading-tight",
                                 blockCls,
                               )}
                             >
                               <p className="font-semibold">{apt.slot?.start_time ?? "—"}</p>
                               <p className="truncate text-muted-foreground">{apt.slot?.provider_name ?? "—"}</p>
-                              <p className="truncate capitalize opacity-70">{apt.appointment_type ?? ""}</p>
+                              <p className="truncate capitalize opacity-70">{apt.appointment_type?.replace(/_/g, " ") ?? ""}</p>
                             </button>
                           );
                         })}
@@ -660,7 +721,7 @@ export default function HospitalAppointments() {
                         <TableCell className="text-xs">{s.department}</TableCell>
                         <TableCell>{s.capacity}</TableCell>
                         <TableCell className={cn("text-sm font-semibold",
-                          (s.booked_count ?? 0) >= (s.capacity ?? 1) ? "text-red-400" : "text-green-400")}>
+                          (s.booked_count ?? 0) >= (s.capacity ?? 1) ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                           {s.booked_count ?? 0}
                         </TableCell>
                       </TableRow>
@@ -710,7 +771,7 @@ export default function HospitalAppointments() {
                   )}
                 </div>
 
-                <p className="text-[11px] font-mono text-muted-foreground">
+                <p className="text-[13px] font-mono text-muted-foreground">
                   Patient: {activeApt.patient_id ?? "—"}
                 </p>
               </div>
@@ -726,7 +787,7 @@ export default function HospitalAppointments() {
                   </Button>
                 )}
                 {activeApt.status === "arrived" && (
-                  <Button className="w-full gap-2 border-green-500/40 text-green-400 hover:bg-green-500/10"
+                  <Button className="w-full gap-2 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
                     variant="outline" size="sm"
                     onClick={() => { completeMut.mutate(activeApt); setDetailOpen(false); }}
                     disabled={completeMut.isPending}>
@@ -735,7 +796,15 @@ export default function HospitalAppointments() {
                 )}
                 {["scheduled", "booked", "confirmed", "arrived"].includes(activeApt.status ?? "") && (
                   <Button variant="outline" size="sm"
-                    className="w-full gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                    className="w-full gap-2 border-orange-500/30 text-orange-700 dark:text-orange-400 hover:bg-orange-500/10"
+                    disabled={noShowMut.isPending}
+                    onClick={() => { noShowMut.mutate(activeApt); }}>
+                    <UserX className="h-3.5 w-3.5" /> Mark No Show
+                  </Button>
+                )}
+                {["scheduled", "booked", "confirmed", "arrived"].includes(activeApt.status ?? "") && (
+                  <Button variant="outline" size="sm"
+                    className="w-full gap-2 border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-500/10"
                     onClick={() => { setCancelOpen(true); }}>
                     <XCircle className="h-3.5 w-3.5" /> Cancel Appointment
                   </Button>

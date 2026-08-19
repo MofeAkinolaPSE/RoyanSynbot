@@ -499,6 +499,7 @@ from src.routers.queue_clinical import router as queue_clinical_router
 from src.routers.wards import router as wards_router
 from src.routers.lab import router as lab_router
 from src.routers.pharmacy_dispensing import router as pharmacy_dispensing_router
+from src.routers.pharmacy_inventory import router as pharmacy_inventory_router
 from src.routers.billing_hospital import router as billing_hospital_router
 from src.routers.appointments import router as appointments_router
 from src.routers.coverage import router as coverage_router
@@ -518,6 +519,7 @@ from src.routers.hospital_reports import router as hospital_reports_router
 from src.routers.payments_gateway import router as payments_gateway_router
 from src.routers.integrations import router as integrations_router
 from src.routers.clinic_templates import router as clinic_templates_router
+from src.routers.facility_ops import router as facility_ops_router
 from src.routers.portal import router as portal_router
 
 app.include_router(crm_sales_router)
@@ -527,6 +529,7 @@ app.include_router(queue_clinical_router)
 app.include_router(wards_router)
 app.include_router(lab_router)
 app.include_router(pharmacy_dispensing_router)
+app.include_router(pharmacy_inventory_router)
 app.include_router(billing_hospital_router)
 app.include_router(appointments_router)
 app.include_router(coverage_router)
@@ -543,9 +546,11 @@ app.include_router(telemedicine_router)
 app.include_router(quality_safety_router)
 app.include_router(hr_shifts_router)
 app.include_router(hospital_reports_router)
+app.include_router(reports_router)
 app.include_router(payments_gateway_router)
 app.include_router(integrations_router)
 app.include_router(clinic_templates_router)
+app.include_router(facility_ops_router)
 app.include_router(portal_router)
 app.include_router(finance_router)
 app.include_router(billing_router)
@@ -880,7 +885,7 @@ def _detect_chat_mode(question: str, roles: set[str]) -> str:
     if not roles:
         return "customer"
     if any(x in roles for x in {"admin", "management"}) and any(
-        k in q for k in ["executive", "brief", "board", "leadership", "health", "overview", "summary"]
+        _kw_in(q, k) for k in ["executive", "brief", "board", "leadership", "health", "overview", "summary"]
     ):
         return "executive"
     return "assistant"
@@ -975,7 +980,7 @@ def _is_executive_analytical_question(question: str, mode: str) -> bool:
         "performance",
         "health",
     ]
-    return any(k in q for k in keywords)
+    return any(_kw_in(q, k) for k in keywords)
 
 
 def _build_missing_evidence_answer(tool_errors: list[str]) -> str:
@@ -1061,6 +1066,26 @@ def _detect_action_intent(question: str) -> str | None:
     return None
 
 
+_KW_WORD_BOUNDARY_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _kw_in(q: str, keyword: str) -> bool:
+    """Keyword containment that avoids short single-word false positives —
+    plain substring matching let a two-letter keyword like "ar" match inside
+    "are", so any casual question containing the word "are" ('how are we
+    today?') was silently classified as an AR/finance query, dragging in the
+    full agent-orchestration pipeline for an ordinary greeting. Multi-word
+    phrases keep using plain substring match (a false hit there is
+    vanishingly unlikely); single words use a word-boundary regex instead."""
+    if " " in keyword or "&" in keyword:
+        return keyword in q
+    pattern = _KW_WORD_BOUNDARY_CACHE.get(keyword)
+    if pattern is None:
+        pattern = re.compile(r"\b" + re.escape(keyword) + r"\b")
+        _KW_WORD_BOUNDARY_CACHE[keyword] = pattern
+    return bool(pattern.search(q))
+
+
 _REPORT_KEYWORDS = {
     # report triggers
     "report", "summary", "summarize", "summarise", "breakdown", "analysis",
@@ -1092,7 +1117,7 @@ _REPORT_KEYWORDS = {
 def _classify_query_intent(question: str) -> str:
     """Return 'report' for explicit report/list requests, else 'conversational'."""
     q = (question or "").lower()
-    if any(kw in q for kw in _REPORT_KEYWORDS):
+    if any(_kw_in(q, kw) for kw in _REPORT_KEYWORDS):
         return "report"
     return "conversational"
 
@@ -1261,20 +1286,36 @@ def _build_chat_instruction(
         return (
             base
             + "The user is asking for a structured report or list. "
-            + "Respond with a clear, well-organised clinical and operational answer: "
-            + "lead with patient safety and clinical findings, then operational metrics, then financial data if relevant. "
-            + "Structure: current state → key findings → patient safety implications → recommended actions. "
-            + "Use bullet points or sections where it aids clarity."
+            + "Let the shape of the answer follow what they actually asked for — don't force every "
+            + "reply into the same four-part template. As a rough starting point, clinical findings and "
+            + "patient safety usually belong before operational or financial detail, but skip sections "
+            + "that don't apply rather than padding them out. "
+            + "Use Markdown headings (##) and bullet lists here — this response may be offered to the "
+            + "user as a downloadable Word document, so structure it like a real report: a short lead-in "
+            + "sentence, then clearly labelled sections. "
+            + "Still write like a person who knows the hospital, not a template generator — plain, "
+            + "specific language over generic report-speak."
         )
 
     # Conversational intent — the default ─────────────────────────────────────
     return (
         base
-        + "The user is asking a conversational question. "
-        + "Reply naturally and concisely — 1 to 2 sentences maximum unless the data genuinely "
-        + "warrants more. Do NOT produce a structured report, bullet-point breakdown, or "
-        + "analyst summary unless the user explicitly asked for one. "
-        + "Speak like a knowledgeable teammate giving a quick verbal answer."
+        + "The user is asking a conversational question, not requesting a report. Answer the way a "
+        + "sharp, well-informed colleague would if you stopped them in the hallway — warm, direct, "
+        + "and specific to what they actually asked. "
+        + "One to three sentences is normal. Only go longer if the question truly can't be answered "
+        + "any shorter. "
+        + "Plain prose only — no Markdown, no **bold**, no bullet lists, no headings, no numbered "
+        + "steps, no 'Here's what I see' framing. If you want to emphasize something, say it plainly "
+        + "instead of formatting it. "
+        + "If the question is broad or could mean several things ('how are we doing', 'what's going "
+        + "on today'), don't dump every metric you have — give a brief, honest read and ask a short "
+        + "follow-up question to find out what they actually want to dig into, the way a colleague "
+        + "would ask 'anything specific on your mind, or just checking in?' rather than reciting a "
+        + "status report nobody asked for. "
+        + "You're a member of this hospital's team, not a tool being queried — it's fine to have a "
+        + "point of view, flag something worth their attention unprompted, or just say things plainly "
+        + "when the honest answer is short."
     )
 
 
@@ -1449,58 +1490,111 @@ def _extract_skus(question: str) -> list[str]:
     return uniq[:10]
 
 
+_MRN_TOKEN_PATTERN = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9/-]{3,19}[A-Za-z0-9]\b")
+_PATIENT_LOOKUP_PHRASES = [
+    "pull up patient", "pull up", "look up patient", "look up", "find patient",
+    "search patient", "show me patient", "show patient", "open patient",
+    "patient record for", "patient record", "patient info for", "patient info",
+    "patient details for", "patient details", "who is patient", "get patient",
+]
+_PATIENT_LOOKUP_FILLER = {
+    "for", "named", "called", "record", "records", "info", "information",
+    "details", "please", "patient", "pull", "up", "look", "find", "search",
+    "show", "me", "open", "who", "is", "get", "the",
+}
+
+
+def _extract_patient_identifier(question: str) -> str | None:
+    """Pull an MRN or a likely patient name out of a lookup-style question.
+    MRN wins when present (unambiguous); otherwise strip the trigger phrase
+    and filler words and use whatever's left as a name search term.
+
+    Real MRN formats in this system are inconsistent (RH2026000011,
+    RH21-32393, TESTOPD001, RHN-000001, RO/O-362084, ...) — no single
+    letters-then-digits regex covers them all. The reliable signal is
+    structural: a single token containing BOTH a letter and a digit is
+    essentially never an ordinary English word in a question, so that's
+    the actual test, not a specific letter/digit-count shape."""
+    if not question:
+        return None
+    for token in _MRN_TOKEN_PATTERN.findall(question):
+        has_digit = any(c.isdigit() for c in token)
+        has_letter = any(c.isalpha() for c in token)
+        if has_digit and has_letter:
+            return token.upper()
+
+    q_lower = question.lower()
+    if not any(phrase in q_lower for phrase in _PATIENT_LOOKUP_PHRASES):
+        return None
+
+    # Natural phrasing often tacks a trailing request onto the lookup
+    # ("look up patient Mofe Akinola, I want his notes") — only the clause
+    # with the actual name matters, so cut at the first clause boundary
+    # instead of feeding "i want his notes" into the name search, where it
+    # would AND-match against first/last name and find nobody.
+    clause = re.split(r"[,.;]|\band\b|\bthen\b", question, maxsplit=1)[0]
+
+    tokens = re.findall(r"[A-Za-z']+", clause)
+    remainder = [t for t in tokens if t.lower() not in _PATIENT_LOOKUP_FILLER]
+    name = " ".join(remainder).strip()
+    return name or None
+
+
 def _plan_tools(question: str, mode: str, roles: set[str] | None = None) -> list[tuple[str, dict[str, Any]]]:
     q = (question or "").lower()
     plan: list[tuple[str, dict[str, Any]]] = []
     _roles = roles or set()
 
     # ── Clinical tools: only added when the user has a relevant clinical role ──
-    _clinical_staff = _roles & {"doctor", "nurse", "pharmacist", "lab", "radiology", "admin", "management"}
+    _clinical_staff = _roles & {"doctor", "nurse", "pharmacist", "lab", "radiology", "admin", "management", "receptionist"}
     if _clinical_staff:
-        if any(k in q for k in ["patient", "encounter", "queue", "consult", "my patient", "active patient", "ward round"]):
+        _patient_identifier = _extract_patient_identifier(question)
+        if _patient_identifier:
+            plan.append(("getPatientRecord", {"identifier": _patient_identifier}))
+        elif any(_kw_in(q, k) for k in ["patient", "encounter", "queue", "consult", "my patient", "active patient", "ward round"]):
             plan.append(("getActiveEncounters", {"limit": 20}))
 
-        if any(k in q for k in ["lab", "test", "investigation", "result", "pending lab", "lab order"]):
+        if any(_kw_in(q, k) for k in ["lab", "test", "investigation", "result", "pending lab", "lab order"]):
             plan.append(("getPendingLabOrders", {"limit": 20}))
 
-        if any(k in q for k in ["prescription", "rx", "drug", "dispense", "pending prescription", "pharmacy queue"]):
+        if any(_kw_in(q, k) for k in ["prescription", "rx", "drug", "dispense", "pending prescription", "pharmacy queue"]):
             plan.append(("getPendingPrescriptions", {"limit": 20}))
 
-        if any(k in q for k in ["bed", "ward", "occupancy", "inpatient", "admit", "discharge"]):
+        if any(_kw_in(q, k) for k in ["bed", "ward", "occupancy", "inpatient", "admit", "discharge"]):
             plan.append(("getBedStatus", {}))
 
-    if any(k in q for k in ["inventory", "stock", "availability", "available", "sku"]):
+    if any(_kw_in(q, k) for k in ["inventory", "stock", "availability", "available", "sku"]):
         skus = _extract_skus(question)
         if skus:
             plan.append(("getInventoryBySkus", {"skus": skus}))
         else:
             plan.append(("getLatestInventorySnapshot", {"limit": 30}))
 
-    if any(k in q for k in ["expiry", "expiring", "expire", "shelf life"]):
+    if any(_kw_in(q, k) for k in ["expiry", "expiring", "expire", "shelf life"]):
         plan.append(("getExpiringInventory", {}))
 
-    if mode != "customer" and any(k in q for k in ["finance", "cashflow", "ar", "ap", "receivable", "payable", "revenue", "sales", "income"]):
+    if mode != "customer" and any(_kw_in(q, k) for k in ["finance", "cashflow", "ar", "ap", "receivable", "payable", "revenue", "sales", "income"]):
         plan.append(("getFinancialKpis", {}))
-        if any(k in q for k in ["trend", "period", "monthly"]):
+        if any(_kw_in(q, k) for k in ["trend", "period", "monthly"]):
             plan.append(("getArTrendSummary", {"periods": 6}))
-        if any(k in q for k in ["aging", "overdue", "bucket"]):
+        if any(_kw_in(q, k) for k in ["aging", "overdue", "bucket"]):
             plan.append(("getArAgingBuckets", {}))
 
-    if mode != "customer" and any(k in q for k in ["ops", "operations", "downtime", "fulfillment", "turnover", "forecast"]):
+    if mode != "customer" and any(_kw_in(q, k) for k in ["ops", "operations", "downtime", "fulfillment", "turnover", "forecast"]):
         plan.append(("getOpsKpis", {}))
-        if any(k in q for k in ["forecast", "predict", "projection"]):
+        if any(_kw_in(q, k) for k in ["forecast", "predict", "projection"]):
             plan.append(("runStockTurnoverForecast", {"window": 3, "horizon": 3}))
 
-    if mode != "customer" and any(k in q for k in ["project", "controls", "scope", "change request", "risk register"]):
+    if mode != "customer" and any(_kw_in(q, k) for k in ["project", "controls", "scope", "change request", "risk register"]):
         plan.append(("getProjectControlsRollup", {"project_id": None}))
 
-    if mode != "customer" and any(k in q for k in ["risk", "alert", "issue", "threat"]):
+    if mode != "customer" and any(_kw_in(q, k) for k in ["risk", "alert", "issue", "threat"]):
         plan.append(("getRiskSignals", {}))
 
-    if mode != "customer" and any(k in q for k in ["recommend", "action", "next step", "what should we do", "focus", "quarter", "priority"]):
+    if mode != "customer" and any(_kw_in(q, k) for k in ["recommend", "action", "next step", "what should we do", "focus", "quarter", "priority"]):
         plan.append(("getRecommendations", {}))
 
-    if mode == "executive" or (mode != "customer" and any(k in q for k in ["executive", "overview", "health", "summary", "brief"])):
+    if mode == "executive" or (mode != "customer" and any(_kw_in(q, k) for k in ["executive", "overview", "health", "summary", "brief"])):
         plan.append(("getExecutiveSummary", {}))
 
     # Dedupe while preserving first-seen order; keep orchestration lightweight.
@@ -1722,6 +1816,18 @@ def _normalize_tool_catalog(mode: str, tools: list[dict[str, Any]]) -> "ToolCata
     return ToolCatalogResponse(mode=str(mode or "customer"), count=len(normalized_items), tools=normalized_items)
 
 
+def _build_chat_links(tool_outputs: list[dict[str, Any]]) -> list["ChatLink"]:
+    """Turn tool results into clickable follow-through links for the chat UI —
+    e.g. a resolved patient record becomes an "Open Patient Record" button
+    instead of leaving the user to navigate there by hand."""
+    links: list[ChatLink] = []
+    patient = _tool_payload(tool_outputs, "getPatientRecord")
+    if isinstance(patient, dict) and patient.get("found") and patient.get("profile_url"):
+        name = str(patient.get("name") or patient.get("mrn") or "Patient").strip()
+        links.append(ChatLink(label=f"Open {name}'s Patient Record", url=str(patient["profile_url"])))
+    return links
+
+
 def _normalize_chat_contract(
     *,
     answer: str,
@@ -1752,6 +1858,7 @@ def _normalize_chat_contract(
             tools=normalized_tools,
             errors=normalized_errors,
         ),
+        links=_build_chat_links(tool_outputs),
     )
 
 
@@ -3809,11 +3916,17 @@ class ChatOrchestrationMeta(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class ChatLink(BaseModel):
+    label: str
+    url: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     bot: str
     sources: list[ChatSource] = Field(default_factory=list)
     orchestration: ChatOrchestrationMeta
+    links: list[ChatLink] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):
@@ -4315,14 +4428,37 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
                 logging.error(f"action intent handler failed [{_action_type}]: {_ae}")
                 # Fall through to normal LLM path if handler errors
 
-    tool_outputs, tool_errors = _run_orchestration_plan(
-        question=question,
-        roles=roles,
-        mode=mode,
-        actor_id=actor_id,
-        actor_role=actor_role,
-        trace_id=trace_id,
+    # ── Deep-context gate ────────────────────────────────────────────────────
+    # Tool/agent orchestration and the embedding+vector-retrieval+KB pipeline
+    # below are each a handful of sequential network/DB round trips (up to
+    # three whole agents, each running several queries, plus an embedding API
+    # call and two more DB-backed searches). Running all of that for a plain
+    # "how are we today?" is pure latency with nothing to show for it, and for
+    # executive mode specifically it used to mean *every* vague admin message
+    # ran the router's generic fallback agents regardless of relevance. Only
+    # pay for it when the question actually needs grounded data: an explicit
+    # report/list/clinical-data ask, an executive-analytical question (see
+    # _is_executive_analytical_question), or a caller-supplied embedding
+    # (a signal the caller already wants vector retrieval).
+    _intent = _classify_query_intent(question)
+    _needs_deep_context = (
+        mode == "customer"
+        or _intent == "report"
+        or _is_executive_analytical_question(question=question, mode=mode)
+        or bool(embedding)
     )
+
+    if _needs_deep_context:
+        tool_outputs, tool_errors = _run_orchestration_plan(
+            question=question,
+            roles=roles,
+            mode=mode,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            trace_id=trace_id,
+        )
+    else:
+        tool_outputs, tool_errors = [], []
 
     if _is_executive_analytical_question(question=question, mode=mode) and not tool_outputs:
         answer = _build_missing_evidence_answer(tool_errors=tool_errors)
@@ -4338,20 +4474,30 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         ).model_dump()
     live_context_parts = []
     if tool_outputs:
-        live_context_parts.append("ORCHESTRATION TOOL RESULTS:\n" + json.dumps(tool_outputs, indent=2))
+        # default=str: tool/agent outputs pass raw DB rows straight through
+        # (e.g. a bill's Decimal-typed subtotal/patient_balance columns) —
+        # any single tool returning a non-JSON-native type must never 500 the
+        # whole chat request, it should just stringify and move on.
+        live_context_parts.append("ORCHESTRATION TOOL RESULTS:\n" + json.dumps(tool_outputs, indent=2, default=str))
     if tool_errors:
         live_context_parts.append("ORCHESTRATION TOOL WARNINGS:\n" + "\n".join(tool_errors))
     live_context_str = "\n\n".join(live_context_parts)
     results: list[tuple[str | None, str | None]] = []
 
-    if not embedding:
+    if _needs_deep_context and not embedding:
         try:
             embedding = get_embedding(question)
         except Exception as e:
             logging.error(f"Embedding service error: {e}")
             embedding = None
 
-    if embedding is None:
+    if not _needs_deep_context:
+        # Lightweight path: skip vector retrieval and KB search entirely —
+        # the conversational-mode instruction doesn't lean on retrieved
+        # chunks, and staff_block/activity_snapshot already carry the
+        # personalization context via _build_chat_instruction.
+        context = live_context_str
+    elif embedding is None:
          # Proceed with non-vector context when embedding is unavailable.
          if live_context_str:
              logging.warning("Embedding unavailable; proceeding with live backend context only.")
@@ -4373,7 +4519,7 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         try:
             from src.services.knowledge_service import KnowledgeService
             _kb_svc = KnowledgeService(llm=llm_client)
-            _kb_result = _kb_svc.search(question, agent="chat", top_k=3)
+            _kb_result = _kb_svc.search(question, agent="chat", top_k=3, precomputed_embedding=embedding)
             if _kb_result.context:
                 kb_context = f"COMPLIANCE KNOWLEDGE BASE:\n{_kb_result.context}"
         except Exception as _kb_exc:
@@ -4406,7 +4552,11 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
     if direct_answer:
         answer = direct_answer
     else:
-        answer = llm_client.generate_response(
+        # Run off the event loop — this is a blocking `requests.post` under the
+        # hood (deepseek.py), and without to_thread it would hold up every
+        # other in-flight request on this worker for its full duration.
+        answer = await asyncio.to_thread(
+            llm_client.generate_response,
             context=context,
             question=question,
             instruction=_build_chat_instruction(mode=mode, question=question, staff_profile=_staff_profile, roles=roles, activity_snapshot=_activity_snapshot),
@@ -4419,17 +4569,26 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
     answer = _enforce_mode_tone(answer=answer, mode=mode, question=question)
     # answer = append_disclaimer(answer)  # Removed per user request: disclaimer at bottom of chat, not per response
     sources = []
+    user_id = None
     try:
         user = getattr(request.state, "user", None)
-        user_id = None
         if isinstance(user, dict):
             user_id = user.get("sub") or user.get("id")
         retrieval_sources = [{"question": q or "", "answer": a or ""} for (q, a) in (results or [])]
         tool_sources = _build_tool_sources(tool_outputs)
         sources = tool_sources + retrieval_sources
-        save_chat_history(user_id=user_id, question=question, answer=answer, sources=sources)
     except Exception as e:
-        logging.error(f"/chat history save failed: {e}")
+        logging.error(f"/chat sources build failed: {e}")
+
+    # Fire-and-forget — the answer is already final, no need to make the
+    # caller wait on one more blocking DB round trip before seeing it.
+    def _persist_chat_history() -> None:
+        try:
+            save_chat_history(user_id=user_id, question=question, answer=answer, sources=sources)
+        except Exception as e:
+            logging.error(f"/chat history save failed: {e}")
+    asyncio.create_task(asyncio.to_thread(_persist_chat_history))
+
     return _normalize_chat_contract(
         answer=answer,
         bot=BOT_NAME,

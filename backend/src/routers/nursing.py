@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,13 +25,13 @@ from pydantic import BaseModel, Field
 from src.db import db, audit_event
 from src.middleware import verify_jwt
 from src.services.clinical_shared import get_patient_allergies
+from src.services.event_service import emit_clinical_event
 from src.constants import (
     TABLE_VITALS,
     TABLE_NURSING_CARE_PLANS,
     TABLE_FLUID_BALANCE,
     TABLE_MAR_ENTRIES,
     MAR_STATUS_ALLOWED,
-    TABLE_PATIENTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ router = APIRouter(prefix="/nursing", tags=["Nursing"])
 CARE_PLAN_STATUSES = {"active", "resolved", "deferred", "discontinued"}
 FLUID_TYPES        = {"intake", "output"}
 PAIN_SCALE_MAX     = 10
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +139,15 @@ async def record_vitals(payload: VitalsCreate, user=Depends(verify_jwt)):
         actor_id=user.get("sub"),
         subject_type="vitals",
         subject_id=str(row.get("id") or ""),
+    )
+    emit_clinical_event(
+        event_type="VITALS_RECORDED",
+        encounter_id=payload.encounter_id,
+        patient_id=payload.patient_id,
+        entity_type="vitals",
+        entity_id=row.get("id"),
+        performed_by=user.get("sub"),
+        event_data={"pain_score": payload.pain_score, "spo2": payload.spo2},
     )
     return {"ok": True, "vitals": row}
 
@@ -307,6 +321,14 @@ async def record_mar_entry(payload: MARCreate, user=Depends(verify_jwt)):
     data = payload.model_dump(exclude_none=True)
     data["administered_by"] = user.get("sub") or "system"
 
+    # A "scheduled" future dose legitimately has no administered_at yet.
+    # Every other status represents something that happened right now — the
+    # UI never collects this field, so without a server-side default every
+    # row was silently left NULL, breaking both the "Administered" column
+    # and list_mar's ORDER BY administered_at.
+    if payload.status != "scheduled" and not data.get("administered_at"):
+        data["administered_at"] = _now()
+
     try:
         result = db.table(TABLE_MAR_ENTRIES).insert(data).execute()
     except Exception as exc:
@@ -365,8 +387,15 @@ async def update_mar_entry(entry_id: int, payload: MARUpdate, user=Depends(verif
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No update fields provided")
-    if updates.get("status") and updates["status"] not in MAR_STATUS_ALLOWED:
-        raise HTTPException(status_code=422, detail=f"status must be one of {MAR_STATUS_ALLOWED}")
+    if updates.get("status"):
+        if updates["status"] not in MAR_STATUS_ALLOWED:
+            raise HTTPException(status_code=422, detail=f"status must be one of {MAR_STATUS_ALLOWED}")
+        if updates["status"] in {"held", "refused"} and not updates.get("override_reason"):
+            raise HTTPException(status_code=422, detail="override_reason is required when status is held or refused")
+        # Same server-side default as record_mar_entry — a "scheduled" entry
+        # transitioning to any other status just happened right now.
+        if updates["status"] != "scheduled" and not updates.get("administered_at"):
+            updates["administered_at"] = _now()
 
     db.table(TABLE_MAR_ENTRIES).update(updates).eq("id", entry_id).execute()
     audit_event("mar_updated", updates, actor_id=user.get("sub"), subject_type="mar", subject_id=str(entry_id))

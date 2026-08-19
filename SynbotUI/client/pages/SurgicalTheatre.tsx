@@ -1,66 +1,30 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Scissors, RefreshCw, Loader2, CalendarDays, CheckCircle2, AlertTriangle,
-  Plus, ClipboardList, Stethoscope, FileText, HeartPulse, ChevronRight,
+  Scissors, RefreshCw, Loader2, CalendarDays, CheckCircle2, AlertTriangle, HeartPulse,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { useToast } from "@/hooks/use-toast";
 import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-
-const URGENCY_COLORS: Record<string, string> = {
-  elective:  "bg-blue-100 text-blue-700 border-blue-300",
-  urgent:    "bg-orange-100 text-orange-700 border-orange-300",
-  emergency: "bg-red-100 text-red-700 border-red-300",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  scheduled:  "bg-slate-100 text-slate-600 border-slate-300",
-  pre_op:     "bg-yellow-100 text-yellow-700 border-yellow-300",
-  in_theatre: "bg-sky-100 text-sky-700 border-sky-300",
-  recovery:   "bg-blue-100 text-blue-700 border-blue-300",
-  completed:  "bg-green-100 text-green-700 border-green-300",
-  cancelled:  "bg-slate-100 text-slate-500 border-slate-300",
-};
-
-const STATUS_NEXT: Record<string, string> = {
-  scheduled:  "Start Pre-Op",
-  pre_op:     "Move to Theatre",
-  in_theatre: "Send to Recovery",
-  recovery:   "Mark Completed",
-};
-
-const STATUS_TRANSITIONS: Record<string, string> = {
-  scheduled:  "pre_op",
-  pre_op:     "in_theatre",
-  in_theatre: "recovery",
-  recovery:   "completed",
-};
+import { TheatreWorkspacePanel } from "@/components/theatre/TheatreWorkspacePanel";
+import { StatusBadge, UrgencyBadge } from "@/components/theatre/theatre-shared";
 
 interface TheatreCase {
   id: number;
   encounter_id: number;
   patient_id: number;
+  patient_mrn?: string;
+  patient_name?: string;
   theatre_name?: string;
   procedure_name: string;
   case_type?: string;
@@ -82,120 +46,15 @@ interface TheatreCase {
   booked_by?: string;
 }
 
-const emptyBooking = {
-  encounter_id: "",
-  patient_id: "",
-  procedure_name: "",
-  theatre_name: "",
-  case_type: "",
-  urgency: "elective",
-  scheduled_date: "",
-  start_time: "",
-  surgeon_id: "",
-  anaesthetist_id: "",
-  scrub_nurse: "",
-  circulating_nurse: "",
-  notes: "",
-};
-
-const emptyPreOp = {
-  consent_signed: false,
-  site_marked: false,
-  allergies_confirmed: false,
-  blood_group_confirmed: false,
-  fasting_confirmed: false,
-  iv_access: false,
-  premedication_given: false,
-  imaging_available: false,
-  blood_available: false,
-  equipment_checked: false,
-  notes: "",
-};
-
-const emptyAnaesthetic = {
-  anaesthetic_type: "general",
-  asa_grade: "",
-  induction_agent: "",
-  maintenance_agent: "",
-  airway_management: "",
-  positioning: "",
-  total_duration_minutes: "",
-  blood_loss_ml: "",
-  fluids_given_ml: "",
-  complications: "",
-  notes: "",
-};
-
-const emptyOperative = {
-  incision: "",
-  findings: "",
-  procedure_performed: "",
-  specimens_sent: "",
-  drains_inserted: false,
-  closure_method: "",
-  complications: "",
-  blood_loss_ml: "",
-  surgeon_notes: "",
-};
-
-const emptyPostOp = {
-  recovery_location: "",
-  vital_signs_stable: true,
-  pain_score: "",
-  nausea_vomiting: false,
-  oxygen_therapy: false,
-  wound_status: "",
-  discharge_criteria_met: false,
-  follow_up_date: "",
-  post_op_medications: "",
-  complications: "",
-  notes: "",
-};
-
-function CheckItem({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer group">
-      <div
-        onClick={() => onChange(!checked)}
-        className={cn(
-          "w-5 h-5 rounded border flex items-center justify-center transition-colors cursor-pointer",
-          checked ? "bg-green-100 border-green-500" : "border-border group-hover:border-ring"
-        )}
-      >
-        {checked && <CheckCircle2 className="w-3 h-3 text-green-600" />}
-      </div>
-      <span className="text-sm text-foreground">{label}</span>
-    </label>
-  );
-}
-
 export default function SurgicalTheatre() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
 
   const [scheduleDate, setScheduleDate] = useState(today);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterUrgency, setFilterUrgency] = useState("all");
 
-  const [bookingOpen, setBookingOpen] = useState(false);
-  const [bookingForm, setBookingForm] = useState({ ...emptyBooking });
-
-  const [preOpOpen, setPreOpOpen] = useState(false);
-  const [preOpCase, setPreOpCase] = useState<TheatreCase | null>(null);
-  const [preOpForm, setPreOpForm] = useState({ ...emptyPreOp });
-
-  const [anaesOpen, setAnaesOpen] = useState(false);
-  const [anaesCase, setAnaesCase] = useState<TheatreCase | null>(null);
-  const [anaesForm, setAnaesForm] = useState({ ...emptyAnaesthetic });
-
-  const [opNotesOpen, setOpNotesOpen] = useState(false);
-  const [opNotesCase, setOpNotesCase] = useState<TheatreCase | null>(null);
-  const [opForm, setOpForm] = useState({ ...emptyOperative });
-
-  const [postOpOpen, setPostOpOpen] = useState(false);
-  const [postOpCase, setPostOpCase] = useState<TheatreCase | null>(null);
-  const [postOpForm, setPostOpForm] = useState({ ...emptyPostOp });
+  const [panelCase, setPanelCase] = useState<TheatreCase | null>(null);
+  const [panelInitialTab, setPanelInitialTab] = useState<string | undefined>(undefined);
 
   // All cases (for list tab)
   const { data: casesData, isLoading: casesLoading, refetch: refetchCases } = useQuery({
@@ -212,193 +71,53 @@ export default function SurgicalTheatre() {
     queryFn: () => api.hospital.theatre.dailySchedule(scheduleDate),
   });
 
+  const { data: statsData, refetch: refetchStats } = useQuery({
+    queryKey: ["theatre-stats"],
+    queryFn: () => api.hospital.theatre.stats(),
+    refetchInterval: 30_000,
+  });
+  const stats = statsData ?? {};
+
   const cases: TheatreCase[] = casesData?.cases || [];
   const schedule: TheatreCase[] = scheduleData?.schedule || [];
 
-  // KPIs from all cases
+  // KPIs — sourced from /theatre/stats, not client-side filters over a
+  // possibly status/urgency-filtered worklist.
   const kpi = {
-    scheduled:  cases.filter(c => c.status === "scheduled").length,
-    in_theatre: cases.filter(c => c.status === "in_theatre").length,
-    recovery:   cases.filter(c => c.status === "recovery").length,
-    completed:  cases.filter(c => c.status === "completed").length,
-    emergency:  cases.filter(c => c.urgency === "emergency").length,
+    scheduled:  stats.scheduled  ?? 0,
+    in_theatre: stats.in_theatre ?? 0,
+    recovery:   stats.recovery   ?? 0,
+    completed:  stats.completed  ?? 0,
+    emergency:  stats.emergency  ?? 0,
   };
 
-  const bookMut = useMutation({
-    mutationFn: (d: typeof bookingForm) =>
-      api.hospital.theatre.scheduleCase({
-        ...d,
-        encounter_id: Number(d.encounter_id),
-        patient_id:   Number(d.patient_id),
-      }),
-    onSuccess: () => {
-      toast({ title: "Theatre case scheduled" });
-      setBookingOpen(false);
-      setBookingForm({ ...emptyBooking });
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-      qc.invalidateQueries({ queryKey: ["theatre-schedule"] });
-    },
-    onError: () => toast({ title: "Failed to schedule case", variant: "destructive" }),
-  });
-
-  const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      api.hospital.theatre.advanceStatus(id, { status }),
-    onSuccess: (_, v) => {
-      toast({ title: `Status advanced to ${v.status.replace("_", " ")}` });
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-      qc.invalidateQueries({ queryKey: ["theatre-schedule"] });
-    },
-    onError: (e: any) => toast({ title: e?.message || "Transition failed", variant: "destructive" }),
-  });
-
-  const preOpMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: typeof preOpForm }) =>
-      api.hospital.theatre.submitPreOp(id, {
-        ...data,
-        notes: data.notes || undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: "Pre-op checklist saved" });
-      setPreOpOpen(false);
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-    },
-    onError: () => toast({ title: "Failed to save pre-op checklist", variant: "destructive" }),
-  });
-
-  const anaesMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: typeof anaesForm }) =>
-      api.hospital.theatre.submitAnaesthetic(id, {
-        ...data,
-        total_duration_minutes: data.total_duration_minutes ? Number(data.total_duration_minutes) : undefined,
-        blood_loss_ml:          data.blood_loss_ml ? Number(data.blood_loss_ml) : undefined,
-        fluids_given_ml:        data.fluids_given_ml ? Number(data.fluids_given_ml) : undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: "Anaesthetic record saved" });
-      setAnaesOpen(false);
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-    },
-    onError: () => toast({ title: "Failed to save anaesthetic record", variant: "destructive" }),
-  });
-
-  const opNotesMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: typeof opForm }) =>
-      api.hospital.theatre.submitOperativeNotes(id, {
-        ...data,
-        blood_loss_ml: data.blood_loss_ml ? Number(data.blood_loss_ml) : undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: "Operative notes saved" });
-      setOpNotesOpen(false);
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-    },
-    onError: () => toast({ title: "Failed to save operative notes", variant: "destructive" }),
-  });
-
-  const postOpMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: typeof postOpForm }) =>
-      api.hospital.theatre.submitPostOp(id, {
-        ...data,
-        pain_score: data.pain_score !== "" ? Number(data.pain_score) : undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: "Post-op record saved" });
-      setPostOpOpen(false);
-      qc.invalidateQueries({ queryKey: ["theatre-cases"] });
-    },
-    onError: () => toast({ title: "Failed to save post-op record", variant: "destructive" }),
-  });
-
-  function openPreOp(c: TheatreCase) {
-    setPreOpCase(c);
-    setPreOpForm({ ...emptyPreOp, ...(c.pre_op_checklist as any || {}) });
-    setPreOpOpen(true);
+  function openPanel(c: TheatreCase, initialTab?: string) {
+    setPanelCase(c);
+    setPanelInitialTab(initialTab);
   }
-
-  function openAnaes(c: TheatreCase) {
-    setAnaesCase(c);
-    setAnaesForm({ ...emptyAnaesthetic, ...(c.anaesthetic_record as any || {}) });
-    setAnaesOpen(true);
-  }
-
-  function openOpNotes(c: TheatreCase) {
-    setOpNotesCase(c);
-    setOpForm({ ...emptyOperative, ...(c.operative_notes as any || {}) });
-    setOpNotesOpen(true);
-  }
-
-  function openPostOp(c: TheatreCase) {
-    setPostOpCase(c);
-    setPostOpForm({ ...emptyPostOp, ...(c.post_op_notes as any || {}) });
-    setPostOpOpen(true);
+  function closePanel() {
+    setPanelCase(null);
+    setPanelInitialTab(undefined);
   }
 
   function CaseRow({ c }: { c: TheatreCase }) {
-    const nextStatus = STATUS_TRANSITIONS[c.status];
-    const nextLabel  = STATUS_NEXT[c.status];
     return (
-      <TableRow className="border-border/50 hover:bg-muted">
+      <TableRow className="border-border/50 hover:bg-muted cursor-pointer" onClick={() => openPanel(c)}>
         <TableCell className="font-mono text-xs text-muted-foreground">{c.id}</TableCell>
         <TableCell>
           <div className="font-medium text-sm">{c.procedure_name}</div>
           {c.theatre_name && <div className="text-xs text-muted-foreground">{c.theatre_name}</div>}
         </TableCell>
+        <TableCell className="text-xs text-muted-foreground">{c.patient_name ?? `Patient ID ${c.patient_id}`}</TableCell>
         <TableCell>
-          <Badge variant="outline" className={cn("text-xs capitalize", URGENCY_COLORS[c.urgency] || "")}>
-            {c.urgency}
-          </Badge>
+          <UrgencyBadge urgency={c.urgency} />
         </TableCell>
         <TableCell>
-          <Badge variant="outline" className={cn("text-xs", STATUS_COLORS[c.status] || "")}>
-            {c.status.replace("_", " ")}
-          </Badge>
+          <StatusBadge status={c.status} />
         </TableCell>
         <TableCell className="text-xs text-muted-foreground">{c.surgeon_id || "—"}</TableCell>
         <TableCell className="text-xs text-muted-foreground">
           {c.scheduled_date && `${c.scheduled_date}${c.start_time ? " " + c.start_time : ""}`}
-        </TableCell>
-        <TableCell>
-          <div className="flex gap-1 flex-wrap">
-            {/* Pre-op checklist — available from scheduled onwards */}
-            {["scheduled", "pre_op"].includes(c.status) && (
-              <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                onClick={() => openPreOp(c)}>
-                <ClipboardList className="w-3 h-3 mr-1" /> Pre-Op
-              </Button>
-            )}
-            {/* Anaesthetic — available from pre_op */}
-            {["pre_op", "in_theatre"].includes(c.status) && (
-              <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                onClick={() => openAnaes(c)}>
-                <Stethoscope className="w-3 h-3 mr-1" /> Anaes
-              </Button>
-            )}
-            {/* Operative notes — in_theatre */}
-            {c.status === "in_theatre" && (
-              <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                onClick={() => openOpNotes(c)}>
-                <FileText className="w-3 h-3 mr-1" /> Op Notes
-              </Button>
-            )}
-            {/* Post-op — recovery */}
-            {c.status === "recovery" && (
-              <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                onClick={() => openPostOp(c)}>
-                <HeartPulse className="w-3 h-3 mr-1" /> Post-Op
-              </Button>
-            )}
-            {/* Advance status */}
-            {nextStatus && nextLabel && (
-              <Button size="sm" className="h-6 text-xs px-2 bg-blue-700 hover:bg-blue-800"
-                disabled={statusMut.isPending}
-                onClick={() => statusMut.mutate({ id: c.id, status: nextStatus })}>
-                {statusMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : (
-                  <>{nextLabel} <ChevronRight className="w-3 h-3 ml-1" /></>
-                )}
-              </Button>
-            )}
-          </div>
         </TableCell>
       </TableRow>
     );
@@ -421,12 +140,8 @@ export default function SurgicalTheatre() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="border-border"
-            onClick={() => { refetchCases(); refetchSchedule(); }}>
+            onClick={() => { refetchCases(); refetchSchedule(); refetchStats(); }}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
-          </Button>
-          <Button size="sm" className="bg-blue-700 hover:bg-blue-800"
-            onClick={() => setBookingOpen(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Book Case
           </Button>
         </div>
       </div>
@@ -499,11 +214,11 @@ export default function SurgicalTheatre() {
                 <TableRow className="border-border">
                   <TableHead className="text-muted-foreground text-xs">ID</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Procedure</TableHead>
+                  <TableHead className="text-muted-foreground text-xs">Patient</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Urgency</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Status</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Surgeon</TableHead>
                   <TableHead className="text-muted-foreground text-xs">Date / Time</TableHead>
-                  <TableHead className="text-muted-foreground text-xs">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -537,7 +252,8 @@ export default function SurgicalTheatre() {
               : (
                 <div className="space-y-3">
                   {schedule.map(c => (
-                    <Card key={c.id} className="border-border bg-muted/30">
+                    <Card key={c.id} className="border-border bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => openPanel(c)}>
                       <CardContent className="py-3 px-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
@@ -547,6 +263,7 @@ export default function SurgicalTheatre() {
                             <div>
                               <div className="font-medium text-foreground">{c.procedure_name}</div>
                               <div className="text-xs text-muted-foreground flex gap-3 mt-0.5">
+                                <span>{c.patient_name ?? `Patient ID ${c.patient_id}`}</span>
                                 {c.theatre_name && <span>{c.theatre_name}</span>}
                                 {c.surgeon_id && <span>Surgeon: {c.surgeon_id}</span>}
                                 {c.anaesthetist_id && <span>Anaes: {c.anaesthetist_id}</span>}
@@ -554,12 +271,8 @@ export default function SurgicalTheatre() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={cn("text-xs capitalize", URGENCY_COLORS[c.urgency] || "")}>
-                              {c.urgency}
-                            </Badge>
-                            <Badge variant="outline" className={cn("text-xs", STATUS_COLORS[c.status] || "")}>
-                              {c.status.replace("_", " ")}
-                            </Badge>
+                            <UrgencyBadge urgency={c.urgency} />
+                            <StatusBadge status={c.status} />
                           </div>
                         </div>
                       </CardContent>
@@ -571,363 +284,9 @@ export default function SurgicalTheatre() {
         </TabsContent>
       </Tabs>
 
-      {/* --- Book Case Dialog --- */}
-      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
-        <DialogContent className="bg-card border-border text-white max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Book Theatre Case</DialogTitle>
-            <DialogDescription className="text-muted-foreground">Schedule a new surgical procedure</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            {[
-              { key: "encounter_id",   label: "Encounter ID",     type: "number" },
-              { key: "patient_id",     label: "Patient ID",       type: "number" },
-              { key: "procedure_name", label: "Procedure Name",   type: "text",   colSpan: 2 },
-              { key: "theatre_name",   label: "Theatre",          type: "text" },
-              { key: "surgeon_id",     label: "Surgeon ID",       type: "text" },
-              { key: "anaesthetist_id",label: "Anaesthetist ID",  type: "text" },
-              { key: "scrub_nurse",    label: "Scrub Nurse",      type: "text" },
-              { key: "circulating_nurse", label: "Circulating Nurse", type: "text" },
-              { key: "scheduled_date", label: "Scheduled Date",   type: "date" },
-              { key: "start_time",     label: "Start Time (HH:MM)",type: "time" },
-            ].map(f => (
-              <div key={f.key} className={cn("space-y-1", (f as any).colSpan === 2 ? "col-span-2" : "")}>
-                <Label className="text-xs text-muted-foreground">{f.label}</Label>
-                <Input
-                  type={f.type}
-                  value={(bookingForm as any)[f.key] || ""}
-                  onChange={e => setBookingForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="bg-background border-border text-foreground text-sm h-8"
-                />
-              </div>
-            ))}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Urgency</Label>
-              <Select value={bookingForm.urgency}
-                onValueChange={v => setBookingForm(p => ({ ...p, urgency: v }))}>
-                <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {["elective", "urgent", "emergency"].map(u => (
-                    <SelectItem key={u} value={u} className="capitalize">{u}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Case Type</Label>
-              <Select value={bookingForm.case_type || ""}
-                onValueChange={v => setBookingForm(p => ({ ...p, case_type: v }))}>
-                <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {["general", "regional", "local", "sedation"].map(t => (
-                    <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Notes</Label>
-              <Textarea
-                value={bookingForm.notes}
-                onChange={e => setBookingForm(p => ({ ...p, notes: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-16 resize-none"
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setBookingOpen(false)}>Cancel</Button>
-            <Button className="bg-blue-700 hover:bg-blue-800"
-              disabled={bookMut.isPending || !bookingForm.encounter_id || !bookingForm.patient_id || !bookingForm.procedure_name}
-              onClick={() => bookMut.mutate(bookingForm)}>
-              {bookMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Schedule Case
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- Pre-Op Checklist Dialog --- */}
-      <Dialog open={preOpOpen} onOpenChange={setPreOpOpen}>
-        <DialogContent className="bg-card border-border text-white max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-yellow-400" />
-              Pre-Op Safety Checklist
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">WHO Surgical Safety Checklist — {preOpCase?.procedure_name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 mt-2">
-            {[
-              ["consent_signed",       "Consent signed by patient"],
-              ["site_marked",          "Surgical site marked"],
-              ["allergies_confirmed",  "Allergies confirmed"],
-              ["blood_group_confirmed","Blood group confirmed"],
-              ["fasting_confirmed",    "Patient fasting confirmed"],
-              ["iv_access",            "IV access established"],
-              ["premedication_given",  "Premedication given"],
-              ["imaging_available",    "Imaging available in theatre"],
-              ["blood_available",      "Blood / blood products available"],
-              ["equipment_checked",    "Equipment checked by scrub nurse"],
-            ].map(([key, label]) => (
-              <CheckItem
-                key={key}
-                label={label}
-                checked={!!(preOpForm as any)[key]}
-                onChange={v => setPreOpForm(p => ({ ...p, [key]: v }))}
-              />
-            ))}
-            <div className="space-y-1 mt-1">
-              <Label className="text-xs text-muted-foreground">Notes</Label>
-              <Textarea
-                value={preOpForm.notes}
-                onChange={e => setPreOpForm(p => ({ ...p, notes: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-16 resize-none"
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setPreOpOpen(false)}>Cancel</Button>
-            <Button className="bg-yellow-600 hover:bg-yellow-700"
-              disabled={preOpMut.isPending}
-              onClick={() => preOpMut.mutate({ id: preOpCase!.id, data: preOpForm })}>
-              {preOpMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Checklist
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- Anaesthetic Record Dialog --- */}
-      <Dialog open={anaesOpen} onOpenChange={setAnaesOpen}>
-        <DialogContent className="bg-card border-border text-white max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Stethoscope className="w-5 h-5 text-blue-400" />
-              Anaesthetic Record
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">{anaesCase?.procedure_name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Anaesthetic Type</Label>
-              <Select value={anaesForm.anaesthetic_type}
-                onValueChange={v => setAnaesForm(p => ({ ...p, anaesthetic_type: v }))}>
-                <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {["general", "regional", "spinal", "local", "sedation"].map(t => (
-                    <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {[
-              { key: "asa_grade",              label: "ASA Grade (I–VI)" },
-              { key: "induction_agent",        label: "Induction Agent" },
-              { key: "maintenance_agent",      label: "Maintenance Agent" },
-              { key: "airway_management",      label: "Airway Management" },
-              { key: "positioning",            label: "Patient Positioning" },
-              { key: "total_duration_minutes", label: "Duration (min)",    type: "number" },
-              { key: "blood_loss_ml",          label: "Blood Loss (mL)",   type: "number" },
-              { key: "fluids_given_ml",        label: "Fluids Given (mL)", type: "number" },
-            ].map(f => (
-              <div key={f.key} className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{f.label}</Label>
-                <Input
-                  type={f.type || "text"}
-                  value={(anaesForm as any)[f.key] || ""}
-                  onChange={e => setAnaesForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  className="bg-background border-border text-foreground text-sm h-8"
-                />
-              </div>
-            ))}
-            {["complications", "notes"].map(k => (
-              <div key={k} className="col-span-2 space-y-1">
-                <Label className="text-xs text-muted-foreground capitalize">{k}</Label>
-                <Textarea
-                  value={(anaesForm as any)[k] || ""}
-                  onChange={e => setAnaesForm(p => ({ ...p, [k]: e.target.value }))}
-                  className="bg-background border-border text-foreground text-sm h-16 resize-none"
-                />
-              </div>
-            ))}
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setAnaesOpen(false)}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700"
-              disabled={anaesMut.isPending}
-              onClick={() => anaesMut.mutate({ id: anaesCase!.id, data: anaesForm })}>
-              {anaesMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Record
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- Operative Notes Dialog --- */}
-      <Dialog open={opNotesOpen} onOpenChange={setOpNotesOpen}>
-        <DialogContent className="bg-card border-border text-white max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-400" />
-              Operative Notes
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">{opNotesCase?.procedure_name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            {[
-              { key: "incision",            label: "Incision",           colSpan: 2 },
-              { key: "findings",            label: "Findings *",         colSpan: 2, textarea: true },
-              { key: "procedure_performed", label: "Procedure Performed *", colSpan: 2, textarea: true },
-              { key: "specimens_sent",      label: "Specimens Sent",     colSpan: 2 },
-              { key: "closure_method",      label: "Closure Method" },
-              { key: "blood_loss_ml",       label: "Blood Loss (mL)",    type: "number" },
-              { key: "complications",       label: "Complications",      colSpan: 2, textarea: true },
-              { key: "surgeon_notes",       label: "Surgeon Notes",      colSpan: 2, textarea: true },
-            ].map(f => (
-              <div key={f.key} className={cn("space-y-1", f.colSpan === 2 ? "col-span-2" : "")}>
-                <Label className="text-xs text-muted-foreground">{f.label}</Label>
-                {f.textarea
-                  ? <Textarea
-                      value={(opForm as any)[f.key] || ""}
-                      onChange={e => setOpForm(p => ({ ...p, [f.key]: e.target.value }))}
-                      className="bg-background border-border text-foreground text-sm h-20 resize-none"
-                    />
-                  : <Input
-                      type={f.type || "text"}
-                      value={(opForm as any)[f.key] || ""}
-                      onChange={e => setOpForm(p => ({ ...p, [f.key]: e.target.value }))}
-                      className="bg-background border-border text-foreground text-sm h-8"
-                    />
-                }
-              </div>
-            ))}
-            <div className="col-span-2">
-              <CheckItem
-                label="Drains inserted"
-                checked={opForm.drains_inserted}
-                onChange={v => setOpForm(p => ({ ...p, drains_inserted: v }))}
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setOpNotesOpen(false)}>Cancel</Button>
-            <Button className="bg-blue-700 hover:bg-blue-800"
-              disabled={opNotesMut.isPending || !opForm.findings || !opForm.procedure_performed}
-              onClick={() => opNotesMut.mutate({ id: opNotesCase!.id, data: opForm })}>
-              {opNotesMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Notes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- Post-Op Recovery Dialog --- */}
-      <Dialog open={postOpOpen} onOpenChange={setPostOpOpen}>
-        <DialogContent className="bg-card border-border text-white max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <HeartPulse className="w-5 h-5 text-green-400" />
-              Post-Op Recovery Record
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">{postOpCase?.procedure_name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Recovery Location</Label>
-              <Select value={postOpForm.recovery_location || ""}
-                onValueChange={v => setPostOpForm(p => ({ ...p, recovery_location: v }))}>
-                <SelectTrigger className="bg-background border-border text-foreground h-8 text-sm">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {["PACU", "ICU", "Ward", "HDU", "Day Surgery"].map(l => (
-                    <SelectItem key={l} value={l} className="">{l}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Pain Score (0–10)</Label>
-              <Input
-                type="number" min={0} max={10}
-                value={postOpForm.pain_score}
-                onChange={e => setPostOpForm(p => ({ ...p, pain_score: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-8"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Follow-up Date</Label>
-              <Input type="date"
-                value={postOpForm.follow_up_date}
-                onChange={e => setPostOpForm(p => ({ ...p, follow_up_date: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-8"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Wound Status</Label>
-              <Input
-                value={postOpForm.wound_status}
-                onChange={e => setPostOpForm(p => ({ ...p, wound_status: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-8"
-              />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Post-Op Medications</Label>
-              <Textarea
-                value={postOpForm.post_op_medications}
-                onChange={e => setPostOpForm(p => ({ ...p, post_op_medications: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-16 resize-none"
-              />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Complications</Label>
-              <Textarea
-                value={postOpForm.complications}
-                onChange={e => setPostOpForm(p => ({ ...p, complications: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-16 resize-none"
-              />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Notes</Label>
-              <Textarea
-                value={postOpForm.notes}
-                onChange={e => setPostOpForm(p => ({ ...p, notes: e.target.value }))}
-                className="bg-background border-border text-foreground text-sm h-16 resize-none"
-              />
-            </div>
-            <div className="col-span-2 space-y-2">
-              {[
-                ["vital_signs_stable",    "Vital signs stable"],
-                ["nausea_vomiting",       "Nausea / vomiting present"],
-                ["oxygen_therapy",        "Oxygen therapy required"],
-                ["discharge_criteria_met","Discharge criteria met"],
-              ].map(([key, label]) => (
-                <CheckItem
-                  key={key}
-                  label={label}
-                  checked={!!(postOpForm as any)[key]}
-                  onChange={v => setPostOpForm(p => ({ ...p, [key]: v }))}
-                />
-              ))}
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" className="border-border" onClick={() => setPostOpOpen(false)}>Cancel</Button>
-            <Button className="bg-green-600 hover:bg-green-700"
-              disabled={postOpMut.isPending}
-              onClick={() => postOpMut.mutate({ id: postOpCase!.id, data: postOpForm })}>
-              {postOpMut.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Record
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {panelCase && (
+        <TheatreWorkspacePanel case={panelCase} initialTab={panelInitialTab} onClose={closePanel} />
+      )}
     </motion.div>
   );
 }

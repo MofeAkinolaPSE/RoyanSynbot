@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,8 @@ import {
 import { api } from "@/lib/api-client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
+import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
 
 interface PatientCprsPanelProps {
   patientMrn: string;
@@ -17,17 +20,7 @@ interface PatientCprsPanelProps {
   onClose: () => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  patient_registered: "bg-slate-100 text-slate-700",
-  triaged:            "bg-yellow-100 text-yellow-700",
-  nurse_assessment:   "bg-teal-100 text-teal-700",
-  called:             "bg-blue-100 text-blue-700",
-  consulting:         "bg-indigo-100 text-indigo-700",
-  lab_ordered:        "bg-purple-100 text-purple-700",
-  pharmacy_dispensing:"bg-orange-100 text-orange-700",
-  billing_pending:    "bg-pink-100 text-pink-700",
-  discharged:         "bg-green-100 text-green-700",
-};
+const STATUS_COLORS = ENCOUNTER_STATUS_COLORS;
 
 function ageFromDob(dob?: string): string {
   if (!dob) return "—";
@@ -47,6 +40,7 @@ function formatDate(iso?: string): string {
 
 export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCprsPanelProps) {
   const navigate = useNavigate();
+  const [opdPanelOpen, setOpdPanelOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["cprs-panel", patientMrn],
@@ -62,6 +56,7 @@ export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCp
   const prescriptions = (data?.prescriptions ?? data?.medications ?? []).slice(0, 3);
 
   return (
+    <>
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent className="w-[420px] sm:w-[460px] overflow-y-auto p-0" side="right">
         {isLoading ? (
@@ -276,7 +271,9 @@ export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCp
                   variant="outline"
                   size="sm"
                   className="flex-1 gap-1.5"
-                  onClick={() => navigate("/hospital/lab")}
+                  disabled={!activeEncounter}
+                  title={!activeEncounter ? "No active encounter to order against" : undefined}
+                  onClick={() => setOpdPanelOpen(true)}
                 >
                   <FlaskConical className="h-3.5 w-3.5" /> Order Lab
                 </Button>
@@ -289,13 +286,29 @@ export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCp
                   onClose();
                 }}
               >
-                <ExternalLink className="h-3.5 w-3.5" /> View Full CPRS
+                <ExternalLink className="h-3.5 w-3.5" /> View Full PCE
               </Button>
             </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+
+    {opdPanelOpen && activeEncounter && (
+      <OpdEncounterPanel
+        encounter={{
+          id: activeEncounter.id,
+          mrn: patientMrn,
+          patient_id: patient?.id,
+          patient_name: `${patient?.first_name ?? ""} ${patient?.last_name ?? ""}`.trim() || undefined,
+          queue_number: activeEncounter.queue_number,
+          status: activeEncounter.status,
+        }}
+        initialTab="orders"
+        onClose={() => setOpdPanelOpen(false)}
+      />
+    )}
+    </>
   );
 }
 

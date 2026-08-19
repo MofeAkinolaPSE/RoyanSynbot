@@ -39,25 +39,40 @@ class BillingReconciliationAgent(BaseAgent):
         try:
             from src.db import db
 
-            # Unpaid and partially paid bills
+            # Unpaid and partially paid bills — royan_billing has no paid_amount/
+            # waived_amount/billing_status columns; the real schema tracks the
+            # outstanding balance directly on patient_balance and the bill's
+            # lifecycle on status (pending/partial/paid/waived/disputed/written_off).
             unpaid_bills = db.table(TABLE_BILLING).select(
                 "id", "bill_number", "patient_id", "encounter_id",
-                "subtotal", "paid_amount", "waived_amount",
-                "billing_status", "billed_at"
-            ).in_("billing_status", ["pending", "partial"]).execute()
-            data["unpaid_bills"] = unpaid_bills.data or []
+                "subtotal", "patient_balance", "discount",
+                "status", "billed_at"
+            ).in_("status", ["pending", "partial"]).execute()
+            # NUMERIC columns come back from psycopg2 as Decimal, which isn't
+            # JSON-serializable — these rows flow straight into supporting_refs
+            # further down, so normalize to float at the source.
+            data["unpaid_bills"] = [
+                {**row, "subtotal": float(row.get("subtotal") or 0),
+                 "patient_balance": float(row.get("patient_balance") or 0),
+                 "discount": float(row.get("discount") or 0)}
+                for row in (unpaid_bills.data or [])
+            ]
 
-            # Insurance claims by status
+            # Insurance claims by status — royan_insurance_claims has no bill_id/
+            # insurer_name/claim_status/dispute_reason; real columns are
+            # billing_id/hmo_provider/status/notes.
             claims = db.table(TABLE_INSURANCE_CLAIMS).select(
-                "id", "bill_id", "insurer_name", "claim_amount",
-                "claim_status", "submitted_at", "approved_amount", "dispute_reason"
+                "id", "billing_id", "hmo_provider", "claim_amount",
+                "status", "submitted_at", "approved_amount", "notes"
             ).execute()
             data["claims"] = claims.data or []
 
-            # Recent waived amounts (last 30 days)
+            # Bills fully waived (status='waived') — there's no separate
+            # waived_amount column, so the whole subtotal is the uncollected
+            # revenue for these.
             waived = db.table(TABLE_BILLING).select(
-                "id", "bill_number", "patient_id", "waived_amount", "waived_by", "billed_at"
-            ).gt("waived_amount", 0).execute()
+                "id", "bill_number", "patient_id", "subtotal", "billed_by", "billed_at"
+            ).eq("status", "waived").execute()
             data["waived_bills"] = waived.data or []
 
         except Exception as exc:
@@ -74,25 +89,24 @@ class BillingReconciliationAgent(BaseAgent):
         claims: List[Dict] = data.get("claims") or []
         waived_bills: List[Dict] = data.get("waived_bills") or []
 
-        # Outstanding balance from unpaid bills
+        # Outstanding balance from unpaid bills — patient_balance already is
+        # the remaining amount owed, no need to derive it from paid/waived.
         total_outstanding = 0.0
         for bill in unpaid_bills:
             try:
-                total_amt  = float(bill.get("subtotal") or 0)
-                paid_amt   = float(bill.get("paid_amount") or 0)
-                waived_amt = float(bill.get("waived_amount") or 0)
-                total_outstanding += max(0.0, total_amt - paid_amt - waived_amt)
+                total_outstanding += max(0.0, float(bill.get("patient_balance") or 0))
             except Exception:
                 pass
 
-        # Claim aging analysis
+        # Claim aging analysis — valid statuses per CLAIM_STATUS_ALLOWED are
+        # submitted/pre_authorised/approved/rejected/paid/disputed.
         pending_claims: List[Dict] = []
         disputed_claims: List[Dict] = []
         long_disputed: List[Dict] = []
 
         for c in claims:
-            status = (c.get("claim_status") or "").lower()
-            if status in ("submitted", "pending", "under_review"):
+            status = (c.get("status") or "").lower()
+            if status in ("submitted", "pre_authorised"):
                 pending_claims.append(c)
             elif status == "disputed":
                 disputed_claims.append(c)
@@ -116,7 +130,7 @@ class BillingReconciliationAgent(BaseAgent):
         pending_claim_value = sum(float(c.get("claim_amount") or 0) for c in pending_claims)
         disputed_claim_value = sum(float(c.get("claim_amount") or 0) for c in disputed_claims)
 
-        total_waived = sum(float(b.get("waived_amount") or 0) for b in waived_bills)
+        total_waived = sum(float(b.get("subtotal") or 0) for b in waived_bills)
 
         health_state = "healthy"
         if long_disputed or total_outstanding > 1_000_000:

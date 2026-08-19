@@ -1,122 +1,78 @@
-"""Extract individual payment records from Hope billing rows → royan_payments.
+"""Extract real payment records from Hope's `service_cash_payments` table
+(staged as `hope_payments`) -> royan_payments.
 
-A payment row is only emitted when the bill status indicates money was actually
-received (paid / partial / part_paid / settled).  The amount is derived from
-the patient-owed portion (total minus HMO-covered), or the explicit patient_due
-column when available.
+This REPLACES the earlier design that tried to derive payments from
+`raw_billing` (service_bills) rows -- service_bills has no payment-status
+field at all, so that path always emitted zero rows. `service_cash_payments`
+is a genuine, dedicated per-payment table with its own row per cash/card
+receipt against a bill.
 
-Payloads are keyed by `_hope_billing_ext_id` so the loader can look up
-royan_billing.id.
+Each row gets its own external_id (the Hope service_cash_payments.id), so
+the loader can do a normal ON CONFLICT upsert instead of the old
+one-payment-per-bill restriction -- a bill legitimately has 0..N payments.
+
+billing_id is deliberately NOT resolved: `service_cash_payments.billing_id`
+was originally verified to reference Hope's `billings` table, which is
+confirmed EMPTY in this dump export. Passing that raw value through to the
+loader's royan_billing.external_id lookup produced spurious matches
+against `service_bills` rows (a coincidentally-overlapping but unrelated
+auto-increment id sequence) -- confirmed by finding "linked" payments
+whose patient didn't match the bill's own patient. patient_id is the only
+reliable link here.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from transformers._helpers import safe_date, safe_str, utcnow
-
-_PAID_STATUSES = {"paid", "part_paid", "partial", "settled", "paid_by_hmo"}
-
-_PAYMENT_METHOD_MAP = {
-    "cash":             "cash",
-    "card":             "card",
-    "pos":              "card",
-    "debit_card":       "card",
-    "credit_card":      "card",
-    "transfer":         "transfer",
-    "bank":             "transfer",
-    "bank_transfer":    "transfer",
-    "online":           "transfer",
-    "hmo":              "hmo",
-    "insurance":        "hmo",
-    "nhis":             "hmo",
-    "waiver":           "waiver",
-    "waived":           "waiver",
-    "free":             "waiver",
-}
+from transformers._helpers import EXTERNAL_SOURCE, safe_date, safe_str, utcnow
 
 
 def _to_float(value: Any) -> float:
     try:
-        return max(0.0, float(str(value or 0).replace(",", "")))
+        return float(str(value or 0).replace(",", ""))
     except (ValueError, TypeError):
         return 0.0
 
 
-def _normalise_method(value: Any) -> str:
-    raw = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
-    return _PAYMENT_METHOD_MAP.get(raw, "cash")
-
-
 def transform(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
-    seen_ext_ids: set = set()
-
     for row in raw_rows:
         raw = {k.lower(): v for k, v in row.items()}
 
-        # Skip soft-deleted Hope records
         if str(raw.get("is_deleted", "0")).strip() not in ("0", "", "null", "None"):
             continue
 
-        stat_raw = str(
-            raw.get("payment_status") or raw.get("status") or ""
-        ).strip().lower().replace("-", "_").replace(" ", "_")
-        # Map aliases
-        stat_norm = {"part_paid": "partial", "settled": "paid"}.get(stat_raw, stat_raw)
-        if stat_norm not in _PAID_STATUSES:
-            continue
-
-        ext_id = safe_str(
-            raw.get("invoice_id") or raw.get("bill_id") or raw.get("id") or raw.get("transaction_id")
-        )
-        hope_pid = safe_str(raw.get("patient_id") or raw.get("patientid"))
+        ext_id = safe_str(raw.get("id"))
+        hope_pid = safe_str(raw.get("patient_id"))
         if not ext_id or not hope_pid:
             continue
-        if ext_id in seen_ext_ids:
-            continue
-        seen_ext_ids.add(ext_id)
 
-        total = _to_float(
-            raw.get("total_amount") or raw.get("amount") or raw.get("total") or raw.get("gross_amount")
-        )
-        hmo = _to_float(
-            raw.get("hmo_claim") or raw.get("hmo_amount") or raw.get("covered_amount") or raw.get("insurance_amount")
-        )
-        discount = _to_float(raw.get("discount"))
+        paid_amount = _to_float(raw.get("paid_amount"))
+        if paid_amount <= 0:
+            continue  # nothing was actually collected on this row
 
-        # Patient payment amount: prefer explicit patient_due column
-        patient_paid = _to_float(
-            raw.get("patient_due") or raw.get("patient_amount") or raw.get("copay")
-        )
-        if patient_paid <= 0 and total > 0:
-            patient_paid = max(0.0, total - hmo - discount)
+        by_card = _to_float(raw.get("paid_by_card"))
+        by_cash = _to_float(raw.get("paid_by_cash"))
+        if by_card > 0 and by_card >= by_cash:
+            payment_method = "card"
+        elif by_cash > 0:
+            payment_method = "cash"
+        else:
+            payment_method = "other"
 
-        if patient_paid <= 0:
-            continue  # nothing to record
-
-        payment_method = _normalise_method(
-            raw.get("payment_method") or raw.get("pay_method")
-            or raw.get("mode_of_payment") or raw.get("payment_mode")
-        )
-
-        received_at = (
-            safe_date(raw.get("paid_at"))
-            or safe_date(raw.get("updated_at"))
-            or safe_date(raw.get("modify_time"))
-            or safe_date(raw.get("created_at"))
-        )
+        received_at = safe_date(raw.get("created_time")) or safe_date(raw.get("create_time")) or utcnow()
 
         out.append({
-            "_hope_patient_id":      hope_pid,
-            "_hope_billing_ext_id":  ext_id,
-            "amount":                round(patient_paid, 2),
-            "payment_method":        payment_method,
-            "reference":             safe_str(
-                raw.get("receipt_no") or raw.get("reference") or raw.get("transaction_ref")
-            ),
-            "received_by":           "hope_ingest",
-            "received_at":           received_at or utcnow(),
-            "notes":                 None,
+            "_hope_patient_id":     hope_pid,
+            "amount":               round(paid_amount, 2),
+            "payment_method":       payment_method,
+            "reference":            None,
+            "received_by":          safe_str(raw.get("created_by")) or "hope_ingest",
+            "received_at":          received_at,
+            "notes":                None,
+            "external_source":      EXTERNAL_SOURCE,
+            "external_id":          ext_id,
+            "external_updated_at":  received_at,
         })
 
     return out

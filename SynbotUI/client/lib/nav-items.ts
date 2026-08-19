@@ -27,6 +27,9 @@ import {
   ConciergeBell,
   Bug,
   Database,
+  Syringe,
+  Wrench,
+  Boxes,
 } from "lucide-react";
 
 export type NavChild = { label: string; href: string };
@@ -50,10 +53,10 @@ export type NavItem = {
 // so the two can never drift apart.
 export const NAV_ITEMS: NavItem[] = [
   {
-    label: "Dashboard",
+    label: "ROY Workstation",
     icon: LayoutDashboard,
     href: "/",
-    tourDescription: "Your home base — a live overview of what's happening across the hospital.",
+    tourDescription: "Your home base — quick access to your pages and what's happening across the hospital.",
   },
 
   // ── Hospital Operations (primary) ──────────────────────────────────
@@ -86,10 +89,10 @@ export const NAV_ITEMS: NavItem[] = [
     tourDescription: "Patient check-in, registration, and appointment scheduling.",
   },
   {
-    label: "CPRS / Patients",
+    label: "PCE / Patients",
     icon: Users,
     href: "/hospital/patients",
-    roles: ["admin", "ops", "nurse", "doctor", "receptionist", "management"],
+    roles: ["admin", "ops", "nurse", "doctor", "receptionist", "management", "physiotherapist"],
     tourDescription: "Search and open any patient's full clinical record.",
   },
   {
@@ -97,7 +100,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Activity,
     href: "/hospital/queue",
     badgeKey: "queue",
-    roles: ["admin", "ops", "nurse", "doctor", "management"],
+    roles: ["admin", "ops", "nurse", "doctor", "management", "physiotherapist"],
     tourDescription: "See who's waiting, in triage, or in consultation right now.",
   },
   {
@@ -120,13 +123,20 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Pill,
     href: "/hospital/pharmacy",
     roles: ["admin", "ops", "nurse", "doctor", "pharmacist", "management"],
-    tourDescription: "Dispense prescriptions and track drug stock levels.",
+    tourDescription: "Dispense prescriptions and record returns.",
+  },
+  {
+    label: "Pharmacy Inventory",
+    icon: Boxes,
+    href: "/hospital/pharmacy/inventory",
+    roles: ["admin", "ops", "nurse", "doctor", "pharmacist", "management"],
+    tourDescription: "Live drug and vaccine stock, batch/expiry tracking, reorder risk, and demand trends.",
   },
   {
     label: "Nursing Station",
     icon: Activity,
     href: "/hospital/nursing",
-    roles: ["admin", "ops", "nurse", "doctor", "management"],
+    roles: ["admin", "ops", "nurse", "doctor", "management", "physiotherapist"],
     tourDescription: "Nursing notes, handovers, and care plan documentation.",
   },
   {
@@ -153,6 +163,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: HeartPulse,
     href: "/hospital/mch",
     roles: ["admin", "ops", "nurse", "doctor", "management"],
+  },
+  {
+    label: "Immunisation",
+    icon: Syringe,
+    href: "/hospital/immunisation",
+    roles: ["admin", "ops", "nurse", "doctor", "management"],
+    tourDescription: "Track babies in the immunisation program — due, overdue, and completed vaccine doses.",
   },
   {
     label: "Digital Engagement",
@@ -188,7 +205,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Wards & Beds",
     icon: BedDouble,
     href: "/hospital/wards",
-    roles: ["admin", "ops", "nurse", "doctor", "management"],
+    roles: ["admin", "ops", "nurse", "doctor", "management", "physiotherapist"],
+  },
+  {
+    label: "Audits & Maintenance",
+    icon: Wrench,
+    href: "/hospital/audits-maintenance",
+    roles: ["admin", "ops", "quality_assurance", "management"],
   },
   {
     label: "Compliance & Audits",
@@ -240,7 +263,12 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Staff Dashboard",
     icon: ClipboardList,
-    roles: ["admin", "hr", "ops", "management"],
+    // Universal — this is every staff member's personal dashboard (identity,
+    // tasks, timesheets), not an admin/HR tool. No accessMap rule ever
+    // restricted it either, so this also fixes a bug the old dual-list setup
+    // would otherwise have introduced: deriving route access straight from
+    // this array would have newly locked out every non-admin/hr/ops/
+    // management role from a page built for everyone.
     children: [
       { label: "Dashboard",     href: "/staff/dashboard" },
       { label: "Time Tracker",  href: "/staff/time-tracker" },

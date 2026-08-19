@@ -154,26 +154,32 @@ async def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
     # Active medications
     active_rx = db.table(TABLE_PRESCRIPTIONS).select("id").eq(
         "patient_id", patient_id
-    ).eq("status", "active").execute()
+    ).in_("status", ["pending", "partially_dispensed"]).execute()
     active_count = len(active_rx.data or [])
 
     # Pending lab orders
     pending_labs = db.table(TABLE_LAB_ORDERS).select("id").eq(
         "patient_id", patient_id
-    ).eq("status", "pending").execute()
+    ).in_("status", ["ordered", "sample_collected", "processing"]).execute()
     pending_count = len(pending_labs.data or [])
 
-    # Outstanding balance (sum of unpaid bills)
+    # Outstanding balance (sum of unpaid bills, minus payments recorded
+    # against each — royan_billing has no running paid-amount column;
+    # actual payments live in the separate royan_payments table).
     conn = _get_conn()
     outstanding = 0.0
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT COALESCE(SUM(total_amount - paid_amount - hmo_covered), 0.0)
-                FROM public.royan_billing
-                WHERE patient_id = %s
-                  AND status NOT IN ('paid', 'waived', 'written_off')
+                SELECT COALESCE(SUM(
+                    b.subtotal - b.discount - b.hmo_covered - COALESCE((
+                        SELECT SUM(p.amount) FROM public.royan_payments p WHERE p.billing_id = b.id
+                    ), 0)
+                ), 0.0)
+                FROM public.royan_billing b
+                WHERE b.patient_id = %s
+                  AND b.status NOT IN ('paid', 'waived', 'written_off')
                 """,
                 (patient_id,),
             )
@@ -195,20 +201,21 @@ async def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
     primary_doc = None
     if pat.get("primary_doctor_id"):
         doc_row = db.table("royan_staff").select(
-            "id,first_name,last_name,role,specialty"
+            "id,full_name,role,specialty"
         ).eq("id", pat["primary_doctor_id"]).execute().data
         if doc_row:
             d = doc_row[0]
             primary_doc = StaffRef(
                 id=d["id"],
-                name=f"{d.get('first_name','')} {d.get('last_name','')}".strip(),
+                name=d.get("full_name") or "",
                 role=d.get("role"),
                 specialty=d.get("specialty"),
             )
 
     return PatientSummary(
         patient=PatientDemographics(**{
-            k: pat.get(k) for k in PatientDemographics.model_fields
+            k: (_str(pat.get(k)) if k in ("date_of_birth", "registered_at") else pat.get(k))
+            for k in PatientDemographics.model_fields
         }),
         total_encounters=len(enc_rows),
         last_encounter_date=_str(last_enc.get("created_at")) if last_enc else None,
@@ -256,7 +263,7 @@ async def get_patient_timeline(
                     e.created_at,
                     COUNT(DISTINCT lo.id)  AS lab_count,
                     COUNT(DISTINCT rx.id)  AS prescription_count,
-                    COALESCE(SUM(b.total_amount), 0.0) AS total_billed
+                    COALESCE(SUM(b.subtotal - b.discount), 0.0) AS total_billed
                 FROM public.royan_encounters e
                 LEFT JOIN public.royan_lab_orders lo ON lo.encounter_id = e.id
                 LEFT JOIN public.royan_prescriptions rx ON rx.encounter_id = e.id
@@ -384,13 +391,13 @@ async def get_lab_history(
                     lo.ordered_by,
                     lo.ordered_at,
                     lo.encounter_id,
-                    lr.result_value,
+                    lr.result_data ->> 'value' AS result_value,
                     lr.result_summary,
                     lr.interpretation,
                     lr.is_critical,
-                    lr.created_at AS resulted_at
+                    lr.resulted_at
                 FROM public.royan_lab_orders lo
-                LEFT JOIN public.royan_lab_results lr ON lr.order_id = lo.id
+                LEFT JOIN public.royan_lab_results lr ON lr.lab_order_id = lo.id
                 WHERE lo.patient_id = %s
                 {status_filter}
                 ORDER BY lo.ordered_at DESC
@@ -447,15 +454,17 @@ async def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # royan_billing tracks charges (subtotal/discount/hmo_covered), not
+            # payments received — those live in royan_payments, keyed by
+            # patient_id directly (billing_id is nullable there, e.g. Hope's
+            # voucher_payments have no bill concept, so joining through
+            # royan_billing would silently drop those rows).
             cur.execute(
                 """
                 SELECT
-                    COUNT(*)                                  AS bill_count,
-                    COALESCE(SUM(total_amount), 0.0)          AS total_billed,
-                    COALESCE(SUM(paid_amount), 0.0)           AS total_paid,
-                    COALESCE(SUM(hmo_covered), 0.0)           AS hmo_covered,
-                    COALESCE(SUM(total_amount - paid_amount - hmo_covered), 0.0)
-                                                              AS outstanding_balance
+                    COUNT(*)                                    AS bill_count,
+                    COALESCE(SUM(subtotal - discount), 0.0)     AS total_billed,
+                    COALESCE(SUM(hmo_covered), 0.0)              AS hmo_covered
                 FROM public.royan_billing
                 WHERE patient_id = %s
                 """,
@@ -463,28 +472,35 @@ async def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
             )
             agg = cur.fetchone() or {}
 
+            cur.execute(
+                "SELECT COALESCE(SUM(amount), 0.0) AS total_paid FROM public.royan_payments WHERE patient_id = %s",
+                (patient_id,),
+            )
+            total_paid = float((cur.fetchone() or {}).get("total_paid") or 0)
+
             # Last payment
             cur.execute(
                 """
-                SELECT p.created_at, p.payment_method
-                FROM public.royan_payments p
-                JOIN public.royan_billing b ON b.id = p.bill_id
-                WHERE b.patient_id = %s
-                ORDER BY p.created_at DESC
+                SELECT received_at, payment_method
+                FROM public.royan_payments
+                WHERE patient_id = %s
+                ORDER BY received_at DESC
                 LIMIT 1
                 """,
                 (patient_id,),
             )
             last_pmt = cur.fetchone()
 
-            # Pending insurance claims
+            # Pending insurance claims — real status values are
+            # submitted/pre_authorised/approved/rejected/paid/disputed
+            # (royan_insurance_claims_status_check); "pending"/"under_review"
+            # were never valid values, so this always matched zero rows.
             cur.execute(
                 """
                 SELECT COUNT(*)
-                FROM public.royan_insurance_claims ic
-                JOIN public.royan_billing b ON b.id = ic.bill_id
-                WHERE b.patient_id = %s
-                  AND ic.status IN ('submitted', 'pending', 'under_review')
+                FROM public.royan_insurance_claims
+                WHERE patient_id = %s
+                  AND status IN ('submitted', 'pre_authorised')
                 """,
                 (patient_id,),
             )
@@ -492,13 +508,16 @@ async def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
     finally:
         _put_conn(conn)
 
+    total_billed = float(agg.get("total_billed") or 0)
+    hmo_covered = float(agg.get("hmo_covered") or 0)
+
     return BillingSummary(
         patient_mrn=mrn,
-        total_billed=float(agg.get("total_billed") or 0),
-        total_paid=float(agg.get("total_paid") or 0),
-        outstanding_balance=float(agg.get("outstanding_balance") or 0),
-        hmo_covered=float(agg.get("hmo_covered") or 0),
-        last_payment_date=_str(last_pmt.get("created_at")) if last_pmt else None,
+        total_billed=total_billed,
+        total_paid=total_paid,
+        outstanding_balance=total_billed - hmo_covered - total_paid,
+        hmo_covered=hmo_covered,
+        last_payment_date=_str(last_pmt.get("received_at")) if last_pmt else None,
         payment_method=last_pmt.get("payment_method") if last_pmt else None,
         bill_count=int(agg.get("bill_count") or 0),
         pending_claims=int(pending_claims),
@@ -678,9 +697,9 @@ async def start_consultation(
         event_data={"doctor": payload.doctor_name, "department": payload.department},
     )
 
-    await audit_event("encounter_consultation_started", user, {
+    audit_event("encounter_consultation_started", {
         "encounter_id": encounter_id, "doctor": payload.doctor_name
-    })
+    }, actor_id=_actor(user))
     return {"success": True, "encounter_id": encounter_id, "status": "in_consultation"}
 
 
@@ -705,7 +724,7 @@ async def order_lab(
         "urgency":       payload.urgency,
         "sample_type":   payload.sample_type,
         "ordered_by":    user.get("name") or user.get("sub"),
-        "status":        "pending",
+        "status":        "ordered",
         "notes":         payload.notes,
         "ordered_at":    _now(),
     }).execute()
@@ -722,9 +741,9 @@ async def order_lab(
         event_data={"test_name": payload.test_name, "test_code": payload.test_code},
     )
 
-    await audit_event("lab_order_created", user, {
+    audit_event("lab_order_created", {
         "encounter_id": encounter_id, "test_name": payload.test_name
-    })
+    }, actor_id=_actor(user))
     return {"success": True, "order_id": order_id}
 
 
@@ -769,9 +788,9 @@ async def prescribe(
         event_data={"drug_name": payload.drug_name, "dosage": payload.dosage},
     )
 
-    await audit_event("prescription_issued", user, {
+    audit_event("prescription_issued", {
         "encounter_id": encounter_id, "drug_name": payload.drug_name
-    })
+    }, actor_id=_actor(user))
     return {"success": True, "prescription_id": rx_id}
 
 
@@ -845,10 +864,10 @@ async def discharge_patient(
         event_data={"condition": payload.discharge_condition},
     )
 
-    await audit_event("patient_discharged", user, {
+    audit_event("patient_discharged", {
         "encounter_id": encounter_id,
         "condition": payload.discharge_condition,
-    })
+    }, actor_id=_actor(user))
     return {
         "success": True,
         "encounter_id": encounter_id,
@@ -940,10 +959,10 @@ async def capability_register_patient(
     finally:
         _put_conn(conn)
 
-    await audit_event("patient_registered_canonical", user, {
+    audit_event("patient_registered_canonical", {
         "patient_id": result.get("id"), "mrn": result.get("mrn"),
         "correlation_id": cid,
-    })
+    }, actor_id=_actor(user))
     return {"success": True, "patient_id": result["id"], "mrn": result["mrn"], "correlation_id": cid}
 
 
@@ -980,10 +999,10 @@ async def capability_start_encounter(
     finally:
         _put_conn(conn)
 
-    await audit_event("encounter_started_canonical", user, {
+    audit_event("encounter_started_canonical", {
         "encounter_id": encounter_id, "patient_mrn": payload.patient_mrn,
         "encounter_type": payload.encounter_type, "correlation_id": cid,
-    })
+    }, actor_id=_actor(user))
     return {
         "success": True,
         "encounter_id": encounter_id,
@@ -1025,9 +1044,9 @@ async def capability_complete_consultation(
     finally:
         _put_conn(conn)
 
-    await audit_event("consultation_completed_canonical", user, {
+    audit_event("consultation_completed_canonical", {
         "encounter_id": encounter_id, "correlation_id": cid,
-    })
+    }, actor_id=_actor(user))
     return {"success": True, "encounter_id": encounter_id, "status": result.get("status"), "correlation_id": cid}
 
 
@@ -1062,9 +1081,9 @@ async def capability_discharge(
     finally:
         _put_conn(conn)
 
-    await audit_event("patient_discharged_canonical", user, {
+    audit_event("patient_discharged_canonical", {
         "encounter_id": encounter_id, "correlation_id": cid,
-    })
+    }, actor_id=_actor(user))
     return {
         "success": True, "encounter_id": encounter_id,
         "status": "discharged", "discharged_at": result.get("discharge_at"),
@@ -1099,9 +1118,9 @@ async def capability_record_vitals(
     finally:
         _put_conn(conn)
 
-    await audit_event("vitals_recorded_canonical", user, {
+    audit_event("vitals_recorded_canonical", {
         "encounter_id": encounter_id, "vitals_id": vitals_id, "correlation_id": cid,
-    })
+    }, actor_id=actor)
     return {"success": True, "vitals_id": vitals_id, "encounter_id": encounter_id, "correlation_id": cid}
 
 

@@ -2,9 +2,10 @@ import Sidebar from "./Sidebar";
 import FloatingChat from "./FloatingChat";
 import ProfileSetup from "./ProfileSetup";
 import { NotificationBell } from "./NotificationBell";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { getSynbotConfig } from "@/lib/wp-config";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/BackButton";
 import { useState, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
@@ -13,6 +14,7 @@ import { useTour } from "@/components/tour/TourProvider";
 
 const Layout = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
   const { role, apiBaseUrl, wpUserId } = getSynbotConfig();
   const { isAuthenticated, roles } = useAuth();
   const { startTourIfNeeded } = useTour();
@@ -54,6 +56,9 @@ const Layout = () => {
               <Menu className="mr-2 h-4 w-4" />
               Menu
             </Button>
+            {location.pathname !== "/" && (
+              <BackButton fallback="/" className="mr-1 h-7 px-2 text-xs text-muted-foreground hover:text-foreground" />
+            )}
             <span className="font-semibold text-foreground">Royan Hospital · RoyanHealth</span>
             <span className="opacity-40">·</span>
             <span>Role: {hasRole ? role : <span className="text-destructive">unavailable</span>}</span>

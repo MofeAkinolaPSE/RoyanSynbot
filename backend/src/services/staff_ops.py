@@ -65,6 +65,22 @@ def get_staff_by_id(staff_id: str, client: DBClient = db) -> Optional[Dict[str, 
     resp = client.table(TABLE_STAFF).select("*").eq("id", staff_id).execute()
     return resp.data[0] if resp.data else None
 
+def get_staff_by_user_id(user_id: str, client: DBClient = db) -> Optional[Dict[str, Any]]:
+    """Resolve a royan_users.id (the JWT `sub`) to its linked staff identity.
+    Filters quarantined_at IS NULL — the ~2,297-row Sage-customer-import
+    contamination incident is exactly what that filter guards against, and
+    unlike get_staff_by_id above this is used for identity display, not just
+    lookup-by-known-staff-id, so it must not resurface a contaminated row."""
+    resp = (
+        client.table(TABLE_STAFF)
+        .select("id,full_name,role,department,user_id")
+        .eq("user_id", user_id)
+        .is_("quarantined_at", "null")
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
+
 def get_staff_by_email(email: str, client: DBClient = db) -> Optional[Dict[str, Any]]:
     resp = client.table(TABLE_STAFF).select("*").eq("email", email.lower().strip()).execute()
     return resp.data[0] if resp.data else None
@@ -86,6 +102,14 @@ def update_my_profile(email: str, patch_data: Dict[str, Any], client: DBClient =
         if existing:
             merged_meta = {**(existing.get("metadata") or {}), **clean["metadata"]}
             clean["metadata"] = merged_meta
+        # specialty/license_number live inside this same metadata blob today
+        # (populated by the KYC onboarding flow) — copy through to the
+        # first-class columns whenever metadata changes, so they stay
+        # queryable instead of only living inside the jsonb blob.
+        if clean["metadata"].get("specialty"):
+            clean["specialty"] = clean["metadata"]["specialty"]
+        if clean["metadata"].get("medical_council_number"):
+            clean["license_number"] = clean["metadata"]["medical_council_number"]
     resp = client.table(TABLE_STAFF).update(clean).eq("email", email.lower().strip()).execute()
     return resp.data[0] if resp.data else None
 

@@ -119,11 +119,17 @@ def route_question(question: str, roles: Set[str], mode: str) -> List[str]:
                     seen.add(n)
     # Default: for executive mode with no keyword match, run only the three most
     # broadly applicable agents to avoid a sequential 9-agent 30-second blast.
+    # These must be hospital-domain agents (this router serves RoyanHealth,
+    # see BOT_BRAND in src/constants.py) — the old defaults were leftover
+    # PlacewareBot pharma agents (financial_analyst/enterprise_risk/
+    # compliance_monitoring) that queried legacy Sage-import tables and
+    # surfaced irrelevant pharma AR/inventory figures into hospital admin
+    # chat responses on every vague question, on top of the wasted latency.
     if not agents and mode == "executive":
         exec_defaults = [
-            "financial_analyst",
-            "enterprise_risk",
-            "compliance_monitoring",
+            "patient_flow_agent",
+            "bed_capacity_agent",
+            "billing_reconciliation_agent",
         ]
         for default in exec_defaults:
             if default not in seen:

@@ -25,6 +25,7 @@ import psycopg2
 import psycopg2.extras
 
 from transformers._helpers import EXTERNAL_SOURCE, safe_str, utcnow
+from transformers.pharmacy_catalog import INITIAL_BATCH_NUMBER
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +283,215 @@ def load_appointments(conn, slot_rows: List[Dict], appt_rows: List[Dict], dry_ru
     return len(appt_rows), upserted
 
 
+def load_staff(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_staff.id is a UUID (unlike every other bigint-PK table this
+    loader handles), generated server-side -- never supplied explicitly.
+    Plain (external_source, external_id) upsert, same pattern as patients.
+    """
+    if dry_run:
+        _print_dry_run("staff", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            cols = [c for c in row if not c.startswith("_")]
+            vals = [row[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_staff ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=row.get("full_name", "")):
+                upserted += 1
+
+    conn.commit()
+    return len(rows), upserted
+
+
+def load_pharmacy_catalog(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_drug_formulary (catalog identity) + one royan_inventory_batches
+    row per drug carrying its Hope stock snapshot. Two inserts per source
+    row, chained by the formulary insert's RETURNING id -- can't reuse the
+    single-INSERT _exec_with_savepoint helper here since the batch insert
+    depends on the formulary row actually having been created.
+    """
+    if dry_run:
+        _print_dry_run("pharmacy_catalog (formulary + initial batch)", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            stock = row.pop("_stock", None)
+            opening_stock = row.pop("_opening_stock", None)
+            expiry_date = row.pop("_expiry_date", None)
+            received_at = row.pop("_received_at", None)
+            row.pop("_supplier_id", None)  # no royan_inventory_batches.supplier_id match target yet
+
+            cols = list(row.keys())
+            vals = [row[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+
+            cur.execute("SAVEPOINT _row_sp")
+            try:
+                cur.execute(
+                    f"""
+                    INSERT INTO royan_drug_formulary ({col_names})
+                    VALUES ({placeholders})
+                    ON CONFLICT (external_source, external_id)
+                    WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                    DO UPDATE SET {updates}
+                    RETURNING id
+                    """,
+                    vals,
+                )
+                formulary_id = cur.fetchone()[0]
+
+                qty_on_hand = max(stock or 0, 0)
+                qty_received = max(opening_stock or 0, qty_on_hand)
+                cur.execute(
+                    """
+                    INSERT INTO royan_inventory_batches
+                        (formulary_id, batch_number, quantity_on_hand, quantity_received,
+                         unit_cost, received_at, expiry_date, external_source, external_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (formulary_id, lower(batch_number)) DO UPDATE SET
+                        quantity_on_hand = EXCLUDED.quantity_on_hand,
+                        quantity_received = EXCLUDED.quantity_received,
+                        expiry_date = EXCLUDED.expiry_date
+                    """,
+                    (formulary_id, INITIAL_BATCH_NUMBER, qty_on_hand, qty_received,
+                     row.get("unit_cost") or 0, received_at, expiry_date,
+                     EXTERNAL_SOURCE, row.get("external_id")),
+                )
+                cur.execute("RELEASE SAVEPOINT _row_sp")
+                upserted += 1
+            except Exception as exc:
+                cur.execute("ROLLBACK TO SAVEPOINT _row_sp")
+                cur.execute("RELEASE SAVEPOINT _row_sp")
+                logger.warning("Skipped pharmacy_catalog row %s: %s", row.get("code"), exc)
+
+    conn.commit()
+    return len(rows), upserted
+
+
+def load_encounter_notes(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_encounter_notes from Hope's `notes` table. There is no explicit
+    per-note encounter link in the source (see transformers/hope_notes.py
+    docstring) -- each note is attached to its patient's encounter whose
+    created_at is closest to the note's own timestamp. A note whose patient
+    doesn't resolve, or who has zero encounters at all, is skipped rather
+    than force-attached to a guess.
+    """
+    if dry_run:
+        _print_dry_run("encounter_notes (hope notes)", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            hope_pid = row.get("_hope_patient_id")
+            note_at = row.get("_note_at")
+            patient_id = _patient_id_by_external(cur, hope_pid) if hope_pid else None
+            if not patient_id or not note_at:
+                continue
+
+            cur.execute(
+                """
+                SELECT id FROM royan_encounters
+                WHERE patient_id = %s
+                ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - %s::timestamptz)))
+                LIMIT 1
+                """,
+                (patient_id, note_at),
+            )
+            enc_row = cur.fetchone()
+            if not enc_row:
+                continue
+            encounter_id = enc_row[0]
+
+            clean = {k: v for k, v in row.items() if not k.startswith("_")}
+            clean["patient_id"] = patient_id
+            clean["encounter_id"] = encounter_id
+
+            cols = list(clean.keys())
+            vals = [clean[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_encounter_notes ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"note:{clean.get('external_id')}"):
+                upserted += 1
+
+    conn.commit()
+    return len(rows), upserted
+
+
+def load_purchase_batches(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """Historical batch records (real batch_number/expiry_date, quantity_on_hand
+    forced to 0 by the transformer -- see transformers/pharmacy_purchase_batches.py)
+    linked to an existing royan_drug_formulary row via the Hope item id.
+    Rows whose item_id doesn't resolve to a formulary row already loaded by
+    load_pharmacy_catalog.py are skipped -- not every purchase-record item_id
+    is in the smaller pharmacy_items catalog used for the formulary load.
+    """
+    if dry_run:
+        _print_dry_run("purchase_batches", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            hope_item_id = row.get("_hope_item_id")
+            cur.execute(
+                "SELECT id FROM royan_drug_formulary WHERE external_source = %s AND external_id = %s LIMIT 1",
+                (EXTERNAL_SOURCE, hope_item_id),
+            )
+            f_row = cur.fetchone()
+            if not f_row:
+                continue
+            formulary_id = f_row[0]
+
+            clean = {k: v for k, v in row.items() if not k.startswith("_")}
+            clean["formulary_id"] = formulary_id
+
+            cols = list(clean.keys())
+            vals = [clean[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_inventory_batches ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"purchase_batch:{clean.get('external_id')}"):
+                upserted += 1
+
+    conn.commit()
+    return len(rows), upserted
+
+
 def load_admissions(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
     if dry_run:
         _print_dry_run("encounters (admissions)", rows)
@@ -517,11 +727,82 @@ def load_lab_results(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int
     return len(rows), upserted
 
 
+def load_lab_hl7_results(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """Real per-analyte lab results from Hope's laboratory_hl7_results table
+    (see transformers/lab_hl7_results.py). Unlike load_lab_results (one row
+    per order, sourced from the largely-empty laboratory_results shell
+    table), this is genuinely N rows per order -- one per analyte in a
+    panel -- so it upserts on the row's own external_id (migration 177)
+    instead of the one-per-order dedup used there. patient_id has no source
+    column on this table at all; it's carried over from the resolved
+    parent order.
+    """
+    if dry_run:
+        _print_dry_run("lab_hl7_results", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            lab_ext_id = row.get("_hope_lab_order_ext_id")
+            if not lab_ext_id:
+                continue
+
+            cur.execute(
+                "SELECT id, patient_id FROM royan_lab_orders WHERE external_source = %s AND external_id = %s LIMIT 1",
+                (EXTERNAL_SOURCE, str(lab_ext_id)),
+            )
+            lab_row = cur.fetchone()
+            if not lab_row:
+                continue
+            lab_order_id, patient_id = lab_row
+
+            clean = {k: v for k, v in row.items() if not k.startswith("_")}
+            clean["lab_order_id"] = lab_order_id
+            clean["patient_id"] = patient_id
+
+            if isinstance(clean.get("result_data"), dict):
+                clean["result_data"] = json.dumps(clean["result_data"], default=str)
+
+            cols = list(clean.keys())
+            vals = [clean[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_lab_results ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"lab_hl7_result:{clean.get('external_id')}"):
+                upserted += 1
+
+            cur.execute(
+                "UPDATE royan_lab_orders SET status = 'resulted', updated_at = now() WHERE id = %s AND status != 'resulted'",
+                (lab_order_id,),
+            )
+
+    conn.commit()
+    return len(rows), upserted
+
+
 # ---------------------------------------------------------------------------
 # Dispensing loader (royan_dispensing — no external_source/external_id)
 # ---------------------------------------------------------------------------
 
 def load_dispensing(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_dispensing has its own (external_source, external_id) unique
+    constraint (one row per Hope pharmacy_sales_bill_details line), so this
+    is a normal idempotent upsert -- a prescription legitimately has 1..N
+    dispensed lines, unlike the old one-per-prescription design.
+
+    Dispensing lines have no patient_id or timestamp of their own in Hope
+    (pharmacy_sales_bill_details is a pure line-item table); both are
+    resolved from the parent prescription found via `_hope_rx_ext_id`.
+    """
     if dry_run:
         _print_dry_run("dispensing", rows)
         return len(rows), 0
@@ -530,45 +811,55 @@ def load_dispensing(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int,
     with conn.cursor() as cur:
         for row in rows:
             row = _sanitize_row(row)
-            hope_pid = row.get("_hope_patient_id")
             rx_ext_id = row.get("_hope_rx_ext_id")
-            patient_id = _patient_id_by_external(cur, hope_pid) if hope_pid else None
-            if not patient_id or not rx_ext_id:
+            if not rx_ext_id:
                 continue
 
             cur.execute(
-                "SELECT id FROM royan_prescriptions WHERE external_source = %s AND external_id = %s LIMIT 1",
+                "SELECT id, patient_id, prescribed_at FROM royan_prescriptions "
+                "WHERE external_source = %s AND external_id = %s LIMIT 1",
                 (EXTERNAL_SOURCE, str(rx_ext_id)),
             )
             rx_row = cur.fetchone()
             if not rx_row:
                 continue
-            prescription_id = rx_row[0]
+            prescription_id, patient_id, prescribed_at = rx_row
 
-            # Skip if dispensing record already exists for this prescription
-            cur.execute(
-                "SELECT 1 FROM royan_dispensing WHERE prescription_id = %s LIMIT 1",
-                (prescription_id,),
-            )
-            if cur.fetchone():
-                continue
+            formulary_id = None
+            hope_item_id = row.get("_hope_item_id")
+            if hope_item_id:
+                cur.execute(
+                    "SELECT id FROM royan_drug_formulary WHERE external_source = %s AND external_id = %s LIMIT 1",
+                    (EXTERNAL_SOURCE, hope_item_id),
+                )
+                f_row = cur.fetchone()
+                if f_row:
+                    formulary_id = f_row[0]
 
             clean = {k: v for k, v in row.items() if not k.startswith("_")}
             clean["prescription_id"] = prescription_id
             clean["patient_id"] = patient_id
+            clean["dispensed_at"] = prescribed_at or utcnow()
+            clean["formulary_id"] = formulary_id
 
             cols = list(clean.keys())
             vals = [clean[c] for c in cols]
             placeholders = ", ".join(["%s"] * len(cols))
             col_names = ", ".join(cols)
-            sql = f"INSERT INTO royan_dispensing ({col_names}) VALUES ({placeholders})"
-            if _exec_with_savepoint(cur, sql, vals, label=f"dispensing:{rx_ext_id}"):
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_dispensing ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"dispensing:{clean.get('external_id')}"):
                 upserted += 1
 
-            # Mark the prescription as 'dispensed'
             cur.execute(
-                "UPDATE royan_prescriptions SET status = 'dispensed', updated_at = now() WHERE id = %s AND status = 'pending'",
-                (prescription_id,),
+                "UPDATE royan_prescriptions SET status = 'dispensed', dispensed_at = %s WHERE id = %s AND status = 'pending'",
+                (clean["dispensed_at"], prescription_id),
             )
 
     conn.commit()
@@ -580,6 +871,12 @@ def load_dispensing(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int,
 # ---------------------------------------------------------------------------
 
 def load_payments(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_payments has its own (external_source, external_id) unique
+    constraint (one row per Hope service_cash_payments record), so this is
+    a normal idempotent upsert -- a bill legitimately has 0..N payments,
+    unlike the old one-payment-per-bill design. billing_id is nullable, so
+    an unresolved bill reference doesn't block recording the payment.
+    """
     if dry_run:
         _print_dry_run("payments", rows)
         return len(rows), 0
@@ -591,25 +888,17 @@ def load_payments(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, i
             hope_pid = row.get("_hope_patient_id")
             bill_ext_id = row.get("_hope_billing_ext_id")
             patient_id = _patient_id_by_external(cur, hope_pid) if hope_pid else None
-            if not patient_id or not bill_ext_id:
+            if not patient_id:
                 continue
 
-            cur.execute(
-                "SELECT id FROM royan_billing WHERE external_source = %s AND external_id = %s LIMIT 1",
-                (EXTERNAL_SOURCE, str(bill_ext_id)),
-            )
-            bill_row = cur.fetchone()
-            if not bill_row:
-                continue
-            billing_id = bill_row[0]
-
-            # Skip if a payment already exists for this billing record
-            cur.execute(
-                "SELECT 1 FROM royan_payments WHERE billing_id = %s LIMIT 1",
-                (billing_id,),
-            )
-            if cur.fetchone():
-                continue
+            billing_id = None
+            if bill_ext_id:
+                cur.execute(
+                    "SELECT id FROM royan_billing WHERE external_source = %s AND external_id = %s LIMIT 1",
+                    (EXTERNAL_SOURCE, str(bill_ext_id)),
+                )
+                bill_row = cur.fetchone()
+                billing_id = bill_row[0] if bill_row else None
 
             clean = {k: v for k, v in row.items() if not k.startswith("_")}
             clean["billing_id"] = billing_id
@@ -619,8 +908,15 @@ def load_payments(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, i
             vals = [clean[c] for c in cols]
             placeholders = ", ".join(["%s"] * len(cols))
             col_names = ", ".join(cols)
-            sql = f"INSERT INTO royan_payments ({col_names}) VALUES ({placeholders})"
-            if _exec_with_savepoint(cur, sql, vals, label=f"payment:{bill_ext_id}"):
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_payments ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"payment:{clean.get('external_id')}"):
                 upserted += 1
 
     conn.commit()
@@ -632,6 +928,16 @@ def load_payments(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, i
 # ---------------------------------------------------------------------------
 
 def load_insurance_claims(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_insurance_claims has its own (external_source, external_id)
+    unique constraint, so this is a normal idempotent upsert. Hope's
+    `sub_claims` links to an ENCOUNTER (`_hope_encounter_ext_id`), not a
+    bill directly -- billing_id is NOT NULL on royan_insurance_claims, so
+    the encounter's patient is resolved first, then the most recent bill
+    for that patient is used as the claim's billing reference. A patient
+    with no billing row at all can't satisfy the NOT NULL FK and is
+    skipped (counted via the seen/upserted gap, same as other unresolved
+    rows in this loader).
+    """
     if dry_run:
         _print_dry_run("insurance_claims", rows)
         return len(rows), 0
@@ -640,36 +946,31 @@ def load_insurance_claims(conn, rows: List[Dict], dry_run: bool = False) -> Tupl
     with conn.cursor() as cur:
         for row in rows:
             row = _sanitize_row(row)
-            hope_pid = row.get("_hope_patient_id")
-            bill_ext_id = row.get("_hope_billing_ext_id")
-            patient_id = _patient_id_by_external(cur, hope_pid) if hope_pid else None
-            if not patient_id or not bill_ext_id:
+            hope_enc_id = row.get("_hope_encounter_ext_id")
+            if not hope_enc_id:
                 continue
 
             cur.execute(
-                "SELECT id FROM royan_billing WHERE external_source = %s AND external_id = %s LIMIT 1",
-                (EXTERNAL_SOURCE, str(bill_ext_id)),
+                "SELECT patient_id FROM royan_encounters WHERE external_source = %s AND external_id = %s LIMIT 1",
+                (EXTERNAL_SOURCE, str(hope_enc_id)),
+            )
+            enc_row = cur.fetchone()
+            if not enc_row:
+                continue
+            patient_id = enc_row[0]
+
+            cur.execute(
+                "SELECT id FROM royan_billing WHERE patient_id = %s ORDER BY billed_at DESC LIMIT 1",
+                (patient_id,),
             )
             bill_row = cur.fetchone()
             if not bill_row:
-                continue
+                continue  # NOT NULL billing_id -- nothing to attach this claim to
             billing_id = bill_row[0]
 
-            # Skip if claim already exists for this bill
-            cur.execute(
-                "SELECT 1 FROM royan_insurance_claims WHERE billing_id = %s LIMIT 1",
-                (billing_id,),
-            )
-            if cur.fetchone():
-                continue
-
-            # Enrich hmo_provider / hmo_id from the patient record if not in billing row
-            hmo_provider = safe_str(row.get("_hmo_provider_hint"))
-            hmo_id_val = safe_str(row.get("_hmo_id_hint"))
-            if not hmo_provider or not hmo_id_val:
-                p_hmo_provider, p_hmo_id = _patient_hmo_info(cur, patient_id)
-                hmo_provider = hmo_provider or p_hmo_provider or "Unknown HMO"
-                hmo_id_val = hmo_id_val or p_hmo_id or "UNKNOWN"
+            p_hmo_provider, p_hmo_id = _patient_hmo_info(cur, patient_id)
+            hmo_provider = p_hmo_provider or "Unknown HMO"
+            hmo_id_val = p_hmo_id or "UNKNOWN"
 
             clean = {k: v for k, v in row.items() if not k.startswith("_")}
             clean["billing_id"] = billing_id
@@ -681,12 +982,88 @@ def load_insurance_claims(conn, rows: List[Dict], dry_run: bool = False) -> Tupl
             vals = [clean[c] for c in cols]
             placeholders = ", ".join(["%s"] * len(cols))
             col_names = ", ".join(cols)
-            sql = f"INSERT INTO royan_insurance_claims ({col_names}) VALUES ({placeholders})"
-            if _exec_with_savepoint(cur, sql, vals, label=f"claim:{bill_ext_id}"):
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_insurance_claims ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"claim:{clean.get('external_id')}"):
                 upserted += 1
 
     conn.commit()
     return len(rows), upserted
+
+
+def load_hmos(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """royan_hmos from Hope's real payer list (tariff_standards -- see
+    transformers/hmo.py for why that's the real source, not the table
+    literally named "hmo"/"insurance_companies"). Normal idempotent upsert
+    on (external_source, external_id); name also has its own UNIQUE
+    constraint, so a name collision with a pre-existing (e.g. demo seed)
+    row surfaces as a skipped row rather than a hard failure.
+    """
+    if dry_run:
+        _print_dry_run("hmos", rows)
+        return len(rows), 0
+
+    upserted = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            row = _sanitize_row(row)
+            cols = list(row.keys())
+            vals = [row[c] for c in cols]
+            placeholders = ", ".join(["%s"] * len(cols))
+            col_names = ", ".join(cols)
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("external_source", "external_id"))
+            sql = f"""
+                INSERT INTO royan_hmos ({col_names})
+                VALUES ({placeholders})
+                ON CONFLICT (external_source, external_id)
+                WHERE external_source IS NOT NULL AND external_id IS NOT NULL
+                DO UPDATE SET {updates}
+            """
+            if _exec_with_savepoint(cur, sql, vals, label=f"hmo:{row.get('name')}"):
+                upserted += 1
+
+    conn.commit()
+    return len(rows), upserted
+
+
+def load_patient_hmo_links(conn, rows: List[Dict], dry_run: bool = False) -> Tuple[int, int]:
+    """Tags royan_patients.hmo_provider/patient_type from the real
+    corporate_patient_details -> corporate_super_bills -> tariff_standards
+    chain (see transformers/hmo.py). Plain UPDATE, not an upsert -- there's
+    no per-row external_id to conflict on here, this is a patient-level
+    attribute, not its own entity. hmo_id (the patient's own membership
+    number with that HMO) is deliberately left untouched: Hope's
+    corporate_patient_details has no membership-number field, and
+    fabricating one would be worse than leaving it null.
+    """
+    if dry_run:
+        _print_dry_run("patient_hmo_links", rows)
+        return len(rows), 0
+
+    updated = 0
+    with conn.cursor() as cur:
+        for row in rows:
+            hope_pid = row.get("_hope_patient_id")
+            hmo_name = row.get("hmo_name")
+            patient_id = _patient_id_by_external(cur, hope_pid) if hope_pid else None
+            if not patient_id or not hmo_name:
+                continue
+
+            cur.execute(
+                "UPDATE royan_patients SET hmo_provider = %s, patient_type = 'hmo' WHERE id = %s",
+                (hmo_name, patient_id),
+            )
+            if cur.rowcount:
+                updated += 1
+
+    conn.commit()
+    return len(rows), updated
 
 
 # ---------------------------------------------------------------------------

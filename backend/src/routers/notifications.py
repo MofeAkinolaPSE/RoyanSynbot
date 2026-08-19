@@ -260,14 +260,31 @@ async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(veri
     """
     Query appointments N days ahead and send SMS reminders.
     Looks up patient phone from royan_patients via appointment.patient_id.
+
+    Date/time/department/doctor live on royan_appointment_slots, not on
+    royan_appointments itself — joined here via slot_id. "confirmed" is kept
+    alongside "booked" in the status filter because hope_sync.py writes that
+    status on appointments synced from the legacy Hope system, even though
+    the internal booking flow only ever uses "booked".
     """
-    from src.constants import TABLE_APPOINTMENTS
+    from src.constants import TABLE_APPOINTMENTS, TABLE_APPOINTMENT_SLOTS
     target_date = (datetime.now(timezone.utc) + timedelta(days=payload.days_ahead)).date().isoformat()
 
-    appt_result = db.table(TABLE_APPOINTMENTS).select(
-        "id,patient_id,appointment_date,appointment_time,department,provider_name"
-    ).eq("appointment_date", target_date).eq("status", "confirmed").execute()
+    slot_result = db.table(TABLE_APPOINTMENT_SLOTS).select(
+        "id,slot_date,slot_time,department,doctor_name"
+    ).eq("slot_date", target_date).execute()
+    slots_by_id = {s["id"]: s for s in (slot_result.data or [])}
+    if not slots_by_id:
+        return {"ok": True, "sent": 0, "message": f"No appointment slots on {target_date}"}
 
+    appt_result = (
+        db.table(TABLE_APPOINTMENTS)
+        .select("id,patient_id,slot_id,status,reminder_sent")
+        .in_("slot_id", list(slots_by_id.keys()))
+        .in_("status", ["booked", "confirmed"])
+        .eq("reminder_sent", False)
+        .execute()
+    )
     appointments = appt_result.data or []
     if not appointments:
         return {"ok": True, "sent": 0, "message": f"No confirmed appointments on {target_date}"}
@@ -280,6 +297,7 @@ async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(veri
     sent = 0
     skipped = 0
     for appt in appointments:
+        slot = slots_by_id.get(appt["slot_id"], {})
         # Fetch patient phone
         pat = db.table("royan_patients").select("phone,first_name,last_name").eq("id", appt["patient_id"]).execute()
         if not pat.data or not pat.data[0].get("phone"):
@@ -288,10 +306,10 @@ async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(veri
         p = pat.data[0]
         phone = p["phone"]
         msg = default_template.format(
-            date=appt.get("appointment_date", target_date),
-            time=appt.get("appointment_time", ""),
-            department=appt.get("department", ""),
-            provider=appt.get("provider_name", ""),
+            date=slot.get("slot_date", target_date),
+            time=slot.get("slot_time", ""),
+            department=slot.get("department", ""),
+            provider=slot.get("doctor_name", ""),
             name=f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
         )
         r = _send_via_at(phone, msg, "sms")
@@ -308,6 +326,10 @@ async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(veri
         )
         if r["status"] == "sent":
             sent += 1
+            db.table(TABLE_APPOINTMENTS).update({
+                "reminder_sent": True,
+                "reminder_sent_at": _now(),
+            }).eq("id", appt["id"]).execute()
         else:
             skipped += 1
 
@@ -412,7 +434,7 @@ async def notification_stats(user=Depends(verify_jwt)):
 
     today = datetime.now(timezone.utc).date().isoformat()
     total = len(rows)
-    sent_today = sum(1 for r in rows if r.get("sent_at", "")[:10] == today)
+    sent_today = sum(1 for r in rows if str(r.get("sent_at") or "")[:10] == today)
     by_channel: dict = {}
     by_status: dict = {}
     for r in rows:

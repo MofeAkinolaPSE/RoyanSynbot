@@ -95,11 +95,11 @@ function ProposalsTab() {
                   <TableCell className="text-sm font-medium max-w-[220px] truncate" title={p.capability_name}>{p.capability_name}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[320px] truncate" title={p.problem}>{p.problem}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn("text-[10px]", confidenceBadgeClass(p.confidence_score ?? 0))}>
+                    <Badge variant="outline" className={cn("text-[12px]", confidenceBadgeClass(p.confidence_score ?? 0))}>
                       {Math.round((p.confidence_score ?? 0) * 100)}%
                     </Badge>
                   </TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px] capitalize">{p.status}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-[12px] capitalize">{p.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString()}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -192,7 +192,7 @@ function SignalsTab() {
                 <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">No signals recorded</TableCell></TableRow>
               ) : signals.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{s.signal_type}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-[12px]">{s.signal_type}</Badge></TableCell>
                   <TableCell className="text-sm">{s.component || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[400px] truncate" title={s.description}>{s.description}</TableCell>
                   <TableCell className="text-sm font-medium">{s.frequency}</TableCell>

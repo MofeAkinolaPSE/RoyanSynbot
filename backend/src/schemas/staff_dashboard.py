@@ -52,8 +52,23 @@ class Badge(BaseModel):
     description: Optional[str]
 
 
+class StaffIdentity(BaseModel):
+    staff_id: str
+    full_name: str
+    role: Optional[str]
+    department: Optional[str]
+
+
+class UpcomingItem(BaseModel):
+    type: str  # "appointment" | "task"
+    title: str
+    when: Optional[str]
+
+
 class StaffDashboard(BaseModel):
     user_id: str
+    identity: Optional[StaffIdentity] = None
+    upcoming: List[UpcomingItem] = []
     activities: List[ActivityItem] = []
     pending_approvals: List[PendingApproval] = []
     tasks: List[TaskItem] = []

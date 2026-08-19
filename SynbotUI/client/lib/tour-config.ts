@@ -1,4 +1,5 @@
 import { NAV_ITEMS } from "@/lib/nav-items";
+import { canViewByRoles } from "@/lib/nav-access";
 
 export type TourStep = {
   label: string;
@@ -17,7 +18,7 @@ export function getTourStepsForRole(role: string): TourStep[] {
     (item) =>
       !!item.href &&
       !!item.tourDescription &&
-      (!item.roles || item.roles.length === 0 || item.roles.includes(role)),
+      canViewByRoles([role], item.roles),
   ).map((item) => ({
     label: item.label,
     href: item.href as string,

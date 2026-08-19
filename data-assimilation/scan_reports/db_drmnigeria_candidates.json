@@ -1,0 +1,4778 @@
+{
+  "account_billing_interfaces": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "account_receipts": {
+    "row_count": 50294,
+    "sample": {
+      "id": "1",
+      "user_id": "36",
+      "account_id": "25",
+      "journal_entry_id": null,
+      "paid_amount": "30000",
+      "narration": "Being Cash received from advance against Pt. JULIANAH BOLADE ADENIJI for ADMISSION CATEGORY A-Anticipated short stay done on 2016-10-17 06:26:58",
+      "date": "2016-10-17 06:26:58",
+      "type": "PatientCard",
+      "account_receipt_no": "1",
+      "batch_number": null,
+      "modified_by": "0",
+      "create_by": "188",
+      "create_time": "2016-10-17 06:26:58",
+      "modify_time": "0000-00-00 00:00:00",
+      "billing_id": null,
+      "is_deleted": "0",
+      "name_on_receipt": null,
+      "patient_card_detail": "a:1:{s:4:\\\"cash\\\";s:1:\\\"1\\\";}",
+      "location_id": "1",
+      "is_posted_cash": "0",
+      "patient_id": "5827",
+      "tds_amount": null
+    },
+    "columns": [
+      "id",
+      "user_id",
+      "account_id",
+      "journal_entry_id",
+      "paid_amount",
+      "narration",
+      "date",
+      "type",
+      "account_receipt_no",
+      "batch_number",
+      "modified_by",
+      "create_by",
+      "create_time",
+      "modify_time",
+      "billing_id",
+      "is_deleted",
+      "name_on_receipt",
+      "patient_card_detail",
+      "location_id",
+      "is_posted_cash",
+      "patient_id",
+      "tds_amount"
+    ]
+  },
+  "accounting_groups": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "accounts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "acos": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "addresses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "admission_checklists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "advance_directives": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "advance_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "adverse_event_triggers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "air_sampling_reports": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "alcohal_assesment": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "alcohal_cessation_assesments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "allergy_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ambulatory_result_outboxes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ambulatory_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ambulatory_visit_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "anaesthesia_consent_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "apctocpt": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "appointments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "approve_requests": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "aros": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "aros_acos": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "assessment_first_admissions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "assessment_second_admissions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "assessment_third_admissions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audit_delta_logs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audit_deltas": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audit_log_permission": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audit_log_status": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audit_trails": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "audits": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "batches": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "beds": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "billing_other_codes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "billing_profiles": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "birth_documentation_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "blood_order_options": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "blood_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "bmi_bp_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "bmi_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "body_site_value_set": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "bosy_site_value_set": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "bsi_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cake_sessions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "caregiver_addresses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "caregiver_contacts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cashier_batches": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "chambers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "child_births": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cities": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "city_area_locations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "claim_transactions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "clinical_supports": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cognitive_functions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "collaborate_companies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "companies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "complaints": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "configurations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "consent_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "consents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "consultant_billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "consultant_schedules": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "consultants": {
+    "row_count": 2346,
+    "sample": {
+      "id": "1",
+      "initial_id": "4",
+      "refferer_doctor_id": "5",
+      "location_id": "1",
+      "first_name": "Brian",
+      "last_name": "Lewis",
+      "middle_name": "",
+      "ssn_us": null,
+      "npi_no": "987654321",
+      "dea": null,
+      "upin": null,
+      "tin": "",
+      "state": null,
+      "enrollment_status": null,
+      "caqh_provider_id": null,
+      "licensure_type": null,
+      "licensure_no": null,
+      "expiration_date": "0000-00-00 00:00:00",
+      "address1": "90001 1ST AVE",
+      "address2": "STE 100",
+      "city_id": "1043",
+      "state_id": "84",
+      "country_id": "2",
+      "accounting_group_id": "1",
+      "zipcode": "20000",
+      "email": "brianl@gmail.com",
+      "phone1": "2025551212",
+      "phone2": "2025551212",
+      "mobile": "2025551212",
+      "fax": "2025551212",
+      "hospital_name": "Wokhart",
+      "charges_type": null,
+      "charges": null,
+      "surgery_charges": null,
+      "anaesthesia_charges": null,
+      "other_charges": null,
+      "availability": "1",
+      "education": "MS",
+      "haspecility": "1",
+      "specility_keyword": "Medicine",
+      "experience": "5 years",
+      "dateofbirth": "1980-01-23 09:57:00",
+      "profile_description": null,
+      "is_active": "1",
+      "is_deleted": "1",
+      "created_by": "1",
+      "modified_by": "1",
+      "create_time": "2014-01-06 15:27:00",
+      "modify_time": "2016-06-06 07:49:54",
+      "market_team": null,
+      "referal_spot_amount": null,
+      "doctor_commision": null,
+      "suffix": "",
+      "bank_name": null,
+      "bank_code": null,
+      "account_name": null,
+      "account_number": null,
+      "profit_percentage": "20"
+    },
+    "columns": [
+      "id",
+      "initial_id",
+      "refferer_doctor_id",
+      "location_id",
+      "first_name",
+      "last_name",
+      "middle_name",
+      "ssn_us",
+      "npi_no",
+      "dea",
+      "upin",
+      "tin",
+      "state",
+      "enrollment_status",
+      "caqh_provider_id",
+      "licensure_type",
+      "licensure_no",
+      "expiration_date",
+      "address1",
+      "address2",
+      "city_id",
+      "state_id",
+      "country_id",
+      "accounting_group_id",
+      "zipcode",
+      "email",
+      "phone1",
+      "phone2",
+      "mobile",
+      "fax",
+      "hospital_name",
+      "charges_type",
+      "charges",
+      "surgery_charges",
+      "anaesthesia_charges",
+      "other_charges",
+      "availability",
+      "education",
+      "haspecility",
+      "specility_keyword",
+      "experience",
+      "dateofbirth",
+      "profile_description",
+      "is_active",
+      "is_deleted",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time",
+      "market_team",
+      "referal_spot_amount",
+      "doctor_commision",
+      "suffix",
+      "bank_name",
+      "bank_code",
+      "account_name",
+      "account_number",
+      "profit_percentage"
+    ]
+  },
+  "contra_entries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "contracts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_lab_rates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_locations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_patient_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_sublocations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_super_bill_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporate_super_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "corporates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "countries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "coupon_transactions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "coupons": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cqm_exclusion_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cqmlists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cqmreportehs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "cqmreports": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "credit_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "currencies_backup": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dama_consent_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "death_certificates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "death_summaries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "departments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "designations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "device_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "device_uses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnoses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnosis_drugs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnosis_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnostic_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnostics": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "diagnosticstudyresult_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dietary_assessments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dietry_notes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dignostic_studys": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "direct_consumptions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_drugs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_summaries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_summaries_old": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_surgeries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_template_texts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discharge_templates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dischargeby_consultants": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discount_by_credits": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "discount_requests": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "districts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "doctor_chambers": {
+    "row_count": 768,
+    "sample": {
+      "id": "1",
+      "location_id": "1",
+      "doctor_id": "12",
+      "chamber_id": null,
+      "is_blocked": "1",
+      "subject": null,
+      "purpose": "walk - in time",
+      "start_time": "17:00",
+      "end_time": "18:30",
+      "starttime": "2014-07-17 17:00:00",
+      "endtime": "2014-07-17 18:30:00",
+      "is_all_day_event": "0",
+      "color": "-1",
+      "is_recurring": "0",
+      "recurring_month": null,
+      "recurring_identifier": null,
+      "weekdays": null,
+      "is_deleted": "0",
+      "created_by": "28",
+      "create_time": "2014-07-17 07:52:18",
+      "modified_by": null,
+      "modify_time": null
+    },
+    "columns": [
+      "id",
+      "location_id",
+      "doctor_id",
+      "chamber_id",
+      "is_blocked",
+      "subject",
+      "purpose",
+      "start_time",
+      "end_time",
+      "starttime",
+      "endtime",
+      "is_all_day_event",
+      "color",
+      "is_recurring",
+      "recurring_month",
+      "recurring_identifier",
+      "weekdays",
+      "is_deleted",
+      "created_by",
+      "create_time",
+      "modified_by",
+      "modify_time"
+    ]
+  },
+  "doctor_schedules": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "doctor_template_texts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "doctor_templates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "doctors": {
+    "row_count": 126,
+    "sample": {
+      "id": "1",
+      "doctor_name": "Physician  Coon",
+      "first_name": "Physician",
+      "last_name": "Coon",
+      "middle_name": "",
+      "charges": null,
+      "npi_no": null,
+      "dea": null,
+      "upin": null,
+      "state": null,
+      "caqh_provider_id": null,
+      "enrollment_status": null,
+      "surgery_charges": null,
+      "licensure_type": null,
+      "licensure_no": null,
+      "expiration_date": "2029-06-14 14:20:36",
+      "starthours": "08:00",
+      "endhours": "20:00",
+      "anaesthesia_charges": null,
+      "other_charges": null,
+      "education": null,
+      "haspecility": "0",
+      "specility_keyword": null,
+      "experience": null,
+      "department_id": "17",
+      "location_id": "1",
+      "user_id": "108",
+      "dateofbirth": "0000-00-00",
+      "profile_description": null,
+      "show_color_from": "0",
+      "present_event_color": "#4498ab",
+      "past_event_color": null,
+      "future_event_color": null,
+      "appointment_visit_color": "a:24:{i:0;s:0:\\\"\\\";i:1;s:18:\\\"\tbackground-color:\\\";i:2;s:18:\\\"\tbackground-color:\\\";i:3;s:18:\\\"\tbackground-color:\\\";i:4;s:35:\\\"background-color: rgb(77, 49, 153);\\\";i:5;s:18:\\\"\tbackground-color:\\\";i:6;s:18:\\\"\tbackground-color:\\\";i:7;s:18:\\\"\tbackground-color:\\\";i:8;s:18:\\\"\tbackground-color:\\\";i:9;s:18:\\\"\tbackground-color:\\\";i:10;s:18:\\\"\tbackground-color:\\\";i:11;s:18:\\\"\tbackground-color:\\\";i:12;s:18:\\\"\tbackground-color:\\\";i:13;s:18:\\\"\tbackground-color:\\\";i:14;s:18:\\\"\tbackground-color:\\\";i:15;s:18:\\\"\tbackground-color:\\\";i:16;s:18:\\\"\tbackground-color:\\\";i:17;s:18:\\\"\tbackground-color:\\\";i:18;s:18:\\\"\tbackground-color:\\\";i:19;s:18:\\\"\tbackground-color:\\\";i:20;s:18:\\\"\tbackground-color:\\\";i:21;s:18:\\\"\tbackground-color:\\\";i:22;s:18:\\\"\tbackground-color:\\\";i:23;s:18:\\\"\tbackground-color:\\\";}",
+      "token_alphabet": null,
+      "is_registrar": "0",
+      "is_surgeon": "0",
+      "as_doctor": "0",
+      "is_opd_allow": "0",
+      "height_weight": null,
+      "bp": null,
+      "photo": "",
+      "is_active": "1",
+      "is_deleted": "1",
+      "is_doctor": "0",
+      "created_by": "1",
+      "modified_by": "1",
+      "create_time": "2015-06-26 12:52:15",
+      "modify_time": "2015-08-06 10:20:39",
+      "is_opd": null
+    },
+    "columns": [
+      "id",
+      "doctor_name",
+      "first_name",
+      "last_name",
+      "middle_name",
+      "charges",
+      "npi_no",
+      "dea",
+      "upin",
+      "state",
+      "caqh_provider_id",
+      "enrollment_status",
+      "surgery_charges",
+      "licensure_type",
+      "licensure_no",
+      "expiration_date",
+      "starthours",
+      "endhours",
+      "anaesthesia_charges",
+      "other_charges",
+      "education",
+      "haspecility",
+      "specility_keyword",
+      "experience",
+      "department_id",
+      "location_id",
+      "user_id",
+      "dateofbirth",
+      "profile_description",
+      "show_color_from",
+      "present_event_color",
+      "past_event_color",
+      "future_event_color",
+      "appointment_visit_color",
+      "token_alphabet",
+      "is_registrar",
+      "is_surgeon",
+      "as_doctor",
+      "is_opd_allow",
+      "height_weight",
+      "bp",
+      "photo",
+      "is_active",
+      "is_deleted",
+      "is_doctor",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time",
+      "is_opd"
+    ]
+  },
+  "drug_allergies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "drug_dosageform_routes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "drugs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "dump_notes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "duty_plans": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "duty_rosters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "earning_deductions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ekg_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ekgs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "elderly_medications": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "emar_dashboard_settings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "encounters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "env_allergies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "envallergytypes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "error_service_logs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_consultant_billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_laboratory_test_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_other_services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_radiology_test_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "estimate_service_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ethnicities": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "expenses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "facilities_backup": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "facility_database_mappings_backup": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "facility_user_mappings_backup": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "fall_assessment_summeries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "fall_assessments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "family_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "final_billing_options": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "final_billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "finalizations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "form_answers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "form_questions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "fumigation_reports": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "fumigations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "functional_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "functionalstatusresult_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "guarantors": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "guardians": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "high_risk_medications": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hippa_consents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_0004_patient_classes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_0190_address_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_0201_phvs_telecommunications": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_0202_telecommunication_equipment_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_0322_completionstatuses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_203_identifier_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_admission_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_laboratory_coded_observation": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_messages": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_nip_002": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_nips": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_units": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hl7_v3_observation_method": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hospital_rates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "hr_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "icd10pc_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "icd91to1": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "icds": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "immunizations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "imunizations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inboxes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "incident_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "incidents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "incomes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "incorporated_patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "infection_counts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "initials": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inpatient_visit_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "instock_laundries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "insurance_authorizations": {
+    "row_count": 4,
+    "sample": {
+      "id": "1",
+      "patient_id": "0",
+      "patient_uid": "UHHO14B12001",
+      "location_id": "1",
+      "authorization_number": "123",
+      "procedure_code": "11040",
+      "start_date": "2014-04-15",
+      "end_date": "2014-04-30",
+      "visit_approved": "5",
+      "visit_remaining": "5",
+      "notes": "test",
+      "expired": "0",
+      "created_by": "1",
+      "modified_by": "1",
+      "create_time": "2014-04-22 11:43:19",
+      "modify_time": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "patient_uid",
+      "location_id",
+      "authorization_number",
+      "procedure_code",
+      "start_date",
+      "end_date",
+      "visit_approved",
+      "visit_remaining",
+      "notes",
+      "expired",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time"
+    ]
+  },
+  "insurance_companies": {
+    "row_count": 9097,
+    "sample": {
+      "id": "1",
+      "healthplandetailid": null,
+      "healthplansummaryid": null,
+      "name": "Orient",
+      "address": "Nagpur Nagpur",
+      "address2": null,
+      "city": null,
+      "state": null,
+      "insurance_type_id": "1",
+      "country_id": "10",
+      "city_id": "36",
+      "state_id": "36",
+      "zip": "440014",
+      "phone": "45678",
+      "formularytype": null,
+      "organizationid": null,
+      "formularyid": null,
+      "status": null,
+      "touchdate": null,
+      "fax": "45678",
+      "email": "orient@orient.com",
+      "location_id": "1",
+      "is_active": "1",
+      "is_deleted": "1",
+      "created_by": "0",
+      "modified_by": "0",
+      "create_time": "0000-00-00 00:00:00",
+      "modify_time": "0000-00-00 00:00:00",
+      "description": "",
+      "address_type": null,
+      "country_parish_code": null,
+      "phone_type": null,
+      "extension": null
+    },
+    "columns": [
+      "id",
+      "healthplandetailid",
+      "healthplansummaryid",
+      "name",
+      "address",
+      "address2",
+      "city",
+      "state",
+      "insurance_type_id",
+      "country_id",
+      "city_id",
+      "state_id",
+      "zip",
+      "phone",
+      "formularytype",
+      "organizationid",
+      "formularyid",
+      "status",
+      "touchdate",
+      "fax",
+      "email",
+      "location_id",
+      "is_active",
+      "is_deleted",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time",
+      "description",
+      "address_type",
+      "country_parish_code",
+      "phone_type",
+      "extension"
+    ]
+  },
+  "insurance_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "interpreter_statements": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "interventions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "intrinsic_risk_factors": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_laundries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_outwards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_outwards_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_pharmacy_sales_returns": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_pharmacy_sales_returns_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_purchase_details": {
+    "row_count": 29,
+    "sample": {
+      "id": "1",
+      "vr_no": "PR-RV31KWG",
+      "vr_date": "2014-01-01 08:58:15",
+      "party_id": "13",
+      "bill_no": "15030",
+      "cst": "",
+      "discount": null,
+      "tax": "0",
+      "payment_mode": "cash",
+      "total_amount": "6300",
+      "credit_amount": null,
+      "created_by": "1",
+      "create_time": "2014-01-28 14:28:15",
+      "extra_amount": null,
+      "extra_amount_type": "0",
+      "location_id": "1"
+    },
+    "columns": [
+      "id",
+      "vr_no",
+      "vr_date",
+      "party_id",
+      "bill_no",
+      "cst",
+      "discount",
+      "tax",
+      "payment_mode",
+      "total_amount",
+      "credit_amount",
+      "created_by",
+      "create_time",
+      "extra_amount",
+      "extra_amount_type",
+      "location_id"
+    ]
+  },
+  "inventory_purchase_item_details": {
+    "row_count": 37,
+    "sample": {
+      "id": "1",
+      "inventory_purchase_detail_id": "1",
+      "qty": "10",
+      "batch_no": "625655",
+      "expiry_date": "2018-01-17 08:58:15",
+      "free": "",
+      "mrp": "550.00",
+      "price": "600.00",
+      "value": "6300.00",
+      "item_id": "19999",
+      "tax": "5"
+    },
+    "columns": [
+      "id",
+      "inventory_purchase_detail_id",
+      "qty",
+      "batch_no",
+      "expiry_date",
+      "free",
+      "mrp",
+      "price",
+      "value",
+      "item_id",
+      "tax"
+    ]
+  },
+  "inventory_purchase_return_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_purchase_returns": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_suppliers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "inventory_trackings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "lab_test_payments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_aoe_codes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_histopathologies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_hl7_results": {
+    "row_count": 1058180,
+    "sample": {
+      "id": "1",
+      "laboratory_result_id": "1",
+      "laboratory_id": "1127",
+      "location_id": null,
+      "observations": null,
+      "si_specimen_source": null,
+      "result": "10.8",
+      "uom": null,
+      "range": "4.0 - 10.0",
+      "abnormal_flag": "",
+      "status": null,
+      "date_time_of_observation": null,
+      "notes": null,
+      "unit": null,
+      "sn_value": null,
+      "created_by": null,
+      "modified_by": null,
+      "modified": "2016-10-17 10:24:26",
+      "create_time": null,
+      "modify_time": null,
+      "observation_mehtod": null,
+      "alt_identifier": null,
+      "alt_text": null,
+      "alt_coding_name": null,
+      "code_system_id": null,
+      "alt_code_system_id": null,
+      "original_text": null,
+      "observation_alt_identifier": null,
+      "observation_alt_text": null,
+      "observation_alt_coding_name": null,
+      "observation_code_system_id": null,
+      "observation_alt_code_system_id": null,
+      "observation_original_text": null,
+      "ucum_alt_identifier": null,
+      "ucum_alt_text": null,
+      "ucum_alt_coding_name": null,
+      "ucum_code_system_id": null,
+      "ucum_alt_code_system_id": null,
+      "ucum_original_text": null,
+      "abnormal_flag_alt_identifier": null,
+      "abnormal_flag_alt_text": null,
+      "abnormal_flag_alt_coding_name": null,
+      "abnormal_flag_code_system_id": null,
+      "abnormal_flag_alt_code_system_id": null,
+      "abnormal_flag_original_text": null,
+      "result_alt_identifier": null,
+      "result_alt_text": null,
+      "result_alt_coding_name": null,
+      "result_code_system_id": null,
+      "result_alt_code_system_id": null,
+      "result_original_text": null,
+      "sn_separator": null,
+      "sn_result2": null,
+      "observation_method": null,
+      "is_electronically_recorded": "0",
+      "is_authenticate": "1",
+      "is_sensitivity": "0",
+      "laboratory_parameter_id": "3058",
+      "laboratory_test_order_id": "17"
+    },
+    "columns": [
+      "id",
+      "laboratory_result_id",
+      "laboratory_id",
+      "location_id",
+      "observations",
+      "si_specimen_source",
+      "result",
+      "uom",
+      "range",
+      "abnormal_flag",
+      "status",
+      "date_time_of_observation",
+      "notes",
+      "unit",
+      "sn_value",
+      "created_by",
+      "modified_by",
+      "modified",
+      "create_time",
+      "modify_time",
+      "observation_mehtod",
+      "alt_identifier",
+      "alt_text",
+      "alt_coding_name",
+      "code_system_id",
+      "alt_code_system_id",
+      "original_text",
+      "observation_alt_identifier",
+      "observation_alt_text",
+      "observation_alt_coding_name",
+      "observation_code_system_id",
+      "observation_alt_code_system_id",
+      "observation_original_text",
+      "ucum_alt_identifier",
+      "ucum_alt_text",
+      "ucum_alt_coding_name",
+      "ucum_code_system_id",
+      "ucum_alt_code_system_id",
+      "ucum_original_text",
+      "abnormal_flag_alt_identifier",
+      "abnormal_flag_alt_text",
+      "abnormal_flag_alt_coding_name",
+      "abnormal_flag_code_system_id",
+      "abnormal_flag_alt_code_system_id",
+      "abnormal_flag_original_text",
+      "result_alt_identifier",
+      "result_alt_text",
+      "result_alt_coding_name",
+      "result_code_system_id",
+      "result_alt_code_system_id",
+      "result_original_text",
+      "sn_separator",
+      "sn_result2",
+      "observation_method",
+      "is_electronically_recorded",
+      "is_authenticate",
+      "is_sensitivity",
+      "laboratory_parameter_id",
+      "laboratory_test_order_id"
+    ]
+  },
+  "laboratory_manual_entry": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_parameters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laboratory_results": {
+    "row_count": 177905,
+    "sample": {
+      "id": "1",
+      "patient_id": "5847",
+      "laboratory_test_order_id": "17",
+      "laboratory_id": "1127",
+      "user_id": null,
+      "medication": null,
+      "laboratory_categories_id": "0",
+      "value": null,
+      "text": null,
+      "range": "",
+      "status": null,
+      "confirm_result": "0",
+      "opinion": null,
+      "result_publish_date": null,
+      "adverse_event": "0",
+      "op_name": "",
+      "op_middle_name": null,
+      "op_last_name": null,
+      "op_name_prefix": null,
+      "op_name_suffix": null,
+      "op_name_type": null,
+      "op_identifier_type_code": null,
+      "op_proffessional_suffix": null,
+      "op_identifier_number": null,
+      "ogi_placer_order_number": null,
+      "ogi_filler_order_number": null,
+      "ogi_placer_group_number": null,
+      "pusi_identifier": null,
+      "pusi_text": null,
+      "pusi_alt_identifier": null,
+      "pusi_alt_text": null,
+      "pusi_original_text": null,
+      "od_universal_service_identifier": null,
+      "od_universal_service_text": null,
+      "od_observation_date_time": null,
+      "od_observation_start_date_time": null,
+      "od_observation_end_date_time": null,
+      "od_specimen_action_code": null,
+      "od_relevant_clinical_information": null,
+      "od_alt_relevent_clinical_information": null,
+      "od_relevent_clinical_information_original_text": null,
+      "ori_result_status": null,
+      "ori_result_report_status_date_time": null,
+      "rct_suffix": null,
+      "rct_prefix": null,
+      "rct_name": null,
+      "rct_middle_name": null,
+      "rct_last_name": "",
+      "rct_identifier": null,
+      "rh_standard": null,
+      "rh_local": null,
+      "on_notes_comments": null,
+      "tqi_start_date_time": null,
+      "tqi_end_date_time": null,
+      "rpl_laboratory_name": null,
+      "rpl_laboratory_legal_name": "",
+      "rpl_laboratory_identifier_type": "",
+      "rpl_laboratory_address_type": "",
+      "rpl_organization_identifier": null,
+      "rpl_address": null,
+      "rpl_address_line_2": null,
+      "rpl_country": "",
+      "rpl_state": "",
+      "rpl_city": "",
+      "rpl_zip": "",
+      "rpl_director_name": null,
+      "rpl_director_middle_name": "",
+      "rpl_director_last_name": "",
+      "rpl_director_identifier": null,
+      "si_specimen_type": null,
+      "si_alt_specimen_type": null,
+      "si_specimen_original_text": null,
+      "si_start_date_time": null,
+      "si_specimen_reject_reason": null,
+      "si_alt_specimen_reject_reason": null,
+      "si_reject_reason_original_text": null,
+      "si_specimen_condition": null,
+      "si_alt_specimen_condition": null,
+      "si_condition_original_text": null,
+      "re_notes_comments": null,
+      "modify_time": "2016-10-17 10:24:25",
+      "modified_by": "237",
+      "created_by": null,
+      "rpl_initial": "",
+      "rpl_legal_name": "",
+      "rpl_director_edu": "",
+      "rpl_director_suffix": "",
+      "rpl_parish_code": "",
+      "op_tele_code": null,
+      "op_tele_equip_type": null,
+      "op_email_address": null,
+      "op_country_code": null,
+      "op_city_code": null,
+      "op_local_number": null,
+      "op_extension": null,
+      "op_any_text": null,
+      "op_tele_code_second": null,
+      "op_tele_equip_type_second": null,
+      "op_email_address_second": null,
+      "op_country_code_second": null,
+      "op_city_code_second": null,
+      "op_local_number_second": null,
+      "op_extension_second": null,
+      "op_any_text_second": null,
+      "op_tele_code_order_provider": null,
+      "op_tele_equip_type_order_provider": null,
+      "op_email_address_order_provider": null,
+      "op_country_code_order_provider": null,
+      "op_city_code_order_provider": null,
+      "op_local_number_order_provider": null,
+      "op_extension_order_provider": null,
+      "op_any_text_order_provider": null,
+      "rpl_order_provider_address": null,
+      "rpl_order_provider_address_line_2": null,
+      "rpl_order_provider_country": null,
+      "rpl_order_provider_state": null,
+      "rpl_order_provider_city": null,
+      "rpl_order_provider_zip": null,
+      "rpl_order_provider_address_type": null,
+      "rpl_order_provider_parish_code": null,
+      "reason_for_study_identifier": null,
+      "reason_for_study_text": null,
+      "reason_for_study_coding_system": null,
+      "reason_for_study_alt_identifier": null,
+      "reason_for_study_alt_text": null,
+      "reason_for_study_alt_coding_system": null,
+      "reason_for_study_coding_system_id": null,
+      "reason_for_study_alt_coding_system_id": null,
+      "principal_id": null,
+      "principal_last_name": null,
+      "principal_first_name": null,
+      "principal_middle_name": null,
+      "principal_suffix": null,
+      "principal_prefix": null,
+      "principal_edu": null,
+      "si_entity_identifier": null,
+      "si_specimen_type_modifier": null,
+      "si_specimen_type_activities": null,
+      "si_specimen_col_method": null,
+      "si_specimen_source": null,
+      "si_specimen_source_modifier": null,
+      "si_specimen_role": null,
+      "si_specimen_col_quantity": null,
+      "si_specimen_col_amount": null,
+      "ehr_facility": null,
+      "send_result_to_facility": null,
+      "create_time": "2016-10-17 10:19:14",
+      "patient_class": null,
+      "admission_type": null,
+      "admit_date_time": null,
+      "discharge_date_time": null,
+      "si_end_date_time": null,
+      "si_received_date_time": null,
+      "orc_zcf_1": null,
+      "orc_zcf_2": null,
+      "orc_zcf_3": null,
+      "orc_zcf_4": null,
+      "orc_zcf_5": null,
+      "is_culture_associated": "0",
+      "dhr_laboratory_patient_id": null,
+      "dhr_specimen_source": null,
+      "dhr_specimen_description": null,
+      "dhr_order_failed_status": "0",
+      "dhr_failed_result_patient_uid": null,
+      "notify": "no",
+      "is_unsolicited_order": "0",
+      "physician_unsolicited_notes": null,
+      "is_authenticate": "1",
+      "authenticated_by": "a:1:{i:0;s:3:\\\"237\\\";}",
+      "unit_no": null,
+      "segment_no": null,
+      "company_name": null,
+      "lot_no": null,
+      "manufactureing_date": null,
+      "expiry_date": null,
+      "gram_stain": null,
+      "service_name": null,
+      "is_abnormal": "0",
+      "culture_media_used": null,
+      "isolated_organism": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "laboratory_test_order_id",
+      "laboratory_id",
+      "user_id",
+      "medication",
+      "laboratory_categories_id",
+      "value",
+      "text",
+      "range",
+      "status",
+      "confirm_result",
+      "opinion",
+      "result_publish_date",
+      "adverse_event",
+      "op_name",
+      "op_middle_name",
+      "op_last_name",
+      "op_name_prefix",
+      "op_name_suffix",
+      "op_name_type",
+      "op_identifier_type_code",
+      "op_proffessional_suffix",
+      "op_identifier_number",
+      "ogi_placer_order_number",
+      "ogi_filler_order_number",
+      "ogi_placer_group_number",
+      "pusi_identifier",
+      "pusi_text",
+      "pusi_alt_identifier",
+      "pusi_alt_text",
+      "pusi_original_text",
+      "od_universal_service_identifier",
+      "od_universal_service_text",
+      "od_observation_date_time",
+      "od_observation_start_date_time",
+      "od_observation_end_date_time",
+      "od_specimen_action_code",
+      "od_relevant_clinical_information",
+      "od_alt_relevent_clinical_information",
+      "od_relevent_clinical_information_original_text",
+      "ori_result_status",
+      "ori_result_report_status_date_time",
+      "rct_suffix",
+      "rct_prefix",
+      "rct_name",
+      "rct_middle_name",
+      "rct_last_name",
+      "rct_identifier",
+      "rh_standard",
+      "rh_local",
+      "on_notes_comments",
+      "tqi_start_date_time",
+      "tqi_end_date_time",
+      "rpl_laboratory_name",
+      "rpl_laboratory_legal_name",
+      "rpl_laboratory_identifier_type",
+      "rpl_laboratory_address_type",
+      "rpl_organization_identifier",
+      "rpl_address",
+      "rpl_address_line_2",
+      "rpl_country",
+      "rpl_state",
+      "rpl_city",
+      "rpl_zip",
+      "rpl_director_name",
+      "rpl_director_middle_name",
+      "rpl_director_last_name",
+      "rpl_director_identifier",
+      "si_specimen_type",
+      "si_alt_specimen_type",
+      "si_specimen_original_text",
+      "si_start_date_time",
+      "si_specimen_reject_reason",
+      "si_alt_specimen_reject_reason",
+      "si_reject_reason_original_text",
+      "si_specimen_condition",
+      "si_alt_specimen_condition",
+      "si_condition_original_text",
+      "re_notes_comments",
+      "modify_time",
+      "modified_by",
+      "created_by",
+      "rpl_initial",
+      "rpl_legal_name",
+      "rpl_director_edu",
+      "rpl_director_suffix",
+      "rpl_parish_code",
+      "op_tele_code",
+      "op_tele_equip_type",
+      "op_email_address",
+      "op_country_code",
+      "op_city_code",
+      "op_local_number",
+      "op_extension",
+      "op_any_text",
+      "op_tele_code_second",
+      "op_tele_equip_type_second",
+      "op_email_address_second",
+      "op_country_code_second",
+      "op_city_code_second",
+      "op_local_number_second",
+      "op_extension_second",
+      "op_any_text_second",
+      "op_tele_code_order_provider",
+      "op_tele_equip_type_order_provider",
+      "op_email_address_order_provider",
+      "op_country_code_order_provider",
+      "op_city_code_order_provider",
+      "op_local_number_order_provider",
+      "op_extension_order_provider",
+      "op_any_text_order_provider",
+      "rpl_order_provider_address",
+      "rpl_order_provider_address_line_2",
+      "rpl_order_provider_country",
+      "rpl_order_provider_state",
+      "rpl_order_provider_city",
+      "rpl_order_provider_zip",
+      "rpl_order_provider_address_type",
+      "rpl_order_provider_parish_code",
+      "reason_for_study_identifier",
+      "reason_for_study_text",
+      "reason_for_study_coding_system",
+      "reason_for_study_alt_identifier",
+      "reason_for_study_alt_text",
+      "reason_for_study_alt_coding_system",
+      "reason_for_study_coding_system_id",
+      "reason_for_study_alt_coding_system_id",
+      "principal_id",
+      "principal_last_name",
+      "principal_first_name",
+      "principal_middle_name",
+      "principal_suffix",
+      "principal_prefix",
+      "principal_edu",
+      "si_entity_identifier",
+      "si_specimen_type_modifier",
+      "si_specimen_type_activities",
+      "si_specimen_col_method",
+      "si_specimen_source",
+      "si_specimen_source_modifier",
+      "si_specimen_role",
+      "si_specimen_col_quantity",
+      "si_specimen_col_amount",
+      "ehr_facility",
+      "send_result_to_facility",
+      "create_time",
+      "patient_class",
+      "admission_type",
+      "admit_date_time",
+      "discharge_date_time",
+      "si_end_date_time",
+      "si_received_date_time",
+      "orc_zcf_1",
+      "orc_zcf_2",
+      "orc_zcf_3",
+      "orc_zcf_4",
+      "orc_zcf_5",
+      "is_culture_associated",
+      "dhr_laboratory_patient_id",
+      "dhr_specimen_source",
+      "dhr_specimen_description",
+      "dhr_order_failed_status",
+      "dhr_failed_result_patient_uid",
+      "notify",
+      "is_unsolicited_order",
+      "physician_unsolicited_notes",
+      "is_authenticate",
+      "authenticated_by",
+      "unit_no",
+      "segment_no",
+      "company_name",
+      "lot_no",
+      "manufactureing_date",
+      "expiry_date",
+      "gram_stain",
+      "service_name",
+      "is_abnormal",
+      "culture_media_used",
+      "isolated_organism"
+    ]
+  },
+  "laboratory_test_orders": {
+    "row_count": 203524,
+    "sample": {
+      "id": "1",
+      "patient_id": "5826",
+      "laboratory_id": "572",
+      "amount": "2000",
+      "parent_id": null,
+      "note_id": null,
+      "appointment_id": null,
+      "location_id": "1",
+      "order_id": "Lab16-1",
+      "start_date": "2016-10-17 06:51:48",
+      "user_id": "200",
+      "billing_id": null,
+      "is_external": null,
+      "service_provider_id": "0",
+      "from_assessment": "0",
+      "batch_identifier": "1476683508",
+      "is_deleted": "1",
+      "lab_order": null,
+      "lab_order_date": "2016-10-17 06:51:27",
+      "labdash_status": "Pending",
+      "labdash_date": null,
+      "doctor_id": null,
+      "relevant_clinical_info": null,
+      "primary_care_pro": null,
+      "is_processed": null,
+      "created_by": "200",
+      "create_time": "2016-10-17 06:51:48",
+      "modified_by": null,
+      "modify_time": null,
+      "modified_bill_date": null,
+      "modified_bill_by": null,
+      "related_diagnosis": null,
+      "specimen_type_option": "test",
+      "specimen_description": null,
+      "received": null,
+      "completed": null,
+      "editor_lab_chk": "0",
+      "is_electronically_recorded": "0",
+      "allowed_amount": null,
+      "paid_amount": null,
+      "paid_by_card": "0",
+      "paid_by_cash": "0",
+      "is_capitation": "0",
+      "is_billable": "0",
+      "req_no": null,
+      "discount": null,
+      "showedit": null,
+      "is_print": "0",
+      "is_retest": "0",
+      "sample_received": null,
+      "received_on": null,
+      "user_id_rec": null,
+      "patient_order_id": null,
+      "pay_later": "0",
+      "pay_later_auth_id": null,
+      "specimen_id": null,
+      "corporate_super_bill_id": "0",
+      "is_discontinue": "0",
+      "discontinue_date": null,
+      "is_nurse_chk": "0"
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "laboratory_id",
+      "amount",
+      "parent_id",
+      "note_id",
+      "appointment_id",
+      "location_id",
+      "order_id",
+      "start_date",
+      "user_id",
+      "billing_id",
+      "is_external",
+      "service_provider_id",
+      "from_assessment",
+      "batch_identifier",
+      "is_deleted",
+      "lab_order",
+      "lab_order_date",
+      "labdash_status",
+      "labdash_date",
+      "doctor_id",
+      "relevant_clinical_info",
+      "primary_care_pro",
+      "is_processed",
+      "created_by",
+      "create_time",
+      "modified_by",
+      "modify_time",
+      "modified_bill_date",
+      "modified_bill_by",
+      "related_diagnosis",
+      "specimen_type_option",
+      "specimen_description",
+      "received",
+      "completed",
+      "editor_lab_chk",
+      "is_electronically_recorded",
+      "allowed_amount",
+      "paid_amount",
+      "paid_by_card",
+      "paid_by_cash",
+      "is_capitation",
+      "is_billable",
+      "req_no",
+      "discount",
+      "showedit",
+      "is_print",
+      "is_retest",
+      "sample_received",
+      "received_on",
+      "user_id_rec",
+      "patient_order_id",
+      "pay_later",
+      "pay_later_auth_id",
+      "specimen_id",
+      "corporate_super_bill_id",
+      "is_discontinue",
+      "discontinue_date",
+      "is_nurse_chk"
+    ]
+  },
+  "laboratory_tokens": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "languages": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laundry_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "laundry_managers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "leave_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "licensure_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "linked_modules": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "lmp_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "location_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "locations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "login_attempts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "loinc_ln_hl7": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "loinc_maps": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "loinc_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "manufacturer_companies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "marketing_teams": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_rep_antibiotics": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_rep_injectables": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_rep_surgical_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_rep_sutures": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_requisition_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "medical_requisitions": {
+    "row_count": 1,
+    "sample": {
+      "id": "1",
+      "requisition_for": "Room",
+      "requister_id": "1",
+      "location_id": "1",
+      "status": "Approved",
+      "created_by": "1",
+      "create_time": "2014-01-22 09:34:30",
+      "modified_by": "1",
+      "modify_time": "2014-02-26 06:55:50"
+    },
+    "columns": [
+      "id",
+      "requisition_for",
+      "requister_id",
+      "location_id",
+      "status",
+      "created_by",
+      "create_time",
+      "modified_by",
+      "modify_time"
+    ]
+  },
+  "medication_administering_records": {
+    "row_count": 109,
+    "sample": {
+      "id": "1",
+      "patient_id": "164",
+      "new_crop_prescription_id": "0",
+      "is_signed": "1",
+      "performed_datetime": "2016-03-01 05:34:00",
+      "performed_by": "116",
+      "pain_intensity": "1",
+      "nursedata": "1||250||18||1||2",
+      "dose": null,
+      "form": null,
+      "volume": null,
+      "diluent": null,
+      "diluent_volume": null,
+      "route": null,
+      "site": null,
+      "reason": null,
+      "bag_no": null,
+      "infused_time": null,
+      "inf_time_unit": null,
+      "not_given": "0",
+      "not_given_reason": "",
+      "comment": "",
+      "late_reason_flag": "0",
+      "is_deleted": "0",
+      "location_id": "1",
+      "created_by": "1",
+      "modified_by": "1",
+      "create_time": "2016-03-01 05:35:45",
+      "modify_time": "2016-03-01 05:35:45",
+      "admin_note_flag": "0",
+      "med_request_flag": "0",
+      "inf_volume_hourly": null,
+      "scheduled_datetime": null,
+      "block_date": "1969-12-31 18:00:00",
+      "color": "#undefined",
+      "strength_unit": null,
+      "strength": null,
+      "dosageform": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "new_crop_prescription_id",
+      "is_signed",
+      "performed_datetime",
+      "performed_by",
+      "pain_intensity",
+      "nursedata",
+      "dose",
+      "form",
+      "volume",
+      "diluent",
+      "diluent_volume",
+      "route",
+      "site",
+      "reason",
+      "bag_no",
+      "infused_time",
+      "inf_time_unit",
+      "not_given",
+      "not_given_reason",
+      "comment",
+      "late_reason_flag",
+      "is_deleted",
+      "location_id",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time",
+      "admin_note_flag",
+      "med_request_flag",
+      "inf_volume_hourly",
+      "scheduled_datetime",
+      "block_date",
+      "color",
+      "strength_unit",
+      "strength",
+      "dosageform"
+    ]
+  },
+  "medication_master": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "micro_organisms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "multiple_lab_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "multiple_order_containts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "name_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ndc_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "new_crop_allergies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "new_crop_prescription": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "new_insurances": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "nosocomial_infection_parents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "nosocomial_infections": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "note_diagnosis": {
+    "row_count": 212381,
+    "sample": {
+      "id": "1",
+      "note_id": null,
+      "diagnosis_type": "PD",
+      "appointment_id": "1",
+      "patient_id": "5826",
+      "u_id": "RH16-3131",
+      "icd_id": "A213",
+      "diagnoses_name": "Gastrointestinal tularemia",
+      "diagnosis_id": null,
+      "snowmedid": "A213",
+      "preffered_icd9cm": "",
+      "start_dt": "2016-10-17",
+      "end_dt": null,
+      "disease_status": "acute",
+      "comment": "test result123",
+      "prev_comment": "test result123",
+      "status": null,
+      "code": null,
+      "code_system": null,
+      "created": "2016-10-17 06:37:39",
+      "created_by": "200",
+      "modified": "2016-10-17 06:37:39",
+      "modified_by": null,
+      "is_ccda": "0",
+      "is_deleted": "0",
+      "is_reconcile": "0",
+      "delete_for_claim": "0",
+      "terminal": "Yes",
+      "patient_info": null,
+      "patient_info_link": null,
+      "patient_info_created_by": null,
+      "is_printed": null,
+      "no_diagnoses_check": null,
+      "reason_for_cancel": null
+    },
+    "columns": [
+      "id",
+      "note_id",
+      "diagnosis_type",
+      "appointment_id",
+      "patient_id",
+      "u_id",
+      "icd_id",
+      "diagnoses_name",
+      "diagnosis_id",
+      "snowmedid",
+      "preffered_icd9cm",
+      "start_dt",
+      "end_dt",
+      "disease_status",
+      "comment",
+      "prev_comment",
+      "status",
+      "code",
+      "code_system",
+      "created",
+      "created_by",
+      "modified",
+      "modified_by",
+      "is_ccda",
+      "is_deleted",
+      "is_reconcile",
+      "delete_for_claim",
+      "terminal",
+      "patient_info",
+      "patient_info_link",
+      "patient_info_created_by",
+      "is_printed",
+      "no_diagnoses_check",
+      "reason_for_cancel"
+    ]
+  },
+  "note_template_texts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "note_templates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "notes": {
+    "row_count": 245849,
+    "sample": {
+      "id": "1",
+      "patient_id": "5826",
+      "no_med_flag": "no",
+      "ros": "Template for Review of System Test Result12345",
+      "no_allergy_flag": "no",
+      "title": "",
+      "note": "",
+      "refer_to_hospital": null,
+      "note_type": "",
+      "family_tit_bit": null,
+      "positive_id": "1",
+      "surgery_id": null,
+      "surgery": null,
+      "surgery_note_type": null,
+      "anaesthesia_note_type": null,
+      "anaesthesia_note": null,
+      "implants": null,
+      "event_note": null,
+      "post_opt": null,
+      "pre_opt": null,
+      "investigation": null,
+      "present_condition": null,
+      "temp": null,
+      "pr": null,
+      "rr": null,
+      "bp": null,
+      "vital_date": null,
+      "spo2": null,
+      "pain": null,
+      "location": null,
+      "duration": null,
+      "frequency": null,
+      "cc": null,
+      "subject": "Test Drm live for subjective Test Result ",
+      "object": "test",
+      "physical_exam_weight": null,
+      "assis": "Test for assessment test result Test details test",
+      "icd": null,
+      "icd_record": null,
+      "notediagnosis_id": null,
+      "plan": "test temp for plan test details Test Result",
+      "visitid": null,
+      "ht": null,
+      "wt": null,
+      "bmi": null,
+      "is_event": null,
+      "event_discharge": null,
+      "finalization_date": null,
+      "final": null,
+      "sb_registrar": null,
+      "sb_consultant": null,
+      "visit_type": null,
+      "atrial_documented": "",
+      "icd9cm_inter": "",
+      "intervention_text": "",
+      "icd9cm_risk": "",
+      "icd9cm_procedure": null,
+      "decision_aids": "",
+      "is_documentation": "",
+      "soap_out": null,
+      "patient_character_snomed": "",
+      "patient_char_date": null,
+      "medication_order": null,
+      "medication_order_date": null,
+      "procedure_name": "",
+      "procedure_text_area": "",
+      "device_selected": "",
+      "device_text_area": "",
+      "note_date": null,
+      "sign_note": "0",
+      "pharse_name": null,
+      "compelete_note": "0",
+      "reason_to_unsign": "test By Dr. Folusho Omodele At 10/17/16 06:55:53!@!test FUNSHO OMODELE  By Dr. FUNSHO OMODELE At 10/17/16 07:00:30!@!test By Dr. FUNSHO OMODELE At 10/17/16 11:08:46!@!test details By Dr. FUNSHO OMODELE At 10/17/16 12:48:51",
+      "cog_name": null,
+      "cog_snomed_code": null,
+      "cog_date": null,
+      "attestation_details": null,
+      "resident_notes": null,
+      "resident_user_id": null,
+      "resident_assigned_date": null,
+      "resident_notes_given_by": null,
+      "is_resident_signed": null,
+      "signed_date": null,
+      "signed_by": "224",
+      "body_mark_desc": "a:3:{i:0;s:0:\\\"\\\";i:1;s:0:\\\"\\\";i:2;s:0:\\\"\\\";}",
+      "body_mark_cordinates": null,
+      "no_diagnoses_check": null,
+      "has_no_followup": "0",
+      "arrive_time": "06:30",
+      "end_time": null,
+      "elasped_time": null,
+      "created_by": "200",
+      "modified_by": "0",
+      "create_time": "2016-10-17 06:30:26",
+      "modify_time": "0000-00-00 00:00:00",
+      "cosign_physician": null,
+      "cosign_physician_user_id": null,
+      "cosign_datetime": null,
+      "activity_box": null,
+      "nursing_notes": null,
+      "sign_flag": "0",
+      "soap_note_title_id": "960",
+      "sign_datetime": "2016-10-17 12:48:31",
+      "sign_by": null,
+      "addendum": null,
+      "addendum_by": null,
+      "addendum_date": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "no_med_flag",
+      "ros",
+      "no_allergy_flag",
+      "title",
+      "note",
+      "refer_to_hospital",
+      "note_type",
+      "family_tit_bit",
+      "positive_id",
+      "surgery_id",
+      "surgery",
+      "surgery_note_type",
+      "anaesthesia_note_type",
+      "anaesthesia_note",
+      "implants",
+      "event_note",
+      "post_opt",
+      "pre_opt",
+      "investigation",
+      "present_condition",
+      "temp",
+      "pr",
+      "rr",
+      "bp",
+      "vital_date",
+      "spo2",
+      "pain",
+      "location",
+      "duration",
+      "frequency",
+      "cc",
+      "subject",
+      "object",
+      "physical_exam_weight",
+      "assis",
+      "icd",
+      "icd_record",
+      "notediagnosis_id",
+      "plan",
+      "visitid",
+      "ht",
+      "wt",
+      "bmi",
+      "is_event",
+      "event_discharge",
+      "finalization_date",
+      "final",
+      "sb_registrar",
+      "sb_consultant",
+      "visit_type",
+      "atrial_documented",
+      "icd9cm_inter",
+      "intervention_text",
+      "icd9cm_risk",
+      "icd9cm_procedure",
+      "decision_aids",
+      "is_documentation",
+      "soap_out",
+      "patient_character_snomed",
+      "patient_char_date",
+      "medication_order",
+      "medication_order_date",
+      "procedure_name",
+      "procedure_text_area",
+      "device_selected",
+      "device_text_area",
+      "note_date",
+      "sign_note",
+      "pharse_name",
+      "compelete_note",
+      "reason_to_unsign",
+      "cog_name",
+      "cog_snomed_code",
+      "cog_date",
+      "attestation_details",
+      "resident_notes",
+      "resident_user_id",
+      "resident_assigned_date",
+      "resident_notes_given_by",
+      "is_resident_signed",
+      "signed_date",
+      "signed_by",
+      "body_mark_desc",
+      "body_mark_cordinates",
+      "no_diagnoses_check",
+      "has_no_followup",
+      "arrive_time",
+      "end_time",
+      "elasped_time",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time",
+      "cosign_physician",
+      "cosign_physician_user_id",
+      "cosign_datetime",
+      "activity_box",
+      "nursing_notes",
+      "sign_flag",
+      "soap_note_title_id",
+      "sign_datetime",
+      "sign_by",
+      "addendum",
+      "addendum_by",
+      "addendum_date"
+    ]
+  },
+  "nurse_notes": {
+    "row_count": 1558,
+    "sample": {
+      "id": "1",
+      "patient_id": "5836",
+      "complaints": null,
+      "date_of_seen": "2016-10-17 07:51:38",
+      "seen_by": "147",
+      "sign_flag": "1",
+      "subjective": "Test Drm Test Subjective 1 test details test",
+      "objective": "test result",
+      "assessment": "Template for Assessment Template content Template for Assessment Template content",
+      "plan": "test temp for plan test details",
+      "is_deleted": "0"
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "complaints",
+      "date_of_seen",
+      "seen_by",
+      "sign_flag",
+      "subjective",
+      "objective",
+      "assessment",
+      "plan",
+      "is_deleted"
+    ]
+  },
+  "nursings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "observation_charts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "observation_identifiers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "observation_interpretation_0078": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "observation_result_status_0085": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "opt_appointment_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "opt_appointments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "opt_patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "opt_tables": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "opts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "order_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "order_data_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "order_sentences": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "order_subcategories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "orderset_category_mappings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "orderset_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "orderset_other_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "orderset_subcategory_mappings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_item_allocation_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_item_allocations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_item_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_item_quantities": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_item_rates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_sales_bill_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_sales_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_sales_return_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_pharmacy_sales_returns": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_replace_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ot_replaces": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "other_services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "other_treatments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "outboxes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "outside_lab_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "package_estimates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "package_permissions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "panel_mappings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "paragon_messages": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "past_medical_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "past_medical_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "past_medical_records_28jan": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_allergies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_audits": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_blood_sugar_monitoring": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_blood_transfusion_form": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_cards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_centric_departments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_characters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_completed_sale_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_data_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_document_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_documents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_exposures": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_family_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_ivfs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_order_encounters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_past_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_personal_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_profiles": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_referrals": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_service_packages": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_smokings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_surveys": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patient_ventilator_consents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pcmh_services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "persons": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pharmacy_duplicate_sales_bill_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pharmacy_duplicate_sales_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pharmacy_item_details": {
+    "row_count": 92005,
+    "sample": {
+      "id": "1",
+      "medid": "150003",
+      "gcn_seqno": "9259",
+      "med_name_id": "64452",
+      "med_name": "erythromycin (bulk)",
+      "med_routed_med_id_desc": "erythromycin (bulk) misc",
+      "med_routed_df_med_id_desc": "erythromycin (bulk) powder",
+      "med_medid_desc": "erythromycin (bulk) powder",
+      "med_status_cd": "0",
+      "med_route_id": "35",
+      "routed_med_id": "77827",
+      "routed_dosage_form_med_id": "93978",
+      "med_strength": "",
+      "med_strength_uom": "",
+      "med_route_abbr": "misc",
+      "med_route_desc": "0",
+      "med_dosage_form_abbr": "0",
+      "med_dosage_form_desc": "0",
+      "genericdrugname": "0",
+      "dosageformoverride": "0",
+      "med_ref_dea_cd": "0",
+      "med_ref_dea_cd_desc": "No DEA Class Code assigned",
+      "med_ref_multi_source_cd": "1",
+      "med_ref_multi_source_cd_desc": "Multi-source",
+      "med_ref_gen_drug_name_cd": "0",
+      "med_ref_gen_drug_name_cd_desc": "Non-drug item, such as medical supplies and bulk c",
+      "med_ref_fed_legend_ind": "1",
+      "med_ref_fed_legend_ind_desc": "Rx",
+      "generic_medid": "0",
+      "med_name_type_cd": "2",
+      "generic_med_ref_gen_drug_name_cd": "",
+      "med_name_source_cd": "2",
+      "etc": "",
+      "druginfo": "erythromycin (bulk) powder",
+      "genericdrugnameoverride": "erythromycin (bulk)",
+      "formularydrugid": "150003",
+      "manufacturer": "",
+      "status": "A",
+      "touchdate": "20050507",
+      "drugtypeid": "F"
+    },
+    "columns": [
+      "id",
+      "medid",
+      "gcn_seqno",
+      "med_name_id",
+      "med_name",
+      "med_routed_med_id_desc",
+      "med_routed_df_med_id_desc",
+      "med_medid_desc",
+      "med_status_cd",
+      "med_route_id",
+      "routed_med_id",
+      "routed_dosage_form_med_id",
+      "med_strength",
+      "med_strength_uom",
+      "med_route_abbr",
+      "med_route_desc",
+      "med_dosage_form_abbr",
+      "med_dosage_form_desc",
+      "genericdrugname",
+      "dosageformoverride",
+      "med_ref_dea_cd",
+      "med_ref_dea_cd_desc",
+      "med_ref_multi_source_cd",
+      "med_ref_multi_source_cd_desc",
+      "med_ref_gen_drug_name_cd",
+      "med_ref_gen_drug_name_cd_desc",
+      "med_ref_fed_legend_ind",
+      "med_ref_fed_legend_ind_desc",
+      "generic_medid",
+      "med_name_type_cd",
+      "generic_med_ref_gen_drug_name_cd",
+      "med_name_source_cd",
+      "etc",
+      "druginfo",
+      "genericdrugnameoverride",
+      "formularydrugid",
+      "manufacturer",
+      "status",
+      "touchdate",
+      "drugtypeid"
+    ]
+  },
+  "pharmacy_item_rates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pharmacy_items": {
+    "row_count": 956,
+    "sample": {
+      "id": "1",
+      "drug_id": "1",
+      "aui": "",
+      "code": "",
+      "product_name": null,
+      "rxcui": "",
+      "rxnorm_code": "",
+      "gcn_seqno": "0",
+      "med_name_id": "0",
+      "med_name": "",
+      "med_routed_med_id_desc": "",
+      "med_routed_df_med_id_desc": "",
+      "name": "TRIPLE ACTION CREAM",
+      "med_status_cd": "",
+      "med_route_id": "0",
+      "routed_med_id": "0",
+      "routed_dosage_form_med_id": "0",
+      "med_strength": "",
+      "med_strength_uom": "",
+      "med_route_abbr": "",
+      "med_route_desc": "0",
+      "med_dosage_form_abbr": "0",
+      "med_dosage_form_desc": "0",
+      "genericdrugname": "0",
+      "dosageformoverride": "0",
+      "med_ref_dea_cd": "0",
+      "med_ref_dea_cd_desc": "",
+      "med_ref_multi_source_cd": "",
+      "med_ref_multi_source_cd_desc": "",
+      "med_ref_gen_drug_name_cd": "",
+      "med_ref_gen_drug_name_cd_desc": "",
+      "med_ref_fed_legend_ind": "",
+      "med_ref_fed_legend_ind_desc": "",
+      "generic_medid": "",
+      "med_name_type_cd": "0",
+      "generic_med_ref_gen_drug_name_cd": "",
+      "med_name_source_cd": "",
+      "etc": "",
+      "druginfo": "",
+      "genericdrugnameoverride": "",
+      "formularydrugid": "0",
+      "manufacturer": "",
+      "manufacturer_company_id": null,
+      "status": "",
+      "touchdate": "",
+      "drugtypeid": "",
+      "item_code": "ABF3-01",
+      "pack": "1",
+      "stock": "169",
+      "free_qty": "0",
+      "loose_stock": null,
+      "generic": "",
+      "date": null,
+      "minimum": null,
+      "maximum": null,
+      "expiry_date": "",
+      "opening_stock": "247",
+      "shelf": "",
+      "is_deleted": "0",
+      "common": null,
+      "favourite": null,
+      "home": null,
+      "user_id": null,
+      "patient_info": null,
+      "patient_info_link": null,
+      "patient_info_created_by": null,
+      "dosageform": null,
+      "route": null,
+      "theraputiccategory": null,
+      "reorder_level": null,
+      "create_time": "2016-05-26 08:05:11",
+      "created_by": "1",
+      "location_id": "1",
+      "unit_cost": null,
+      "supplier_id": null,
+      "doseform": "Pack",
+      "vat_class_id": null,
+      "expensive_product": "0",
+      "profit_percentage": null,
+      "gen_ward_discount": null,
+      "spcl_ward_discount": null,
+      "dlx_ward_discount": null,
+      "semi_spcl_ward_discount": null,
+      "islolation_ward_discount": null,
+      "opdgeneral_ward_discount": null,
+      "cust_name": null,
+      "item_type": "1",
+      "modified_time": "0000-00-00 00:00:00",
+      "modified_by": "163"
+    },
+    "columns": [
+      "id",
+      "drug_id",
+      "aui",
+      "code",
+      "product_name",
+      "rxcui",
+      "rxnorm_code",
+      "gcn_seqno",
+      "med_name_id",
+      "med_name",
+      "med_routed_med_id_desc",
+      "med_routed_df_med_id_desc",
+      "name",
+      "med_status_cd",
+      "med_route_id",
+      "routed_med_id",
+      "routed_dosage_form_med_id",
+      "med_strength",
+      "med_strength_uom",
+      "med_route_abbr",
+      "med_route_desc",
+      "med_dosage_form_abbr",
+      "med_dosage_form_desc",
+      "genericdrugname",
+      "dosageformoverride",
+      "med_ref_dea_cd",
+      "med_ref_dea_cd_desc",
+      "med_ref_multi_source_cd",
+      "med_ref_multi_source_cd_desc",
+      "med_ref_gen_drug_name_cd",
+      "med_ref_gen_drug_name_cd_desc",
+      "med_ref_fed_legend_ind",
+      "med_ref_fed_legend_ind_desc",
+      "generic_medid",
+      "med_name_type_cd",
+      "generic_med_ref_gen_drug_name_cd",
+      "med_name_source_cd",
+      "etc",
+      "druginfo",
+      "genericdrugnameoverride",
+      "formularydrugid",
+      "manufacturer",
+      "manufacturer_company_id",
+      "status",
+      "touchdate",
+      "drugtypeid",
+      "item_code",
+      "pack",
+      "stock",
+      "free_qty",
+      "loose_stock",
+      "generic",
+      "date",
+      "minimum",
+      "maximum",
+      "expiry_date",
+      "opening_stock",
+      "shelf",
+      "is_deleted",
+      "common",
+      "favourite",
+      "home",
+      "user_id",
+      "patient_info",
+      "patient_info_link",
+      "patient_info_created_by",
+      "dosageform",
+      "route",
+      "theraputiccategory",
+      "reorder_level",
+      "create_time",
+      "created_by",
+      "location_id",
+      "unit_cost",
+      "supplier_id",
+      "doseform",
+      "vat_class_id",
+      "expensive_product",
+      "profit_percentage",
+      "gen_ward_discount",
+      "spcl_ward_discount",
+      "dlx_ward_discount",
+      "semi_spcl_ward_discount",
+      "islolation_ward_discount",
+      "opdgeneral_ward_discount",
+      "cust_name",
+      "item_type",
+      "modified_time",
+      "modified_by"
+    ]
+  },
+  "pharmacy_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pharmacy_sales_bill_details": {
+    "row_count": 624704,
+    "sample": {
+      "id": "1",
+      "item_id": "1446",
+      "qty": "10",
+      "pharmacy_sales_bill_id": "1",
+      "expiry_date": "2018-10-09 00:00:00",
+      "batch_number": "A1",
+      "tax": null,
+      "mrp": "50",
+      "sale_price": null,
+      "pack": "1",
+      "qty_type": null,
+      "discount_percentage": "0",
+      "discount_amount": null,
+      "discount": "10",
+      "paid_by_card": "0",
+      "paid_by_cash": "0",
+      "is_capitation": "0"
+    },
+    "columns": [
+      "id",
+      "item_id",
+      "qty",
+      "pharmacy_sales_bill_id",
+      "expiry_date",
+      "batch_number",
+      "tax",
+      "mrp",
+      "sale_price",
+      "pack",
+      "qty_type",
+      "discount_percentage",
+      "discount_amount",
+      "discount",
+      "paid_by_card",
+      "paid_by_cash",
+      "is_capitation"
+    ]
+  },
+  "pharmacy_sales_bills": {
+    "row_count": 262040,
+    "sample": {
+      "id": "1",
+      "guarantor_id": null,
+      "modified_time": "2019-05-24 03:41:14",
+      "modified_by": "1",
+      "patient_id": null,
+      "doctor_id": null,
+      "p_doctname": "",
+      "tariff_standard_id": null,
+      "corporate_super_bill_id": "0",
+      "customer_name": "TEst P One",
+      "tax": null,
+      "total": "500",
+      "payment_mode": "Credit",
+      "bill_code": "SB-0001",
+      "discount_approval": "0",
+      "create_time": "2016-10-17 07:07:19",
+      "location_id": "1",
+      "created_by": "245",
+      "is_deleted": "0",
+      "paid_amnt": "490",
+      "paid_by_card": "0",
+      "paid_by_cash": "0",
+      "is_capitation": "0",
+      "discount_type": null,
+      "discount": "10",
+      "is_received": null,
+      "itemtype": null,
+      "by_nurse": "0",
+      "party_invoice_number": "OSGCSNL6M",
+      "remark": "This is just test. Please ignore",
+      "account_id": "3472",
+      "paid_to_patient": null,
+      "refund": null,
+      "billing_id": null,
+      "credit_period": null,
+      "bank_name": "",
+      "account_number": "",
+      "card_number": ""
+    },
+    "columns": [
+      "id",
+      "guarantor_id",
+      "modified_time",
+      "modified_by",
+      "patient_id",
+      "doctor_id",
+      "p_doctname",
+      "tariff_standard_id",
+      "corporate_super_bill_id",
+      "customer_name",
+      "tax",
+      "total",
+      "payment_mode",
+      "bill_code",
+      "discount_approval",
+      "create_time",
+      "location_id",
+      "created_by",
+      "is_deleted",
+      "paid_amnt",
+      "paid_by_card",
+      "paid_by_cash",
+      "is_capitation",
+      "discount_type",
+      "discount",
+      "is_received",
+      "itemtype",
+      "by_nurse",
+      "party_invoice_number",
+      "remark",
+      "account_id",
+      "paid_to_patient",
+      "refund",
+      "billing_id",
+      "credit_period",
+      "bank_name",
+      "account_number",
+      "card_number"
+    ]
+  },
+  "pharmacy_tariff_amounts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_adminsites": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_adminsroutes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_financial_class": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_financial_classes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_icd9cms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_immunization_registry_status": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_immunizationinformationsource": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_measureofunit": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_modifierorqualifier_cdc": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_observation_identifiers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_publicity_codes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_relationships": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_vaccines_mvxs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_value_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "phvs_visits": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "physician_speciality_codes": {
+    "row_count": 426,
+    "sample": {
+      "id": "1",
+      "physician_code": "1",
+      "physician_speciality": "General Practice",
+      "physician_taxonomy_code": "208D00000X",
+      "physician_taxonomy_description": "Allopathic & Osteopathic Physicians/General Practice",
+      "create_time": "2015-08-11 15:21:24",
+      "modify_time": null
+    },
+    "columns": [
+      "id",
+      "physician_code",
+      "physician_speciality",
+      "physician_taxonomy_code",
+      "physician_taxonomy_description",
+      "create_time",
+      "modify_time"
+    ]
+  },
+  "physiotherapy_assessments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "planned_problems": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "police_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "post_operative_checklists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pre_operative_checklists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "preferencecard_instrumentitems": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "preferencecard_oritems": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "preferencecard_procedures": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "preferencecard_spditems": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "preferencecards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "pregnancy_counts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "prescription_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "procedure_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "procedure_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "procedure_performs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "product_rates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "products": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "progresstbls": {
+    "row_count": 6038,
+    "sample": {
+      "id": "1",
+      "patient_id": "5836",
+      "seen_by": "224",
+      "gc": "1",
+      "temp": "98.8 F",
+      "bp": "110/60 mm of Hg",
+      "hr": "140/min",
+      "rr": "20/min",
+      "chest": null,
+      "cvs": null,
+      "cns": null,
+      "pa": null,
+      "subjective": "Test Drm Test Subjective 1 Test Drm Test Subjective 1 test details test result\\r\\n\\r\\n                Test Drm template.\\r\\n\\r\\nLab:- \\r\\n\\r\\n<------>     | |\\r\\n          --------->\\r\\n             | |   \\r\\n\\r\\n\\r\\n\\r\\n          Test details :-  \\r\\n                     AB = 120, CD = 130,  EF = 140,   GH = 150 \\r\\n\\r\\n\\r\\n\\r\\nTest Result :- \\r\\n120 %\\r\\n               ",
+      "objective": "test objective\\r\\n\\r\\n             \\r\\n   Lab:- \\r\\n\\r\\n                        <------>     | |\\r\\n                                   --------->\\r\\n                                      | |   \\r\\n\\r\\n\\r\\n\\r\\n\\r\\nTest Result :- \\r\\n120 %\\r\\n              ",
+      "plan": "test temp for plan test details Test Result test \\r\\n\\r\\n  Test Plan :-\\r\\n\\r\\n1234",
+      "date_of_seen": "2016-10-17 07:23:40",
+      "complaints": "Test Details for IP 2nd encounter ",
+      "ettube": null,
+      "ettubetext": null,
+      "foll": null,
+      "folltext": null,
+      "cvp": null,
+      "cvptext": null,
+      "assessment": "Test for assessment test result Test details Template for Assessment Template content Test details",
+      "sign_flag": "1",
+      "spo2": "130",
+      "progress_note_title_id": "45",
+      "treatment": "Test Details for IP 2nd encounter  treatment details",
+      "is_deleted": "0",
+      "reason_to_unsign": null,
+      "unsign_by": null,
+      "unsign_date": null,
+      "addendum": null,
+      "addendum_by": null,
+      "addendum_date": null,
+      "weight": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "seen_by",
+      "gc",
+      "temp",
+      "bp",
+      "hr",
+      "rr",
+      "chest",
+      "cvs",
+      "cns",
+      "pa",
+      "subjective",
+      "objective",
+      "plan",
+      "date_of_seen",
+      "complaints",
+      "ettube",
+      "ettubetext",
+      "foll",
+      "folltext",
+      "cvp",
+      "cvptext",
+      "assessment",
+      "sign_flag",
+      "spo2",
+      "progress_note_title_id",
+      "treatment",
+      "is_deleted",
+      "reason_to_unsign",
+      "unsign_by",
+      "unsign_date",
+      "addendum",
+      "addendum_by",
+      "addendum_date",
+      "weight"
+    ]
+  },
+  "psychology_histories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "purchase_order_items": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "purchase_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "purchase_returns": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "qclogs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "quality_monitoring_formats": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "races": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiologies": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_2d_echo_result": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_doctor_notes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_manual_entry": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_reports": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_results": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_template_texts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_templates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_test_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "radiology_test_payments": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "recipients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "referral_to_hospitals": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "referral_to_specialists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "referring_providers": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "refferer_doctors": {
+    "row_count": 5,
+    "sample": {
+      "id": "1",
+      "name": "Outside network provider",
+      "description": "Orthopadics ",
+      "location_id": "1",
+      "is_referral": "Y",
+      "category": "referral doctor",
+      "is_deleted": "0",
+      "created_by": "2",
+      "modified_by": "2",
+      "create_time": "2012-01-10 10:52:32",
+      "modify_time": "2012-06-07 13:42:37"
+    },
+    "columns": [
+      "id",
+      "name",
+      "description",
+      "location_id",
+      "is_referral",
+      "category",
+      "is_deleted",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modify_time"
+    ]
+  },
+  "religions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "reminder_patient_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "result_status_0123s": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_category_customizations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_date_time_slots": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_patient_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_sub_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "review_sub_categories_options": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "risk_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "riskcategoryassesment_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "roles": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "rooms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "sawangi_patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "schedule_blocks": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "screenings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "send_referral": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "send_referrals": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_amounts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_bills": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_cash_payments": {
+    "row_count": 249572,
+    "sample": {
+      "id": "1",
+      "patient_id": "5833",
+      "billing_id": "8",
+      "service_category_id": "30",
+      "tariff_list_id": "1433",
+      "paid_amount": "0",
+      "paid_by_card": "0",
+      "paid_by_cash": "0",
+      "is_deleted": "1",
+      "created_by": "189",
+      "created_time": "2016-10-17 08:40:16"
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "billing_id",
+      "service_category_id",
+      "tariff_list_id",
+      "paid_amount",
+      "paid_by_card",
+      "paid_by_cash",
+      "is_deleted",
+      "created_by",
+      "created_time"
+    ]
+  },
+  "service_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_package_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_packages": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "service_providers": {
+    "row_count": 6,
+    "sample": {
+      "id": "1",
+      "name": "GME General Surgery",
+      "category": "others",
+      "location_id": "1",
+      "contact_person": "A",
+      "contact_no": "0956840596",
+      "location": "5321 McColl Rd Edinburg, Tx 78539",
+      "status": "1",
+      "accounting_group_id": "3",
+      "is_deleted": "0",
+      "provider_type": "",
+      "create_time": "2012-10-18 10:28:29",
+      "created_by": "2",
+      "modify_time": "2014-04-30 23:24:29",
+      "modified_by": "1",
+      "cost_to_hospital": null
+    },
+    "columns": [
+      "id",
+      "name",
+      "category",
+      "location_id",
+      "contact_person",
+      "contact_no",
+      "location",
+      "status",
+      "accounting_group_id",
+      "is_deleted",
+      "provider_type",
+      "create_time",
+      "created_by",
+      "modify_time",
+      "modified_by",
+      "cost_to_hospital"
+    ]
+  },
+  "service_sub_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "services_wards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "session_permissions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "settlement_billing_options": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "settlement_billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "shift_notes": {
+    "row_count": 68196,
+    "sample": {
+      "id": "1",
+      "patient_id": "10",
+      "seen_by": "109",
+      "pre_opt": " The patient was seen in the preoperative holding area. The correct operative site was identified. He was transported to the operative suite by Department of Anesthesia. He was then transferred supine to the operating table. Department of Anesthesia admin Small bowel obstruction with resection and lysis of adhesions. Post-op day #1.",
+      "date_of_seen": "2016-06-27 09:19:24",
+      "sign_flag": "0",
+      "is_deleted": "0"
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "seen_by",
+      "pre_opt",
+      "date_of_seen",
+      "sign_flag",
+      "is_deleted"
+    ]
+  },
+  "sign_symptoms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "smart_phrase_multiple": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "smart_phrases": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "smoking_status_oncs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "snomed_mapping_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "snomed_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "snomed_sct_hl7": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "speciality_cats": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_action_code_0065": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_actions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_addictives": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_collection_options": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_condition_0493": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_conditions": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_reject_reason_0490": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_rejections": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_role": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "specimen_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "spot_approvals": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ssi_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "staff_plans": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "staff_surveys": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "states": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "stock_adjustments": {
+    "row_count": 620,
+    "sample": {
+      "id": "1",
+      "department_delete": null,
+      "product_id": "205",
+      "adjusted_date": "0000-00-00 00:00:00",
+      "adjusted_qty": "0",
+      "is_surplus": "0",
+      "is_deficit": "0",
+      "is_damaged": "0",
+      "is_expired": "0",
+      "is_deleted": "0",
+      "reason": "stock",
+      "created_by": "163",
+      "modified_by": null,
+      "created": "2016-10-17 09:04:02",
+      "modified": "2016-10-17 09:04:02",
+      "batch_number": "205",
+      "sur_plus": "150",
+      "sur_minus": null,
+      "department_id": "8"
+    },
+    "columns": [
+      "id",
+      "department_delete",
+      "product_id",
+      "adjusted_date",
+      "adjusted_qty",
+      "is_surplus",
+      "is_deficit",
+      "is_damaged",
+      "is_expired",
+      "is_deleted",
+      "reason",
+      "created_by",
+      "modified_by",
+      "created",
+      "modified",
+      "batch_number",
+      "sur_plus",
+      "sur_minus",
+      "department_id"
+    ]
+  },
+  "stock_issue_details": {
+    "row_count": 40,
+    "sample": {
+      "id": "1",
+      "stock_maintenance_detail_id": null,
+      "product_id": "210",
+      "issued_qty": "2",
+      "closing_stock": "-2",
+      "issued_to": null,
+      "is_patient": "0",
+      "patient_id": "18334",
+      "created_by": "1",
+      "modified_by": null,
+      "created": "2017-09-15 05:45:12",
+      "modified": "2017-09-15 05:45:12"
+    },
+    "columns": [
+      "id",
+      "stock_maintenance_detail_id",
+      "product_id",
+      "issued_qty",
+      "closing_stock",
+      "issued_to",
+      "is_patient",
+      "patient_id",
+      "created_by",
+      "modified_by",
+      "created",
+      "modified"
+    ]
+  },
+  "stock_maintenance_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "stock_maintenances": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "store_locations": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "store_requisition_details": {
+    "row_count": 7771,
+    "sample": {
+      "id": "1",
+      "location_id": "1",
+      "requisition_for": "10",
+      "requister_id": "2",
+      "requisition_by": "1",
+      "requisition_date": "2016-10-24 11:50:50",
+      "issue_by": null,
+      "issue_date": null,
+      "entered_by": "1",
+      "entered_date": "2016-10-24 11:50:50",
+      "reviewed_by": "Oluwaseun Akinola",
+      "management_representative": "",
+      "approved_by": null,
+      "proprietor": "",
+      "status": "Requesting",
+      "admission_id": null,
+      "created_by": "1",
+      "created_time": "2016-10-24 11:51:35",
+      "updated_by": null,
+      "updated_time": null,
+      "stock_transfer_flag": "0",
+      "store_location_id": "8"
+    },
+    "columns": [
+      "id",
+      "location_id",
+      "requisition_for",
+      "requister_id",
+      "requisition_by",
+      "requisition_date",
+      "issue_by",
+      "issue_date",
+      "entered_by",
+      "entered_date",
+      "reviewed_by",
+      "management_representative",
+      "approved_by",
+      "proprietor",
+      "status",
+      "admission_id",
+      "created_by",
+      "created_time",
+      "updated_by",
+      "updated_time",
+      "stock_transfer_flag",
+      "store_location_id"
+    ]
+  },
+  "store_requisition_particulars": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "sub_claims": {
+    "row_count": 61,
+    "sample": {
+      "id": "1",
+      "encounter_id": "24",
+      "information_signature_clk": "Y",
+      "executed_signature_clk": "",
+      "primary_route": "Electronic",
+      "benifits_assignment": null,
+      "policy": "0",
+      "type": "P",
+      "amount": "0",
+      "primary_benifits_assignment": "Y"
+    },
+    "columns": [
+      "id",
+      "encounter_id",
+      "information_signature_clk",
+      "executed_signature_clk",
+      "primary_route",
+      "benifits_assignment",
+      "policy",
+      "type",
+      "amount",
+      "primary_benifits_assignment"
+    ]
+  },
+  "sub_services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "suggested_drugs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgeries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgery_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgery_consent_forms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgery_subcategories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgical_safety_checklists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "surgical_site_infections": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "symptom_masters": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "symptoms": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tariff_amount_logs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tariff_amount_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tariff_amounts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tariff_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tariff_standards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "template_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "template_middle_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "template_smses": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "template_sub_categories": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "template_type_contents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "templates": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "test": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "test_groups": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "time_slots": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "tracheostomy_consents": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "transmitted_ccda": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "treatment_medication_details": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "treatment_medications": {
+    "row_count": 172,
+    "sample": {
+      "id": "0",
+      "patient_id": "188",
+      "created_by": "236",
+      "modified_by": "0",
+      "create_time": "2016-06-20 08:54:02",
+      "modified_time": null,
+      "is_deleted": "0",
+      "record_date": "2016-06-20",
+      "duplicate_pharmacy_sale_bill_id": null
+    },
+    "columns": [
+      "id",
+      "patient_id",
+      "created_by",
+      "modified_by",
+      "create_time",
+      "modified_time",
+      "is_deleted",
+      "record_date",
+      "duplicate_pharmacy_sale_bill_id"
+    ]
+  },
+  "ucums": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "user_daily_logins": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "user_dashboard_charts": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "users": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "uti_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "vaccination_remainders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "vaccine_drugs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "vap_records": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "vat_classes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ventilator_check_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ventilator_nurse_check_lists": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "verify_medication_orders": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "visit_types": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "voucher_entries": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "voucher_logs": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "voucher_payments": {
+    "row_count": 526,
+    "sample": {
+      "id": "1",
+      "user_id": "20",
+      "account_id": "1",
+      "paid_amount": "500",
+      "reference_id": null,
+      "reference_no": null,
+      "narration": "Being Cash refund from patient card against Pt. Mark Zukerberg done on 30/04/2016 11:56:25",
+      "date": "2016-04-30 10:56:25",
+      "payment_voucher_no": null,
+      "batch_number": null,
+      "modified_by": "1",
+      "create_by": "1",
+      "create_time": "2016-04-30 10:56:25",
+      "modify_time": "0000-00-00 00:00:00",
+      "location_id": "1",
+      "patient_id": "322",
+      "batch_identifier": null,
+      "patient_card_detail": null,
+      "type": "PatientCardRefund",
+      "is_posted_cash": "0",
+      "is_deleted": null
+    },
+    "columns": [
+      "id",
+      "user_id",
+      "account_id",
+      "paid_amount",
+      "reference_id",
+      "reference_no",
+      "narration",
+      "date",
+      "payment_voucher_no",
+      "batch_number",
+      "modified_by",
+      "create_by",
+      "create_time",
+      "modify_time",
+      "location_id",
+      "patient_id",
+      "batch_identifier",
+      "patient_card_detail",
+      "type",
+      "is_posted_cash",
+      "is_deleted"
+    ]
+  },
+  "voucher_references": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ward_billings": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ward_patient_services": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "ward_patients": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "wards": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "widgets": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "xml_notes": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  },
+  "zips": {
+    "row_count": 0,
+    "sample": null,
+    "columns": []
+  }
+}
