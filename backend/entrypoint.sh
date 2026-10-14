@@ -16,4 +16,6 @@ echo "[2/2] Starting API server..."
 export UVICORN_WORKERS="${UVICORN_WORKERS:-3}"
 export PG_MAX_CONN="${PG_MAX_CONN:-25}"
 rm -f /tmp/royan-background.lock
-exec uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "$UVICORN_WORKERS"
+# --proxy-headers / --forwarded-allow-ips: trust X-Forwarded-Proto/For from nginx (the only thing that can reach this
+# port - it is not published), so redirects the app builds say https:// and keep the public port (:9443).
+exec uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "$UVICORN_WORKERS" --proxy-headers --forwarded-allow-ips "*"

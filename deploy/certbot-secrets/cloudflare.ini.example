@@ -1,0 +1,5 @@
+# Cloudflare API token for the DNS check that proves the domain to Let's Encrypt.
+# Copy this file to cloudflare.ini (same folder) and put the token in place of the placeholder.
+# Token: Cloudflare dashboard > My Profile > API Tokens > Create Token > "Edit zone DNS" template, zone = your domain.
+# cloudflare.ini is never committed (.gitignore).
+dns_cloudflare_api_token = PASTE-THE-TOKEN-HERE

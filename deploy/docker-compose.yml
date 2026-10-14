@@ -193,24 +193,27 @@ services:
     restart: "no"
 
   # ── TLS Certificate — Let's Encrypt ──────────────────────────────────────
-  # The certificate is issued once on the server with deploy/issue-cert.ps1 (backend/docs/cert-kit/
-  # GO-LIVE-CERTIFICATE.md, Stage 6). From then on this container checks twice a day and renews when fewer
-  # than 30 days remain, copying the new files over the two nginx reads (/etc/nginx/ssl/cert.pem, key.pem);
-  # nginx reloads itself every 6 hours. On a laptop with no real certificate it simply finds nothing to renew.
+  # RoyanHealth is served on https://<domain>:9443 (ports 80/443 of the hospital's public IP belong to Placeware),
+  # so Let's Encrypt cannot check the domain over port 80. The certificate is proven through the domain's DNS
+  # instead (DNS-01, via Cloudflare's free DNS and an API token in deploy/certbot-secrets/cloudflare.ini), issued once
+  # with deploy/issue-cert-dns.ps1. From then on this container checks twice a day and renews when fewer than 30 days
+  # remain - each certificate renews the way it was issued - copying the new files over the two nginx reads
+  # (/etc/nginx/ssl/cert.pem, key.pem); nginx reloads itself every 6 hours. On a laptop it finds nothing to renew.
   certbot:
-    image: certbot/certbot:v2.11.0
+    image: certbot/dns-cloudflare:v2.11.0
     container_name: royan_certbot
     volumes:
       - certbot_conf:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
       - nginx_ssl:/etc/nginx/ssl
+      - ./certbot-secrets:/secrets:ro
     entrypoint:
       - /bin/sh
       - -c
       - |
         trap exit TERM
         while :; do
-          certbot renew --quiet --webroot -w /var/www/certbot             --deploy-hook 'cp -L "$$RENEWED_LINEAGE/fullchain.pem" /etc/nginx/ssl/cert.pem && cp -L "$$RENEWED_LINEAGE/privkey.pem" /etc/nginx/ssl/key.pem && chmod 644 /etc/nginx/ssl/cert.pem && chmod 640 /etc/nginx/ssl/key.pem'
+          certbot renew --quiet             --deploy-hook 'cp -L "$$RENEWED_LINEAGE/fullchain.pem" /etc/nginx/ssl/cert.pem && cp -L "$$RENEWED_LINEAGE/privkey.pem" /etc/nginx/ssl/key.pem && chmod 644 /etc/nginx/ssl/cert.pem && chmod 640 /etc/nginx/ssl/key.pem'
           sleep 12h & wait $$!
         done
     restart: unless-stopped
