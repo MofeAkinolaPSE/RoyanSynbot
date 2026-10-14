@@ -78,10 +78,23 @@ docker cp royan_db:/tmp/royan.dump "$HOME\Desktop\royan-golive.dump"
 docker exec royan_db psql -U postgres -d synbot_health -Atc "SELECT 'patients=' || (SELECT count(*) FROM royan_patients) || '  bills=' || (SELECT count(*) FROM royan_billing) || '  users=' || (SELECT count(*) FROM royan_users) || '  books_diff=' || (SELECT COALESCE(sum(debit)-sum(credit),0) FROM fin_journal_lines)"
 ```
 
-Write down the last line (the counts). Copy `royan-golive.dump` (about 1 GB) and the laptop's `deploy\.env` to the
-server by USB or a private share. They hold patient data and passwords: never email them, wipe the USB after.
+Write down the last line (the counts). The dump is about 270 MB.
 
-- [ ] Dump made; counts noted: ____________________
+**Copy it to the server** (the server is Windows): in your Remote Desktop session to `172.16.0.26`, copy
+`royan-golive.dump` and the laptop's `deploy\.env` on the laptop (Ctrl+C) and paste them on the server's Desktop
+(Ctrl+V); Remote Desktop carries files through the clipboard. A USB stick works too. They hold patient data and
+passwords: never email them; wipe the USB after.
+
+**Dump made 14 Oct 2026, 14:39** (current Hope data from the 25 Jan 2026 dumps, test activity cleared), on the
+laptop's Desktop as `royan-golive.dump`. Its counts:
+
+```
+patients=60929  bills=259067  users=4  books_diff=0.00
+```
+
+The same dump was restored into a fresh database on the laptop as a rehearsal of Step 4: no errors, same counts.
+
+- [ ] Dump copied to the server; counts noted: ____________________
 
 ## Step 3: Update the code on the server
 
@@ -93,13 +106,19 @@ git pull
 cd deploy
 ```
 
-Put the laptop's `.env` in `<APP_FOLDER>\deploy\` (replace the old one), open it in Notepad and check:
+Rename the server's current `deploy\.env` to `.env.old` (keep it), put the laptop's `.env` in its place, and open
+both in Notepad:
 
-| Line | Must be |
+| Line in the new `.env` | Must be |
 |---|---|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD` | **copied from `.env.old`**: the server's database keeps the login it was created with |
+| `POSTGRES_DB` | `synbot_health` |
+| `DATABASE_URL` | `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/synbot_health` with the two values above |
 | `DEV_TOKEN_ENABLED` | `0` |
 | `CORS_ALLOW_ORIGINS` | `https://royanhospitalaiapp.online:9443,https://localhost` |
 | `ADMIN_PASSWORD` | a strong password only Royan IT keeps |
+
+(If the server has no `.env` yet, i.e. a brand-new database, use the laptop's as it is.)
 
 ```powershell
 docker compose build
@@ -114,7 +133,20 @@ Open `https://localhost` on the server: the login page appears (a certificate wa
 
 ## Step 4: Replace the server's database with the dump (after Step 2)
 
-In `<APP_FOLDER>\deploy` on the server. The first two lines keep a copy of what the server had, just in case.
+In `<APP_FOLDER>\deploy` on the server, Windows PowerShell.
+
+**First, check the database user.** The server's database was created when it was first set up, under whatever
+`POSTGRES_USER` its `.env` had then; changing `.env` later does not rename it. Run:
+
+```powershell
+docker exec royan_db psql -U postgres -d postgres -c "select 1"
+```
+
+If that prints `1`, the commands below are right as written. If it says `role "postgres" does not exist`, use the
+user from the server's **old** `.env` (`POSTGRES_USER=`, often `royan`) in place of `postgres` after every `-U`
+below, and put that same user back as `POSTGRES_USER` in the new `.env` (and its password as `POSTGRES_PASSWORD`).
+
+Then the swap. The first two lines keep a copy of what the server had, just in case:
 
 ```powershell
 docker exec royan_db pg_dump -U postgres -d synbot_health -Fc -f /tmp/server-before.dump
@@ -254,7 +286,8 @@ renewed certificate within 6 hours.
 | "too many failed authorizations" | Let's Encrypt limits retries: wait an hour, fix the cause, try again. |
 | Padlock still missing after "Done" | Close every browser window (they remember the old certificate), or try a private window. |
 | Port 443 or 80 "already in use" when starting the app | Another program holds it (IIS, Skype, another web server). Admin PowerShell: `netstat -ano \| findstr ":443 "`, find the process ID in Task Manager → Details, stop it. |
-| Restore prints warnings about extensions | Harmless; what counts is that the Step 2 counts match. |
+| `pg_restore` prints any `error:` | The rehearsal restored with none, so stop: send me the message. The server's old database copy (`server-before.dump`) is on the Desktop. |
+| The app can't sign in / backend keeps restarting after Step 3 | The new `.env` has a different database login than the server's database: copy `POSTGRES_USER` and `POSTGRES_PASSWORD` from `.env.old`, then `docker compose up -d`. |
 
 ## Never
 
