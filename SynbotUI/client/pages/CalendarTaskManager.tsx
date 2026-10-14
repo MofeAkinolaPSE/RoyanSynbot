@@ -1,5 +1,9 @@
 ﻿/**
- * SchedulingCenter — Hospital-grade scheduling & orchestration system
+ * My Schedule - one person's own diary: the appointments booked to see them (doctors), the tasks
+ * assigned to or created by them, and the events they attend. Nobody else's. The whole hospital's
+ * diary is the Hospital Calendar; the full appointment book is Appointments.
+ *
+ * (Formerly the hospital-wide SchedulingCenter.)
  *
  * 3-panel layout:
  *   Left  (260px) : mini date picker + type filters + doctor/dept filters + quick actions
@@ -13,6 +17,7 @@
  *   - /appointments/doctors   → distinct doctor list for filters
  */
 
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -227,24 +232,21 @@ const SchedulingCenter = () => {
   }, [viewMode, currentDate]);
 
   const { data: calData, isFetching: calFetching } = useQuery({
-    queryKey: ["sched-appointments", dateRange.from, dateRange.to, filterDoctor, filterDept],
-    queryFn: () => (api.hospital.appointments as any).calendar({
-      date_from: dateRange.from, date_to: dateRange.to,
-      ...(filterDoctor !== "all" && { doctor_name: filterDoctor }),
-      ...(filterDept !== "all" && { department: filterDept }),
-    }),
+    queryKey: ["sched-appointments", dateRange.from, dateRange.to],
+    // mine: the appointments booked into my own slots (empty for anyone who is not a doctor)
+    queryFn: () => api.hospital.appointments.calendar({ date_from: dateRange.from, date_to: dateRange.to, mine: true }),
     staleTime: 30_000,
   });
 
   const { data: tasksData } = useQuery({
     queryKey: ["sched-tasks"],
-    queryFn: () => api.tasks.list(),
+    queryFn: () => api.tasks.list(undefined, true),
     staleTime: 60_000,
   });
 
   const { data: eventsData } = useQuery({
     queryKey: ["sched-events", format(currentDate, "yyyy-MM")],
-    queryFn: () => api.calendar.list(format(currentDate, "yyyy-MM")),
+    queryFn: () => api.calendar.list(format(currentDate, "yyyy-MM"), true),
     staleTime: 60_000,
   });
 
@@ -416,11 +418,11 @@ const SchedulingCenter = () => {
                 </div>
                 <div className="space-y-px">
                   {dayItems.slice(0, 3).map(item => (
-                    <div key={item.id} onClick={e => { e.stopPropagation(); setSelectedItem(item); }} className="truncate rounded px-1 py-px text-[12px] text-white font-medium cursor-pointer hover:opacity-90" style={{ backgroundColor: item.color }}>
+                    <div key={item.id} onClick={e => { e.stopPropagation(); setSelectedItem(item); }} className="truncate rounded px-1 py-px text-xs text-white font-medium cursor-pointer hover:opacity-90" style={{ backgroundColor: item.color }}>
                       {item.kind === "appointment" ? `${format(item.start, "HH:mm")} ${item.title}` : item.title}
                     </div>
                   ))}
-                  {dayItems.length > 3 && <div className="pl-1 text-[12px] text-muted-foreground">+{dayItems.length - 3} more</div>}
+                  {dayItems.length > 3 && <div className="pl-1 text-xs text-muted-foreground">+{dayItems.length - 3} more</div>}
                 </div>
               </div>
             );
@@ -448,7 +450,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: "3.5rem repeat(7, 1fr)" }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-xs text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           {weekDays.map(d => {
             const dayAppts = itemsForDate(d).filter(i => i.kind === "appointment");
@@ -462,14 +464,14 @@ const SchedulingCenter = () => {
                   const height = heightPxForDuration(item.durationMins ?? 15);
                   if (top < 0 || top >= TOTAL_GRID_HEIGHT) return null;
                   return (
-                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[12px] text-white font-medium overflow-hidden cursor-pointer hover:opacity-90 z-10 border border-white/20" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
+                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-xs text-white font-medium overflow-hidden cursor-pointer hover:opacity-90 z-10 border border-white/20" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
                       <div className="truncate font-semibold">{format(item.start, "HH:mm")} {item.title}</div>
                       {height > 28 && item.doctor && <div className="truncate opacity-80">{item.doctor}</div>}
                     </div>
                   );
                 })}
                 {dayOthers.slice(0, 2).map((item, idx) => (
-                  <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1 text-[11px] text-white font-medium cursor-pointer overflow-hidden z-10" style={{ top: `${idx * 15}px`, height: "13px", backgroundColor: item.color, opacity: 0.85 }}>
+                  <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1 text-xs text-white font-medium cursor-pointer overflow-hidden z-10" style={{ top: `${idx * 15}px`, height: "13px", backgroundColor: item.color, opacity: 0.85 }}>
                     <div className="truncate">{item.title}</div>
                   </div>
                 ))}
@@ -493,7 +495,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: "3.5rem 1fr" }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-xs text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           <div className="relative" style={{ height: `${TOTAL_GRID_HEIGHT}px` }}>
             {hours.map(h => <div key={h} className="absolute left-0 right-0 border-b border-border/40" style={{ top: `${(h - HOUR_START) * PX_PER_HOUR}px` }} />)}
@@ -543,7 +545,7 @@ const SchedulingCenter = () => {
         </div>
         <div className="grid" style={{ gridTemplateColumns: cols }}>
           <div className="border-r">
-            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-[12px] text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
+            {hours.map(h => <div key={h} className="border-b text-right pr-2 text-xs text-muted-foreground pt-1" style={{ height: `${PX_PER_HOUR}px` }}>{String(h).padStart(2,"0")}:00</div>)}
           </div>
           {uniqueDoctors.map(doc => {
             const docAppts = dayAppts.filter(i => i.doctor === doc);
@@ -556,7 +558,7 @@ const SchedulingCenter = () => {
                   const height = heightPxForDuration(item.durationMins ?? 15);
                   if (top < 0 || top >= TOTAL_GRID_HEIGHT) return null;
                   return (
-                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-[12px] text-white font-medium cursor-pointer hover:opacity-90 border border-white/20 overflow-hidden z-10" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
+                    <div key={item.id} onClick={() => setSelectedItem(item)} className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-xs text-white font-medium cursor-pointer hover:opacity-90 border border-white/20 overflow-hidden z-10" style={{ top: `${top}px`, height: `${height}px`, backgroundColor: item.color }}>
                       <div className="truncate font-semibold">{format(item.start, "HH:mm")}</div>
                       <div className="truncate">{item.patientName ?? "Patient"}</div>
                     </div>
@@ -584,7 +586,7 @@ const SchedulingCenter = () => {
     const canCancel = isAppt && !["completed", "cancelled", "no_show"].includes(item.status);
     return (
       <Sheet open={!!selectedItem} onOpenChange={(o) => { if (!o) setSelectedItem(null); }}>
-        <SheetContent className="w-80 space-y-4">
+        <SheetContent className={cn(PANEL_WIDTH.narrow, "space-y-4")}>
           <SheetHeader>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -655,12 +657,25 @@ const SchedulingCenter = () => {
     <motion.div className="flex h-[calc(100vh-64px)] overflow-hidden bg-background" {...motionTransitions}>
 
       {/* LEFT PANEL */}
-      <div className="w-64 shrink-0 border-r flex flex-col overflow-y-auto bg-sidebar/40">
+      <div className="w-72 shrink-0 border-r flex flex-col overflow-y-auto bg-sidebar/40">
         <div className="p-2 border-b">
-          <Calendar mode="single" selected={currentDate} onSelect={d => { if (d) { setCurrentDate(d); setViewMode("day"); } }} className="rounded-md" />
+          {/* Compact day cells overridden here rather than in components/ui/calendar.tsx,
+              which StaffDashboard also renders at full width. 7 x 32px = 224px
+              fits the 248px this panel now offers. */}
+          <Calendar
+            mode="single"
+            selected={currentDate}
+            onSelect={d => { if (d) { setCurrentDate(d); setViewMode("day"); } }}
+            className="rounded-md p-2"
+            classNames={{
+              day: "h-8 w-8 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
+              day_button: "h-8 w-8 p-0 font-normal aria-selected:opacity-100",
+              weekday: "text-muted-foreground rounded-md w-8 font-normal text-xs",
+            }}
+          />
         </div>
         <div className="p-3 border-b space-y-3">
-          <div className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Filter className="h-3 w-3" />Filters
           </div>
           <div className="space-y-2">
@@ -677,23 +692,13 @@ const SchedulingCenter = () => {
               </label>
             ))}
           </div>
-          <Select value={filterDoctor} onValueChange={setFilterDoctor}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All doctors" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All doctors</SelectItem>
-              {doctors.map(d => <SelectItem key={d.doctor_name} value={d.doctor_name}>{d.doctor_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterDept} onValueChange={setFilterDept}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All departments" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <p className="text-xs text-muted-foreground">
+            Only your own appointments, tasks and events. The whole hospital's diary is the{" "}
+            <a href="#/calendar" className="text-primary hover:underline">Hospital Calendar</a>.
+          </p>
         </div>
         <div className="p-3 border-b">
-          <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Status</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Status</div>
           <div className="space-y-1">
             {[["booked","Booked"],["confirmed","Confirmed"],["arrived","Arrived"],["completed","Completed"],["no_show","No Show"]].map(([k,l]) => (
               <div key={k} className="flex items-center gap-2 text-xs"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[k] }} />{l}</div>
@@ -701,7 +706,7 @@ const SchedulingCenter = () => {
           </div>
         </div>
         <div className="p-3 space-y-2 mt-auto">
-          <div className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Quick Actions</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Quick Actions</div>
           <Button size="sm" className="w-full text-white" style={{ backgroundColor: "#17449E" }} onClick={() => { resetNewApptForm(); setShowApptDialog(true); }}>
             <Plus className="mr-2 h-4 w-4" />New Appointment
           </Button>

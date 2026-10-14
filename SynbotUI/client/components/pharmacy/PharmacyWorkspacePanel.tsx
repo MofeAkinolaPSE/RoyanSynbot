@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { handlePayFirst } from "@/lib/pay-first";
+import { useAuth } from "@/components/AuthProvider";
+import { SignaturePad } from "@/components/pharmacy/SignaturePad";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,11 +19,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   User, Pill, ClipboardList, ShieldAlert, Undo2, PenLine, Eye,
-  ExternalLink, Loader2, XCircle,
+  ExternalLink, Loader2, XCircle, Percent
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { MedicationHistoryTab } from "@/components/pharmacy/MedicationHistoryTab";
 import {
   StatusBadge, MedAdminStatusBadge, WorkflowProgress, DetailRow, elapsed,
 } from "@/components/pharmacy/pharmacy-shared";
@@ -60,12 +65,17 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
   const [safetyAlert, setSafetyAlert] = useState<{ kind: "allergy" | "ddi"; items: any[]; message: string } | null>(null);
   const [administerForm, setAdministerForm] = useState({ ...emptyAdministerForm });
 
+  // A staff discount is requested here and approved by an admin elsewhere; the
+  // pharmacist never applies one on their own authority.
+  const [discountRowId, setDiscountRowId] = useState<number | null>(null);
+  const [discountForm, setDiscountForm] = useState({ amount: "", discount_type: "staff", reason: "" });
   const [returnRowId, setReturnRowId] = useState<string | number | null>(null);
   const [returnForm, setReturnForm] = useState({ ...emptyReturnForm });
   const [signatureRowId, setSignatureRowId] = useState<string | number | null>(null);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
 
   const rxId = String(initialRx.id);
+  const { roles: payFirstRoles } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["pharmacy-panel-rx", rxId],
@@ -73,6 +83,14 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
     refetchInterval: 15_000,
   });
   const rx: typeof initialRx & Record<string, any> = { ...initialRx, ...(data?.prescription ?? {}) };
+  // An HMO patient's visit: the pharmacist can open the visit's Royan claims form (the patient signs it here)
+  const { data: visitBills } = useQuery({
+    queryKey: ["rx-visit-bills", rx.encounter_id],
+    queryFn: () => api.hospital.billing.listBills({ encounter_id: Number(rx.encounter_id) }),
+    enabled: !!rx.encounter_id,
+    staleTime: 60_000,
+  });
+  const hmoBill = (visitBills?.bills ?? []).find((b: any) => b.payer_type === "hmo" && b.status !== "void");
   const dispensingRecords: any[] = data?.dispensing_records ?? [];
   const marEntries: any[] = data?.mar_entries ?? [];
   const returns: any[] = data?.returns ?? [];
@@ -116,7 +134,10 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
       setSafetyAlert(null);
       invalidateAll();
     },
-    onError: (e: any) => toast({ title: "Failed to dispense", description: e.message, variant: "destructive" }),
+    onError: async (e: any) => {
+      if (await handlePayFirst(e, "prescription", rxId, payFirstRoles, toast)) return;
+      toast({ title: "Failed to dispense", description: e.message, variant: "destructive" });
+    },
   });
 
   const administerMut = useMutation({
@@ -141,6 +162,26 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
     mutationFn: () => api.hospital.pharmacy.cancel(rxId, {}),
     onSuccess: () => { toast({ title: "Prescription cancelled" }); invalidateAll(); },
     onError: (e: any) => toast({ title: "Failed to cancel", description: e.message, variant: "destructive" }),
+  });
+
+  const discountMut = useMutation({
+    mutationFn: () =>
+      api.hospital.pharmacy.requestDispensingDiscount(discountRowId!, {
+        amount: Number(discountForm.amount),
+        discount_type: discountForm.discount_type,
+        reason: discountForm.reason.trim() || undefined,
+      }),
+    onSuccess: () => {
+      setDiscountRowId(null);
+      setDiscountForm({ amount: "", discount_type: "staff", reason: "" });
+      void qc.invalidateQueries({ queryKey: ["pharmacy-prescription", rx.id] });
+      toast({
+        title: "Discount sent for approval",
+        description: "Nothing is deducted until an administrator approves it.",
+      });
+    },
+    onError: (e: any) =>
+      toast({ title: "Could not request it", description: e?.message, variant: "destructive" }),
   });
 
   const returnMut = useMutation({
@@ -180,7 +221,7 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         {isLoading && !data ? (
           <LoadingSkeleton />
         ) : (
@@ -198,7 +239,18 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                     {rx.patient_mrn && <Badge variant="outline" className="text-xs font-mono">{rx.patient_mrn}</Badge>}
                     <StatusBadge status={status} />
                   </div>
-                  <p className="text-[13px] text-muted-foreground mt-1">Rx #{rx.id} · Prescribed {elapsed(rx.prescribed_at)} ago</p>
+                  <p className="text-xs text-muted-foreground mt-1">Rx #{rx.id} · Prescribed {elapsed(rx.prescribed_at)} ago</p>
+                  {hmoBill && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-violet-400 text-xs font-semibold text-violet-800 dark:text-violet-300">
+                        HMO · {hmoBill.hmo_name ?? "insured"}{hmoBill.membership_id ? ` · ${hmoBill.membership_id}` : ""}
+                      </Badge>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                        onClick={() => window.open(`#/hospital/billing/${hmoBill.id}/invoice?claims=1`, "_blank")}>
+                        Claims form
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </SheetHeader>
@@ -209,6 +261,7 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                 <TabsTrigger value="detail">Detail</TabsTrigger>
                 <TabsTrigger value="dispense">Dispense</TabsTrigger>
                 <TabsTrigger value="administer">Administer</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
 
               <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -241,7 +294,7 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                   <section>
                     <SectionLabel icon={<ClipboardList className="h-3.5 w-3.5" />} label="Workflow" />
                     <WorkflowProgress status={status} />
-                    <p className="text-[13px] text-muted-foreground mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       {marEntries.length > 0
                         ? `${marEntries.length} dose(s) administered, last ${elapsed(marEntries[0]?.admin_time)} ago`
                         : "No doses administered yet"}
@@ -280,25 +333,88 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                             </div>
                             {d.counselling_given && <p className="text-green-500">Counselling given</p>}
                             {returned > 0 && <p className="text-orange-500">{returned} {d.unit} returned</p>}
+                            {d.discount_status && d.discount_status !== "none" && (
+                              <p className={cn(
+                                "text-xs",
+                                d.discount_status === "approved" ? "text-green-600"
+                                  : d.discount_status === "rejected" ? "text-muted-foreground"
+                                  : "text-amber-600",
+                              )}>
+                                {d.discount_status === "pending"
+                                  ? `Discount of ₦${Number(d.discount).toLocaleString()} awaiting approval`
+                                  : d.discount_status === "approved"
+                                  ? `₦${Number(d.discount).toLocaleString()} discount approved`
+                                  : "Discount rejected"}
+                              </p>
+                            )}
                             <div className="flex gap-2 pt-1">
+                              {Number(d.total_cost) > 0 &&
+                               (!d.discount_status || d.discount_status === "none" || d.discount_status === "rejected") && (
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
+                                  onClick={() => { setDiscountRowId(d.id); setDiscountForm({ amount: "", discount_type: "staff", reason: "" }); }}>
+                                  <Percent className="h-3 w-3" /> Request Discount
+                                </Button>
+                              )}
                               {returnable > 0 && (
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px] gap-1"
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
                                   onClick={() => { setReturnRowId(d.id); setReturnForm({ ...emptyReturnForm }); }}>
                                   <Undo2 className="h-3 w-3" /> Record Return
                                 </Button>
                               )}
                               {d.signature_url ? (
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px] gap-1"
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
                                   onClick={() => window.open(api.hospital.pharmacy.signatureUrl(String(d.signature_url).split("/").pop()!), "_blank")}>
                                   <Eye className="h-3 w-3" /> View Signature
                                 </Button>
                               ) : (
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px] gap-1"
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
                                   onClick={() => { setSignatureRowId(d.id); setSignatureFile(null); }}>
                                   <PenLine className="h-3 w-3" /> Capture Signature
                                 </Button>
                               )}
                             </div>
+
+                            {discountRowId === d.id && (
+                              <div className="mt-2 space-y-2 rounded border border-amber-500/30 bg-amber-500/5 p-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Input
+                                    type="number" min="0" step="10"
+                                    placeholder={`Amount (max ₦${Number(d.total_cost ?? 0).toLocaleString()})`}
+                                    value={discountForm.amount}
+                                    onChange={e => setDiscountForm(f => ({ ...f, amount: e.target.value }))}
+                                  />
+                                  <select
+                                    className="h-9 rounded-md border bg-background px-2 text-xs"
+                                    value={discountForm.discount_type}
+                                    onChange={e => setDiscountForm(f => ({ ...f, discount_type: e.target.value }))}
+                                  >
+                                    <option value="staff">Staff</option>
+                                    <option value="staff_dependant">Staff dependant</option>
+                                    <option value="goodwill">Goodwill</option>
+                                    <option value="hardship">Hardship</option>
+                                    <option value="other">Other</option>
+                                  </select>
+                                </div>
+                                <Input
+                                  placeholder="Reason (optional)"
+                                  value={discountForm.reason}
+                                  onChange={e => setDiscountForm(f => ({ ...f, reason: e.target.value }))}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  An administrator approves this before anything is deducted.
+                                </p>
+                                <div className="flex justify-end gap-2">
+                                  <Button size="sm" variant="ghost" className="h-7 text-xs"
+                                    onClick={() => setDiscountRowId(null)}>Cancel</Button>
+                                  <Button size="sm" className="h-7 text-xs"
+                                    disabled={discountMut.isPending || !(Number(discountForm.amount) > 0)}
+                                    onClick={() => discountMut.mutate()}>
+                                    {discountMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                                    Send for approval
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
 
                             {returnRowId === d.id && (
                               <div className="mt-2 rounded border border-orange-500/30 bg-orange-500/5 p-2 space-y-2">
@@ -308,14 +424,14 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                                   <div className="flex items-center gap-1.5">
                                     <Checkbox id={`restock-${d.id}`} checked={returnForm.restock}
                                       onCheckedChange={v => setReturnForm(f => ({ ...f, restock: !!v }))} />
-                                    <Label htmlFor={`restock-${d.id}`} className="text-[13px] cursor-pointer">Restock</Label>
+                                    <Label htmlFor={`restock-${d.id}`} className="text-xs cursor-pointer">Restock</Label>
                                   </div>
                                 </div>
                                 <Input placeholder="Reason (optional)" value={returnForm.reason}
                                   onChange={e => setReturnForm(f => ({ ...f, reason: e.target.value }))} />
                                 <div className="flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-6 text-[13px] flex-1" onClick={() => setReturnRowId(null)}>Cancel</Button>
-                                  <Button size="sm" className="h-6 text-[13px] flex-1"
+                                  <Button size="sm" variant="outline" className="h-6 text-xs flex-1" onClick={() => setReturnRowId(null)}>Cancel</Button>
+                                  <Button size="sm" className="h-6 text-xs flex-1"
                                     disabled={!returnForm.quantity_returned || Number(returnForm.quantity_returned) > returnable || returnMut.isPending}
                                     onClick={() => returnMut.mutate()}>
                                     {returnMut.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}Submit
@@ -326,13 +442,15 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
 
                             {signatureRowId === d.id && (
                               <div className="mt-2 rounded border border-border bg-muted/30 p-2 space-y-2">
-                                <Input type="file" accept="image/png,image/jpeg,image/webp" className="text-[13px]"
+                                <SignaturePad onChange={setSignatureFile} />
+                                <Input type="file" accept="image/png,image/jpeg,image/webp" className="text-xs"
+                                  title="Or upload a signature image from the signature tablet"
                                   onChange={e => setSignatureFile(e.target.files?.[0] ?? null)} />
                                 <div className="flex gap-2">
-                                  <Button size="sm" variant="outline" className="h-6 text-[13px] flex-1" onClick={() => setSignatureRowId(null)}>Cancel</Button>
-                                  <Button size="sm" className="h-6 text-[13px] flex-1" disabled={!signatureFile || signatureMut.isPending}
+                                  <Button size="sm" variant="outline" className="h-6 text-xs flex-1" onClick={() => setSignatureRowId(null)}>Cancel</Button>
+                                  <Button size="sm" className="h-6 text-xs flex-1" disabled={!signatureFile || signatureMut.isPending}
                                     onClick={() => signatureMut.mutate()}>
-                                    {signatureMut.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}Upload
+                                    {signatureMut.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}Save signature
                                   </Button>
                                 </div>
                               </div>
@@ -470,6 +588,11 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                     </section>
                   )}
                 </TabsContent>
+
+              <TabsContent value="history" className="mt-0">
+                {/* The complete regimen, built from what was dispensed. */}
+                <MedicationHistoryTab patientId={rx.patient_id} />
+              </TabsContent>
               </div>
             </Tabs>
 
@@ -503,15 +626,6 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
   );
 }
 

@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -104,17 +104,19 @@ export default function HospitalPatients() {
   });
   const kpis = statusData?.kpis ?? statusData ?? {};
 
-  // Recent patients (shown when no search active)
+  // Every patient A-Z (first name, then surname, as the names show), 50 a page, when no search is active
+  const PAGE = 50;
+  const [page, setPage] = useState(0);
   const { data: recentData, isFetching: loadingRecent } = useQuery({
-    queryKey: ["patients-recent"],
-    queryFn: () => api.hospital.patients.search(""),
+    queryKey: ["patients-az", page],
+    queryFn: () => api.hospital.patients.listAz(page * PAGE, PAGE),
     enabled: search.trim().length === 0,
     staleTime: 60_000,
+    placeholderData: (prev) => prev,
   });
   const recentPatients: Patient[] = (() => {
     const d = recentData;
-    const list = Array.isArray(d?.patients) ? d.patients : Array.isArray(d) ? d : [];
-    return list.slice(0, 20);
+    return Array.isArray(d?.patients) ? d.patients : Array.isArray(d) ? d : [];
   })();
 
   // Search results — keyed on debouncedSearch so only fires after 350ms pause
@@ -138,13 +140,17 @@ export default function HospitalPatients() {
     : [];
 
   // Register mutation
+  const location = useLocation();
+  const fromFrontDesk = !!(location.state as any)?.fromFrontDesk;
+  useEffect(() => { if (fromFrontDesk) setDialogOpen(true); }, [fromFrontDesk]);
   const registerMut = useMutation({
     mutationFn: () => api.hospital.patients.register(form),
-    onSuccess: () => {
-      toast({ title: "Patient registered", description: `${form.first_name} ${form.last_name} added to registry.` });
+    onSuccess: (res: any) => {
+      toast({ title: "Patient registered", description: `${form.first_name} ${form.last_name} added to registry${res?.mrn ? ` (${res.mrn})` : ""}.` });
       setDialogOpen(false);
       setForm({ ...emptyForm });
       void qc.invalidateQueries({ queryKey: ["patients-search"] });
+      if (fromFrontDesk && res?.patient?.id) navigate("/hospital/front-desk", { state: { prefillPatient: res.patient } });
     },
     onError: (err: any) => toast({ title: "Registration failed", description: err.message, variant: "destructive" }),
   });
@@ -217,8 +223,14 @@ export default function HospitalPatients() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4" />
-              Recent Patients
-              <span className="text-xs font-normal text-muted-foreground">({recentPatients.length})</span>
+              Patients A–Z
+              <span className="text-xs font-normal text-muted-foreground">
+                ({page * PAGE + 1}–{page * PAGE + recentPatients.length})
+              </span>
+              <span className="ml-auto flex gap-1.5">
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={page === 0 || loadingRecent} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={recentPatients.length < PAGE || loadingRecent} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">

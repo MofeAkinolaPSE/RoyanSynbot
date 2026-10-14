@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { encounterStatusLabel } from "@/lib/encounter-status";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import {
   ChevronRight, FileText, Loader2, ListChecks, ShieldAlert, CheckCircle2,
   XCircle, PenLine, Thermometer, TrendingUp, ClipboardCheck, Upload, Send,
   Scissors, ScanLine, Eye, NotebookPen, Megaphone, CalendarClock, Bell, Syringe, Baby,
+  BedDouble, Landmark
 } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import { useAuth } from "@/components/AuthProvider";
@@ -36,10 +38,16 @@ import { CoverageQuote } from "@/components/CoverageQuote";
 import { AlertBanner } from "@/components/AlertBanner";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { CoverSheetWidget } from "@/components/patient/CoverSheetWidget";
+import { SoapNoteComposer } from "@/components/soap/SoapNoteComposer";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { FREQUENCY_OPTIONS, ROUTE_OPTIONS } from "@/lib/clinical-options";
+import { FREQUENCY_OPTIONS, ROUTE_OPTIONS, DURATION_OPTIONS } from "@/lib/clinical-options";
+import { RecordDetailPanel, type RecordDetail } from "@/components/patient/RecordDetailPanel";
+import { LabWorkspacePanel } from "@/components/lab/LabWorkspacePanel";
+import { RadiologyWorkspacePanel } from "@/components/radiology/RadiologyWorkspacePanel";
+import { TheatreWorkspacePanel } from "@/components/theatre/TheatreWorkspacePanel";
+import { RecordTable, CellStack, type RecordColumn } from "@/components/patient/RecordTable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +70,12 @@ interface Patient {
   hmo_id?: string;
   registered_at?: string;
   is_active?: boolean;
+  // Added to royan_patients by migration 159 for the immunisation booklet
+  // header (father's/guardian's name and place of birth). The page already
+  // reads both; the interface simply never caught up.
+  father_name?: string;
+  place_of_birth?: string;
+  mother_patient_id?: number | string | null;
 }
 
 interface Insurance {
@@ -91,6 +105,19 @@ interface ProfileData {
   postings: any[];
   immunisations: any[];
   timeline: TimelineItem[];
+  // Shipped by services/patient_context.py but never declared here — the page
+  // reads data.clinical_notes for the Notes tab and only compiled because tsc
+  // was disabled by an invalid tsconfig value.
+  clinical_notes?: any[];
+  // Also present in the payload and still unrendered; declared so a future
+  // reader can see what is actually available rather than re-deriving it.
+  discharges?: any[];
+  payments?: any[];
+  insurance_claims?: any[];
+  radiology?: any[];
+  coverage_authorizations?: any[];
+  insurance_records?: any[];
+  section_counts?: Record<string, number>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -138,7 +165,93 @@ function fmtDate(ts?: string): string {
 // Builds the recordDetail payload for a prescription row — shared by the
 // Active and Past Medications lists so dispensing history (added once here)
 // shows up consistently in both instead of drifting between two copies.
-function rxRecordDetail(rx: any, noDetail: boolean): { title: string; subtitle?: string; rows: [string, any][] } {
+/**
+ * royan_ward_stay_history stores admitted_at/discharged_at and no duration, and
+ * the endpoint computes none, so length of stay is derived here. An open stay
+ * measures to now, which is what a ward round actually wants to know.
+ */
+function lengthOfStay(admitted?: string | null, discharged?: string | null): string | null {
+  if (!admitted) return null;
+  const start = new Date(admitted).getTime();
+  const end = discharged ? new Date(discharged).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  const days = Math.floor((end - start) / 86_400_000);
+  const hours = Math.floor(((end - start) % 86_400_000) / 3_600_000);
+  const suffix = discharged ? "" : " so far";
+  if (days === 0) return `${hours} hour${hours === 1 ? "" : "s"}${suffix}`;
+  return `${days} day${days === 1 ? "" : "s"}${hours ? `, ${hours}h` : ""}${suffix}`;
+}
+
+/**
+ * Structured SOAP columns first (notes written since the migration), falling
+ * back to the older JSON-in-content convention. Extracted because the table
+ * needs it in two columns and the panel needs it again on click.
+ */
+/**
+ * The urgency left-border from the Laboratory worklist, so a stat order reads
+ * the same on the chart as it does on the worklist.
+ */
+const URGENCY_ACCENT: Record<string, string> = {
+  stat: "border-l-red-500",
+  urgent: "border-l-orange-500",
+  routine: "border-l-transparent",
+};
+
+/**
+ * Specialist notes carry an open-ended note_data blob whose keys vary by
+ * template, so the columns are derived rather than declared. Falsy values are
+ * dropped: an unticked checkbox is not a finding.
+ */
+/**
+ * One column set for both medication tables. A placeholder row (legacy billing
+ * line with no drug name) renders muted and says so, rather than showing an
+ * empty cell that reads as missing data.
+ */
+const MED_COLUMNS: RecordColumn<any>[] = [
+  {
+    header: "Drug",
+    cell: (rx: any) => {
+      const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
+      return (
+        <CellStack
+          muted={noDetail}
+          primary={noDetail ? "No drug detail captured" : rx.drug_name}
+          secondary={noDetail ? "Legacy billing record only" : [rx.dosage, rx.frequency].filter(Boolean).join(" · ")}
+        />
+      );
+    },
+  },
+  { header: "Route", width: "w-[100px]", className: "capitalize text-muted-foreground", cell: (rx: any) => rx.route ?? "—" },
+  { header: "Duration", width: "w-[110px]", className: "text-muted-foreground", cell: (rx: any) => rx.duration ?? "—" },
+  {
+    header: "Status",
+    width: "w-[130px]",
+    cell: (rx: any) => (
+      <Badge variant="outline" className="text-xs capitalize">
+        {rx.status?.replace(/_/g, " ") ?? "—"}
+      </Badge>
+    ),
+  },
+];
+
+function specialistNoteRows(n: any): [string, any][] {
+  if (!n?.note_data || typeof n.note_data !== "object") return [];
+  return Object.entries(n.note_data as Record<string, any>)
+    .filter(([, val]) => val != null && val !== "" && val !== false)
+    .map(([key, val]): [string, any] => [
+      key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      typeof val === "boolean" ? (val ? "Yes" : "No") : String(val),
+    ]);
+}
+
+function noteSoap(n: any): Record<string, string> | null {
+  if (n.subjective || n.objective || n.assessment || n.plan) {
+    return { subjective: n.subjective, objective: n.objective, assessment: n.assessment, plan: n.plan };
+  }
+  try { return JSON.parse(n.content); } catch { return null; }
+}
+
+function rxRecordDetail(rx: any, noDetail: boolean): RecordDetail {
   if (noDetail) {
     return {
       title: "Prescription",
@@ -166,7 +279,7 @@ function rxRecordDetail(rx: any, noDetail: boolean): { title: string; subtitle?:
             dispensing.length > 1 ? `Dispensed (${i + 1}/${dispensing.length})` : "Dispensed",
             `${d.quantity_dispensed ?? "—"} ${d.unit ?? ""} · ${formatAttribution(d.dispensed_by) ?? "—"} · ${d.dispensed_at ? fmtDateTime(d.dispensed_at) : "—"}${d.batch_number ? ` · Batch ${d.batch_number}` : ""}`,
           ])
-        : [["Dispensed", rx.status === "pending" ? "Not yet dispensed" : null]]),
+        : [["Dispensed", rx.status === "pending" ? "Not yet dispensed" : null] as [string, any]]),
     ],
   };
 }
@@ -220,7 +333,95 @@ export default function PatientProfile() {
   // each card builds its own [label, value] rows at click time so this one
   // dialog covers appointments/visits, meds, labs, reminders, and
   // immunizations without repeating the same dialog shell 5 times.
-  const [recordDetail, setRecordDetail] = useState<{ title: string; subtitle?: string; rows: [string, any][] } | null>(null);
+  const [recordDetail, setRecordDetail] = useState<RecordDetail | null>(null);
+  // Clinical records open in the same workspace panels the worklists use, so a
+  // result looks identical whether reached from the chart or from Laboratory.
+  const [labPanelOrder, setLabPanelOrder] = useState<any | null>(null);
+  const [radPanelOrder, setRadPanelOrder] = useState<any | null>(null);
+  const [radPanelTab, setRadPanelTab] = useState<string | undefined>(undefined);
+  const [theatrePanelCase, setTheatrePanelCase] = useState<any | null>(null);
+  // Opening a record from the timeline hides the story rather than stacking a
+  // second right-hand Sheet over it — two Sheets means two focus traps. The
+  // encounter is remembered so closing the record returns you to your place in
+  // the story instead of dumping you back on the chart.
+  const [storyReturnId, setStoryReturnId] = useState<number | null>(null);
+
+  const openStoryRecord = (kind: string, record: any) => {
+    setStoryReturnId(storyEncounterId);
+    switch (kind) {
+      case "lab": setLabPanelOrder(record); break;
+      case "radiology":
+        setRadPanelOrder(record);
+        setRadPanelTab(record.reported_at ? "report" : "detail");
+        break;
+      case "note":
+        setRecordDetail({
+          title: record.note_title || `${(record.note_type ?? "clinical").replace(/_/g, " ")} note`,
+          subtitle: record.created_at ? fmtDateTime(record.created_at) : undefined,
+          icon: NotebookPen,
+          badges: record.signed_at
+            ? [{ label: "Signed", tone: "success" as const }]
+            : [{ label: "Unsigned", tone: "warning" as const }],
+          blocks: [
+            { label: "Subjective", text: record.subjective },
+            { label: "Objective", text: record.objective },
+            { label: "Assessment", text: record.assessment },
+            { label: "Plan", text: record.plan },
+            ...(!record.subjective && !record.objective && !record.assessment && !record.plan
+              ? [{ label: "Note", text: record.content }]
+              : []),
+          ],
+          sections: [{
+            label: "Attribution",
+            rows: [
+              ["Author", record.author_name],
+              ["Signed at", record.signed_at ? fmtDateTime(record.signed_at) : null],
+            ],
+          }],
+        });
+        break;
+      case "vitals":
+        setRecordDetail({
+          title: "Vitals",
+          subtitle: record.recorded_at ? fmtDateTime(record.recorded_at) : undefined,
+          icon: Thermometer,
+          rows: [
+            ["Blood pressure", record.bp_systolic != null && record.bp_diastolic != null ? `${record.bp_systolic}/${record.bp_diastolic} mmHg` : null],
+            ["Pulse", record.pulse != null ? `${record.pulse} bpm` : null],
+            ["Temperature", record.temperature != null ? `${record.temperature} °C` : null],
+            ["SpO2", record.spo2 != null ? `${record.spo2}%` : null],
+            ["Respiratory rate", record.respiratory_rate],
+            ["Weight", record.weight != null ? `${record.weight} kg` : null],
+            ["Height", record.height != null ? `${record.height} cm` : null],
+            ["Pain score", record.pain_score],
+            ["Recorded by", record.recorded_by],
+          ],
+        });
+        break;
+      case "bill":
+        setRecordDetail({
+          title: record.bill_number ? `Bill ${record.bill_number}` : "Bill",
+          subtitle: record.billed_at ? fmtDateTime(record.billed_at) : undefined,
+          icon: Receipt,
+          badges: record.status ? [{ label: record.status.replace(/_/g, " "), tone: "info" as const }] : undefined,
+          rows: [
+            ["Subtotal", record.subtotal != null ? `₦${Number(record.subtotal).toLocaleString()}` : null],
+            ["Discount", record.discount != null ? `₦${Number(record.discount).toLocaleString()}` : null],
+            ["Total", record.total != null ? `₦${Number(record.total).toLocaleString()}` : null],
+            ["Status", record.status?.replace(/_/g, " ")],
+          ],
+        });
+        break;
+    }
+  };
+
+  // Restore the story when the record opened from it closes.
+  const returnToStory = () => {
+    if (storyReturnId != null) {
+      setStoryEncounterId(storyReturnId);
+      setStoryReturnId(null);
+    }
+  };
   const [storyEncounterId, setStoryEncounterId] = useState<number | null>(null);
   const [postingOpen, setPostingOpen] = useState(false);
   const [postingForm, setPostingForm] = useState({ posting_type: "alert", message: "", severity: "info" });
@@ -235,7 +436,6 @@ export default function PatientProfile() {
     father_name: "", place_of_birth: "",
   });
   const [noteOpen, setNoteOpen] = useState(false);
-  const [noteForm, setNoteForm] = useState({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "", icd10: "" });
   const [problemOpen, setProblemOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [problemForm, setProblemForm] = useState({ description: "", icd10_code: "", status: "active", onset_date: "" });
@@ -324,7 +524,7 @@ export default function PatientProfile() {
 
   // Prescription mutation
   const rxMut = useMutation({
-    mutationFn: (overrideDuplicate = false) => api.hospital.pharmacy.createRx({
+    mutationFn: (overrideDuplicate: boolean = false) => api.hospital.pharmacy.createRx({
       patient_id: Number(patient?.id),
       encounter_id: Number(data?.active_encounter?.id),
       ...rxForm,
@@ -533,6 +733,23 @@ export default function PatientProfile() {
   });
   const radOrders: any[] = Array.isArray(radData?.orders) ? radData.orders : [];
 
+  // Cumulative imaging history — a DIFFERENT endpoint to the worklist above.
+  // GET /radiology/orders is correctly restricted to native orders so 56k
+  // Hope-imported rows never show as active queue entries; the patient chart
+  // wants exactly those historical rows, so it uses /patients/{id}/history.
+  const { data: radHistData } = useQuery({
+    queryKey: ["patient-radiology-history", patientNumId],
+    queryFn: () => api.hospital.radiology.patientHistory(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 300_000,
+  });
+  // Only studies that actually carry a result — the cover sheet shows reports,
+  // not pending requests. 41,536 of 56,536 orders are reported; the remainder
+  // were never reported in Hope either.
+  const reportedImaging: any[] = (radHistData?.history ?? [])
+    .filter((r: any) => r.report || r.impression || r.findings)
+    .sort((a: any, b: any) => new Date(b.reported_at ?? 0).getTime() - new Date(a.reported_at ?? 0).getTime());
+
   // ── Theatre cases ─────────────────────────────────────────────────────────────
   const { data: theatreData } = useQuery({
     queryKey: ["patient-theatre", patientNumId],
@@ -562,6 +779,11 @@ export default function PatientProfile() {
   // ── Computed CPRS summary values ──────────────────────────────────────────────
   const activeMeds = useMemo(() =>
     (data?.prescriptions ?? []).filter((rx: any) => ["pending", "partially_dispensed"].includes(rx.status)),
+    [data?.prescriptions]
+  );
+  // The complement of activeMeds — was filtered inline twice in the Meds tab.
+  const pastMeds = useMemo(() =>
+    (data?.prescriptions ?? []).filter((rx: any) => !["pending", "partially_dispensed"].includes(rx.status)),
     [data?.prescriptions]
   );
   const pendingOrders = useMemo(() =>
@@ -613,6 +835,56 @@ export default function PatientProfile() {
     onSuccess: () => { toast({ title: "Reminder dismissed" }); void refetchReminders(); },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
+
+  // ── Phase B2: migrated Hope history ───────────────────────────────────────
+  // These four datasets were loaded in Phase A but had no endpoint until B0,
+  // so nothing in the app could show them. Coverage across 60,929 patients:
+  // billing 93% · ward stays 5,923 · documents 3,093 · flowsheet 2,412.
+  const { data: billingHistData } = useQuery({
+    queryKey: ["patient-billing-history", patientNumId],
+    queryFn: () => api.hospital.clinical.listBillingHistory(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 300_000,
+  });
+  const billingTxns: any[] = billingHistData?.transactions ?? [];
+  const billingSummaries: any[] = billingHistData?.summaries ?? [];
+
+  const { data: wardStayData } = useQuery({
+    queryKey: ["patient-ward-stays", patientNumId],
+    queryFn: () => api.hospital.clinical.listWardStays(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 300_000,
+  });
+  const wardStays: any[] = wardStayData?.stays ?? [];
+
+  const { data: patientDocsData } = useQuery({
+    queryKey: ["patient-documents-index", patientNumId],
+    queryFn: () => api.hospital.clinical.listPatientDocuments(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 300_000,
+  });
+  const patientDocs: any[] = patientDocsData?.documents ?? [];
+
+  const { data: flowsheetData } = useQuery({
+    queryKey: ["patient-flowsheet", patientNumId],
+    queryFn: () => api.hospital.clinical.listFlowsheet(patientNumId!),
+    enabled: !!patientNumId,
+    staleTime: 300_000,
+  });
+  const flowsheet: any[] = flowsheetData?.observations ?? [];
+
+  // Hope's accounting side for this patient: vouchers, discount requests and
+  // settlements. Loaded but never surfaced until now.
+  const { data: ledger, isLoading: ledgerLoading } = useQuery({
+    queryKey: ["patient-financial-ledger", patient?.id],
+    queryFn: () => api.hospital.clinical.financialLedger(patient!.id),
+    enabled: !!patient?.id,
+  });
+  const ledgerCount = Number(ledger?.count ?? 0);
+
+  const outstandingBalance = billingSummaries.reduce(
+    (sum, b) => sum + (Number(b.amount_pending) || 0), 0,
+  );
 
   // ── Immunisations ──────────────────────────────────────────────────────────────
   const { data: immunisationsData, refetch: refetchImmunisations } = useQuery({
@@ -736,29 +1008,8 @@ export default function PatientProfile() {
     return [...appts, ...visits].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   }, [data?.appointments, data?.encounters]);
 
-  // ── Note write mutation ──────────────────────────────────────────────────────
-  const noteMut = useMutation({
-    mutationFn: () => {
-      if (!data?.active_encounter?.id) throw new Error("No active encounter — open one first");
-      return api.hospital.queue.addNote(String(data.active_encounter.id), {
-        note_type: noteForm.note_type,
-        subjective: noteForm.subjective || undefined,
-        objective: noteForm.objective || undefined,
-        assessment: noteForm.assessment || undefined,
-        plan: noteForm.plan || undefined,
-        icd10_codes: noteForm.icd10
-          ? noteForm.icd10.split(",").map(s => s.trim()).filter(Boolean)
-          : undefined,
-      });
-    },
-    onSuccess: () => {
-      toast({ title: "Progress note saved" });
-      setNoteOpen(false);
-      setNoteForm({ note_type: "soap", subjective: "", objective: "", assessment: "", plan: "", icd10: "" });
-      void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
-    },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
-  });
+  // Note writing lives in SoapNoteComposer now (see the Add Progress Note
+  // dialog below) — it owns its own draft, gating, sign mutation and toasts.
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -797,7 +1048,7 @@ export default function PatientProfile() {
   const insuranceActive = insurance?.active ?? false;
 
   return (
-    <motion.div className="flex h-full min-h-0 flex-col gap-0" {...motionTransitions.fadeInUp}>
+    <motion.div className="pce-readable flex h-full min-h-0 flex-col gap-0" {...motionTransitions.fadeInUp}>
       <AlertBanner className="mb-2" />
       <AllergyBanner allergies={patient.allergies} className="mb-2" />
       {/* Page header */}
@@ -841,7 +1092,7 @@ export default function PatientProfile() {
                   {insurance?.hmo_name ?? patient.hmo_provider ?? (insuranceActive ? "HMO Active" : "No HMO")}
                 </div>
                 {insurance?.plan_name && (
-                  <p className="text-[13px] text-muted-foreground">{insurance.plan_name}</p>
+                  <p className="text-xs text-muted-foreground">{insurance.plan_name}</p>
                 )}
               </div>
             </CardContent>
@@ -860,7 +1111,7 @@ export default function PatientProfile() {
                   <p className="text-xs text-muted-foreground">Allergies</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {patient.allergies.map((a) => (
-                      <Badge key={a} variant="outline" className="text-[12px] bg-destructive/10 text-destructive border-destructive/30">
+                      <Badge key={a} variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30">
                         {a}
                       </Badge>
                     ))}
@@ -883,7 +1134,7 @@ export default function PatientProfile() {
                     ))}
                     {problems.filter(p => p.status === "active").length > 4 && (
                       <button
-                        className="text-[12px] text-primary underline underline-offset-2"
+                        className="text-xs text-primary underline underline-offset-2"
                         onClick={() => setMainTab("problems")}
                       >
                         +{problems.filter(p => p.status === "active").length - 4} more
@@ -924,27 +1175,27 @@ export default function PatientProfile() {
               <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Thermometer className="h-3 w-3" /> Last Vitals
-                  <span className="ml-auto font-normal normal-case text-[12px]">{fmtDate(lastVitals.recorded_at)}</span>
+                  <span className="ml-auto font-normal normal-case text-xs">{fmtDate(lastVitals.recorded_at)}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                 {lastVitals.bp_systolic && (
-                  <div><p className="text-muted-foreground text-[12px]">BP</p><p className="font-medium">{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</p></div>
+                  <div><p className="text-muted-foreground text-xs">BP</p><p className="font-medium">{lastVitals.bp_systolic}/{lastVitals.bp_diastolic}</p></div>
                 )}
                 {lastVitals.pulse && (
-                  <div><p className="text-muted-foreground text-[12px]">Pulse</p><p className="font-medium">{lastVitals.pulse} bpm</p></div>
+                  <div><p className="text-muted-foreground text-xs">Pulse</p><p className="font-medium">{lastVitals.pulse} bpm</p></div>
                 )}
                 {lastVitals.temperature && (
-                  <div><p className="text-muted-foreground text-[12px]">Temp</p><p className="font-medium">{lastVitals.temperature}°C</p></div>
+                  <div><p className="text-muted-foreground text-xs">Temp</p><p className="font-medium">{lastVitals.temperature}°C</p></div>
                 )}
                 {lastVitals.spo2 && (
-                  <div><p className="text-muted-foreground text-[12px]">SpO2</p><p className="font-medium">{lastVitals.spo2}%</p></div>
+                  <div><p className="text-muted-foreground text-xs">SpO2</p><p className="font-medium">{lastVitals.spo2}%</p></div>
                 )}
                 {lastVitals.weight && (
-                  <div><p className="text-muted-foreground text-[12px]">Weight</p><p className="font-medium">{lastVitals.weight} kg</p></div>
+                  <div><p className="text-muted-foreground text-xs">Weight</p><p className="font-medium">{lastVitals.weight} kg</p></div>
                 )}
                 {lastVitals.pain_score != null && (
-                  <div><p className="text-muted-foreground text-[12px]">Pain</p><p className="font-medium">{lastVitals.pain_score}/10</p></div>
+                  <div><p className="text-muted-foreground text-xs">Pain</p><p className="font-medium">{lastVitals.pain_score}/10</p></div>
                 )}
               </CardContent>
             </Card>
@@ -959,7 +1210,7 @@ export default function PatientProfile() {
               <Activity className="h-4 w-4 shrink-0 animate-pulse" />
               <span>
                 Active encounter — <strong className="capitalize">
-                  {(data.active_encounter!.status ?? "").replace(/_/g, " ")}
+                  {encounterStatusLabel(data.active_encounter!.status)}
                 </strong>
                 {data.active_encounter!.department && ` · ${data.active_encounter.department}`}
               </span>
@@ -972,7 +1223,7 @@ export default function PatientProfile() {
               <Clock className="h-4 w-4 shrink-0" />
               <span>
                 No active encounter — last visit <strong className="capitalize text-foreground">
-                  {(data.last_encounter.status ?? "").replace(/_/g, " ")}
+                  {encounterStatusLabel(data.last_encounter.status)}
                 </strong>
                 {data.last_encounter.department && ` · ${data.last_encounter.department}`}
                 {data.last_encounter.created_at && ` · ${fmtDate(data.last_encounter.created_at)}`}
@@ -1039,7 +1290,8 @@ export default function PatientProfile() {
                 title="Allergies / Adverse Reactions" icon={AlertTriangle}
                 count={structuredAllergies.length || patient.allergies?.length || 0}
                 isEmpty={structuredAllergies.length === 0 && !patient.allergies?.length}
-                emptyLabel="No known allergies"
+                emptyLabel="None recorded yet — ask the patient"
+                helpHintId="allergies-empty"
                 onAdd={() => setAllergyOpen(true)} addLabel="Add allergy"
               >
                 <div className="space-y-1.5">
@@ -1047,7 +1299,7 @@ export default function PatientProfile() {
                     ? structuredAllergies.slice(0, 6).map((a: any) => (
                       <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
                         <span className="min-w-0 truncate font-medium text-red-600 dark:text-red-400">{a.allergen}</span>
-                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{a.severity}</Badge>
+                        <Badge variant="outline" className="text-xs capitalize shrink-0">{a.severity}</Badge>
                       </div>
                     ))
                     : (patient.allergies ?? []).slice(0, 6).map((a: string) => (
@@ -1091,7 +1343,7 @@ export default function PatientProfile() {
                   {postings.slice(0, 6).map((p: any) => (
                     <div key={p.id} className="flex items-start justify-between gap-2 text-xs">
                       <div className="min-w-0">
-                        <Badge variant="outline" className={cn("text-[12px] capitalize mr-1.5",
+                        <Badge variant="outline" className={cn("text-xs capitalize mr-1.5",
                           p.severity === "critical" ? "border-red-500/30 text-red-500 bg-red-500/10" :
                           p.severity === "warning" ? "border-amber-500/30 text-amber-500 bg-amber-500/10" :
                           "border-slate-500/30 text-slate-700 dark:text-slate-400"
@@ -1147,7 +1399,7 @@ export default function PatientProfile() {
                         <span className={cn("min-w-0 truncate", noDetail && "italic text-muted-foreground")}>
                           {noDetail ? "No drug detail captured" : rx.drug_name}
                         </span>
-                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{rx.status?.replace(/_/g, " ")}</Badge>
+                        <Badge variant="outline" className="text-xs capitalize shrink-0">{rx.status?.replace(/_/g, " ")}</Badge>
                       </button>
                     );
                   })}
@@ -1166,25 +1418,11 @@ export default function PatientProfile() {
                   {resultedLabs.slice(0, 6).map((o: any) => (
                     <button
                       key={o.id}
-                      onClick={() => setRecordDetail({
-                        title: "Lab Result Details",
-                        subtitle: o.test_name,
-                        rows: [
-                          ["Test", o.test_name],
-                          ["Result", o.result_summary],
-                          ["Reference range", o.reference_range],
-                          ["Interpretation", o.interpretation],
-                          ["Critical", o.is_critical ? "Yes" : null],
-                          ["Urgency", o.urgency],
-                          ["Sample type", o.sample_type],
-                          ["Ordered by", formatAttribution(o.ordered_by)],
-                          ["Ordered at", o.ordered_at ? fmtDateTime(o.ordered_at) : null],
-                          ["Resulted at", o.resulted_at ? fmtDateTime(o.resulted_at) : null],
-                          ["Notes", o.notes],
-                          ["Source", o.external_source ?? "Native (ordered in app)"],
-                          ["External ID", o.external_id],
-                        ],
-                      })}
+                      // The lab panel already renders this record properly —
+                      // specimen chain, reference ranges, verify state, amend
+                      // history. Re-flattening it here gave a worse view of
+                      // the same data.
+                      onClick={() => setLabPanelOrder(o)}
                       className="flex w-full items-center justify-between gap-2 text-xs text-left rounded px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors"
                     >
                       <span className="min-w-0 truncate">{o.test_name}</span>
@@ -1197,6 +1435,7 @@ export default function PatientProfile() {
               {/* Vitals */}
               <CoverSheetWidget
                 title="Vitals" icon={Thermometer}
+                helpHintId="vitals-recent-shown"
                 count={vitals.length}
                 isEmpty={!lastVitals}
                 emptyLabel="No vitals recorded yet"
@@ -1266,7 +1505,7 @@ export default function PatientProfile() {
                         <span className="text-muted-foreground mr-1">{fmtDate(v.date)}</span>
                         <span className="truncate">{v.label}</span>
                       </div>
-                      <Badge variant="outline" className="text-[12px] capitalize shrink-0">{v.status?.replace(/_/g, " ")}</Badge>
+                      <Badge variant="outline" className="text-xs capitalize shrink-0">{v.status?.replace(/_/g, " ")}</Badge>
                     </button>
                   ))}
                 </div>
@@ -1345,6 +1584,266 @@ export default function PatientProfile() {
                   ))}
                 </div>
               </CoverSheetWidget>
+
+              {/* ── Phase B2: migrated history that had no UI until now ────── */}
+
+              {/* Billing — previously a bare count in the summary box and a
+                  navigate-away link, despite covering 93% of all patients. */}
+              <CoverSheetWidget
+                title="Billing History" icon={Receipt}
+                helpHintId="billing-outstanding"
+                count={billingTxns.length}
+                isEmpty={billingTxns.length === 0}
+                emptyLabel="No billing history"
+              
+                onViewAll={patient?.id ? () => navigate(`/hospital/billing?patient_id=${patient.id}`) : undefined}>
+                <div className="space-y-1.5">
+                  {outstandingBalance > 0 && (
+                    <div className="flex items-center justify-between rounded bg-amber-500/10 px-1.5 py-1 text-xs">
+                      <span className="text-amber-700 dark:text-amber-400">Outstanding</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-400">
+                        ₦{outstandingBalance.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {billingTxns.slice(0, 5).map((b: any) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setRecordDetail({
+                        title: "Billing Transaction",
+                        subtitle: b.bill_number,
+                        rows: [
+                          ["Bill number", b.bill_number],
+                          ["Date", b.transaction_date ? fmtDate(b.transaction_date) : null],
+                          ["Category", b.payment_category],
+                          ["Mode", b.mode_of_payment],
+                          ["Amount", b.amount != null ? `₦${Number(b.amount).toLocaleString()}` : null],
+                          ["Total", b.total_amount != null ? `₦${Number(b.total_amount).toLocaleString()}` : null],
+                          ["Paid", b.amount_paid != null ? `₦${Number(b.amount_paid).toLocaleString()}` : null],
+                          ["Pending", b.amount_pending != null ? `₦${Number(b.amount_pending).toLocaleString()}` : null],
+                          ["Discount", b.discount_amount != null ? `₦${Number(b.discount_amount).toLocaleString()}` : null],
+                          ["Remark", b.remark],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate">{b.bill_number || "—"}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {b.total_amount != null ? `₦${Number(b.total_amount).toLocaleString()}` : fmtDate(b.transaction_date)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Vouchers, discount requests and settlements carried over from
+                  Hope — 78,672 voucher entries that had an endpoint but no
+                  screen. Sits beside Billing History because it answers the
+                  same question from the accounts side. */}
+              <CoverSheetWidget
+                title="Financial Ledger" icon={Landmark}
+                count={ledgerCount}
+                isLoading={ledgerLoading}
+                isEmpty={ledgerCount === 0}
+                emptyLabel="No ledger entries"
+              >
+                <div className="space-y-1.5">
+                  {(ledger?.voucher_entries ?? []).slice(0, 5).map((v: any) => (
+                    <button
+                      key={`v-${v.id}`}
+                      onClick={() => setRecordDetail({
+                        title: v.narration || "Voucher entry",
+                        subtitle: v.entry_date ? fmtDate(v.entry_date) : undefined,
+                        icon: Landmark,
+                        rows: [
+                          ["Account", v.account_ref],
+                          ["Debit", v.debit_amount ? `₦${Number(v.debit_amount).toLocaleString()}` : null],
+                          ["Credit", v.credit_amount ? `₦${Number(v.credit_amount).toLocaleString()}` : null],
+                          ["Type", v.entry_type],
+                          ["Date", v.entry_date ? fmtDateTime(v.entry_date) : null],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate">{v.narration || v.entry_type || "Entry"}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {v.debit_amount ? `₦${Number(v.debit_amount).toLocaleString()}` :
+                         v.credit_amount ? `₦${Number(v.credit_amount).toLocaleString()}` : "—"}
+                      </span>
+                    </button>
+                  ))}
+                  {(ledger?.discount_requests ?? []).length > 0 && (
+                    <p className="pt-1 text-xs text-muted-foreground">
+                      {ledger.discount_requests.length} discount request
+                      {ledger.discount_requests.length === 1 ? "" : "s"} on record
+                    </p>
+                  )}
+                  {(ledger?.settlements ?? []).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {ledger.settlements.length} settlement
+                      {ledger.settlements.length === 1 ? "" : "s"}
+                    </p>
+                  )}
+                </div>
+              </CoverSheetWidget>
+
+
+              {/* Ward stays — no patient-centric admission view existed at all;
+                  royan_beds models live occupancy, not history. */}
+              <CoverSheetWidget
+                title="Ward Stays" icon={BedDouble}
+                count={wardStays.length}
+                isEmpty={wardStays.length === 0}
+                emptyLabel="No inpatient stays"
+              >
+                <div className="space-y-1.5">
+                  {wardStays.slice(0, 6).map((w: any) => (
+                    <button
+                      key={w.id}
+                      onClick={() => setRecordDetail({
+                        title: w.ward_name || "Ward stay",
+                        subtitle: `${fmtDate(w.admitted_at)}${w.discharged_at ? ` → ${fmtDate(w.discharged_at)}` : " → current"}`,
+                        icon: BedDouble,
+                        badges: [
+                          w.discharged_at
+                            ? { label: "Discharged", tone: "default" as const }
+                            : { label: "Currently admitted", tone: "success" as const },
+                          ...(w.readmitted ? [{ label: "Readmission", tone: "warning" as const }] : []),
+                        ],
+                        rows: [
+                          ["Ward", w.ward_name],
+                          ["Room", w.room_name],
+                          ["Bed", w.bed_label],
+                          ["Admitted", w.admitted_at ? fmtDateTime(w.admitted_at) : null],
+                          ["Discharged", w.discharged_at ? fmtDateTime(w.discharged_at) : "Still admitted"],
+                          // Derived, not stored — royan_ward_stay_history has no
+                          // length_of_stay column and the endpoint computes none.
+                          ["Length of stay", lengthOfStay(w.admitted_at, w.discharged_at)],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate">
+                        {w.ward_name || "Ward"}
+                        {w.room_name ? ` · ${w.room_name}` : ""}
+                        {w.bed_label ? ` · Bed ${w.bed_label}` : ""}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {fmtDate(w.admitted_at)}
+                        {w.discharged_at ? ` → ${fmtDate(w.discharged_at)}` : " (current)"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Documents — upload already worked, but nothing ever listed
+                  them back. Hope's binary files were not migrated, so these are
+                  index entries; is_migrated=false is surfaced honestly. */}
+              <CoverSheetWidget
+                title="Documents" icon={FileText}
+                helpHintId="documents-index-only"
+                count={patientDocs.length}
+                isEmpty={patientDocs.length === 0}
+                emptyLabel="No documents on file"
+              >
+                <div className="space-y-1.5">
+                  {patientDocs.slice(0, 6).map((d: any) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setRecordDetail({
+                        title: "Document",
+                        subtitle: d.description || d.filename,
+                        rows: [
+                          ["Description", d.description],
+                          ["Filename", d.filename],
+                          ["Type", d.mime_type],
+                          ["Size", d.size_bytes ? `${Math.round(d.size_bytes / 1024)} KB` : null],
+                          ["Date", d.document_date ? fmtDate(d.document_date) : null],
+                          ["Comment", d.comment],
+                          ["File available", d.is_migrated ? "Yes" : "No — archived in the legacy system"],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate">{d.description || d.filename}</span>
+                      <span className="shrink-0 text-muted-foreground">{fmtDate(d.document_date)}</span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* Radiology reports — 41,536 reports across 29,621 patients were
+                  reachable only by opening the Orders tab and clicking into a
+                  detail dialog. Reported studies now surface on the cover sheet
+                  with their impression, which is the line a doctor actually
+                  wants at a glance. */}
+              <CoverSheetWidget
+                title="Radiology Reports" icon={ScanLine}
+                helpHintId="history-starts-before-golive"
+                count={reportedImaging.length}
+                isEmpty={reportedImaging.length === 0}
+                emptyLabel="No reported studies"
+                onViewAll={reportedImaging.length > 6 ? () => setMainTab("orders") : undefined}
+              >
+                <div className="space-y-1.5">
+                  {reportedImaging.slice(0, 6).map((r: any) => (
+                    <button
+                      key={r.id}
+                      // Opens on the report tab — a radiology row is clicked to
+                      // read the findings, not to inspect order metadata.
+                      onClick={() => { setRadPanelOrder(r); setRadPanelTab("report"); }}
+                      className="w-full rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium">{r.test_name || r.modality}</span>
+                        <span className="shrink-0 text-muted-foreground">{fmtDate(r.reported_at)}</span>
+                      </div>
+                      {r.impression && (
+                        <p className="truncate text-xs text-muted-foreground">{r.impression}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
+
+              {/* ICU nursing flowsheet — decoded from Hope's per-hour chart. */}
+              <CoverSheetWidget
+                title="Nursing Observations" icon={Activity}
+                count={flowsheet.length}
+                isEmpty={flowsheet.length === 0}
+                emptyLabel="No flowsheet observations"
+              >
+                <div className="space-y-1.5">
+                  {flowsheet.slice(0, 6).map((f: any) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setRecordDetail({
+                        title: f.observation_name || "Observation",
+                        subtitle: [f.category_name, f.sub_category_name].filter(Boolean).join(" · ") || undefined,
+                        icon: Activity,
+                        rows: [
+                          ["Value", [f.value_text, f.unit].filter(Boolean).join(" ")],
+                          ["Category", f.category_name],
+                          ["Section", f.sub_category_name],
+                          ["Recorded", f.observed_at ? fmtDateTime(f.observed_at) : (f.observed_date ?? null)],
+                          ["Hour slot", f.hour_slot],
+                          ["Recorded by", f.recorded_by],
+                        ],
+                      })}
+                      className="flex w-full items-center justify-between gap-2 rounded px-1 -mx-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60"
+                    >
+                      <span className="min-w-0 truncate" title={f.sub_category_name || undefined}>
+                        {f.observation_name}
+                      </span>
+                      <span className="shrink-0 font-medium">
+                        {f.value_text}
+                        {f.unit ? ` ${f.unit}` : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </CoverSheetWidget>
             </div>
           )}
 
@@ -1357,54 +1856,64 @@ export default function PatientProfile() {
                   <Plus className="h-3 w-3" /> Add Problem
                 </Button>
               </div>
-              {problems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                  <ListChecks className="h-7 w-7 opacity-30" />No problems recorded
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {problems.map((p: any) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setRecordDetail({
-                        title: p.description,
-                        subtitle: p.icd10_code ?? undefined,
-                        rows: [
-                          ["Status", p.status],
-                          ["ICD-10", p.icd10_code],
-                          ["Onset date", p.onset_date ? fmtDate(p.onset_date) : null],
-                          ["Resolved date", p.resolved_date ? fmtDate(p.resolved_date) : null],
-                          ["Notes", p.notes],
-                        ],
-                      })}
-                      className="flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          {p.icd10_code && <span className="font-mono text-xs text-muted-foreground">{p.icd10_code}</span>}
-                          <Badge variant="outline" className={cn("text-[12px] capitalize",
-                            p.status === "active" ? "border-blue-500/30 text-blue-700 dark:text-blue-400 bg-blue-500/10" :
-                            p.status === "resolved" ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" :
-                            "border-slate-500/30 text-slate-700 dark:text-slate-400"
-                          )}>{p.status}</Badge>
-                        </div>
-                        <p className="text-sm font-medium">{p.description}</p>
-                        {p.onset_date && <p className="text-xs text-muted-foreground mt-0.5">Onset: {fmtDate(p.onset_date)}</p>}
-                      </div>
-                      {p.status === "active" && (
-                        <Button
-                          size="sm" variant="ghost"
-                          className="h-7 px-2 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10 shrink-0"
-                          onClick={(e) => { e.stopPropagation(); resolveProblemMut.mutate(p.id); }}
-                          disabled={resolveProblemMut.isPending}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <RecordTable
+                rows={problems}
+                rowKey={(p: any) => p.id}
+                emptyIcon={<ListChecks className="h-6 w-6" />}
+                emptyLabel="No problems recorded"
+                accent={(p: any) => (p.status === "active" ? "border-l-blue-500" : undefined)}
+                onRowClick={(p: any) => setRecordDetail({
+                  title: p.description,
+                  subtitle: p.icd10_code ?? undefined,
+                  icon: ListChecks,
+                  badges: [{
+                    label: p.status,
+                    tone: p.status === "active" ? ("info" as const) : ("success" as const),
+                  }],
+                  rows: [
+                    ["Status", p.status],
+                    ["ICD-10", p.icd10_code],
+                    ["Onset date", p.onset_date ? fmtDate(p.onset_date) : null],
+                    ["Resolved date", p.resolved_date ? fmtDate(p.resolved_date) : null],
+                  ],
+                  blocks: [{ label: "Notes", text: p.notes }],
+                })}
+                columns={[
+                  {
+                    header: "Problem",
+                    cell: (p: any) => <CellStack primary={p.description} secondary={p.icd10_code} mono />,
+                  },
+                  {
+                    header: "Status",
+                    width: "w-[110px]",
+                    cell: (p: any) => (
+                      <Badge variant="outline" className={cn("text-xs capitalize",
+                        p.status === "active" ? "border-blue-500/30 text-blue-700 dark:text-blue-400 bg-blue-500/10" :
+                        p.status === "resolved" ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" :
+                        "border-slate-500/30 text-slate-700 dark:text-slate-400"
+                      )}>{p.status}</Badge>
+                    ),
+                  },
+                  { header: "Onset", width: "w-[110px]", className: "text-muted-foreground", cell: (p: any) => p.onset_date ? fmtDate(p.onset_date) : "—" },
+                  { header: "Resolved", width: "w-[110px]", className: "text-muted-foreground", cell: (p: any) => p.resolved_date ? fmtDate(p.resolved_date) : "—" },
+                  {
+                    header: "",
+                    width: "w-[50px]",
+                    // stopPropagation so resolving does not also open the row
+                    cell: (p: any) => p.status === "active" ? (
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 px-2 text-xs text-green-600 hover:bg-green-500/10 hover:text-green-500"
+                        onClick={(e) => { e.stopPropagation(); resolveProblemMut.mutate(p.id); }}
+                        disabled={resolveProblemMut.isPending}
+                        title="Mark resolved"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null,
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -1417,40 +1926,49 @@ export default function PatientProfile() {
                   <Plus className="h-3 w-3" /> Record Consent
                 </Button>
               </div>
-              {consents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                  <ShieldAlert className="h-7 w-7 opacity-30" />No consent records
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {consents.map((c: any) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setRecordDetail({
-                        title: (c.consent_type ?? "Consent").replace(/_/g, " "),
-                        subtitle: fmtDateTime(c.signed_at),
-                        rows: [
-                          ["Decision", c.consented ? "Consented" : "Refused"],
-                          ["Captured by", c.captured_by],
-                          ["Witness", c.witness_name],
-                          ["Notes", c.notes],
-                        ],
-                      })}
-                      className="block w-full rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium capitalize">{(c.consent_type ?? "").replace(/_/g, " ")}</span>
-                        {c.consented
-                          ? <Badge variant="outline" className="text-[12px] border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10 gap-1"><CheckCircle2 className="h-2.5 w-2.5"/>Consented</Badge>
-                          : <Badge variant="outline" className="text-[12px] border-red-500/30 text-red-700 dark:text-red-400 bg-red-500/10 gap-1"><XCircle className="h-2.5 w-2.5"/>Refused</Badge>
-                        }
-                      </div>
-                      <p className="text-[13px] text-muted-foreground">{fmtDateTime(c.signed_at)} · {c.captured_by ?? "—"}</p>
-                      {c.notes && <p className="text-xs text-muted-foreground mt-1 italic truncate">"{c.notes}"</p>}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <RecordTable
+                rows={consents}
+                rowKey={(c: any) => c.id}
+                emptyIcon={<ShieldAlert className="h-6 w-6" />}
+                emptyLabel="No consent records"
+                // A refusal is the row a reader must not miss.
+                accent={(c: any) => (c.consented ? undefined : "border-l-red-500")}
+                onRowClick={(c: any) => setRecordDetail({
+                  title: (c.consent_type ?? "Consent").replace(/_/g, " "),
+                  subtitle: c.signed_at ? fmtDateTime(c.signed_at) : undefined,
+                  icon: ShieldAlert,
+                  badges: [c.consented
+                    ? { label: "Consented", tone: "success" as const }
+                    : { label: "Refused", tone: "danger" as const }],
+                  rows: [
+                    ["Decision", c.consented ? "Consented" : "Refused"],
+                    ["Signed", c.signed_at ? fmtDateTime(c.signed_at) : null],
+                    ["Captured by", c.captured_by],
+                    ["Witness", c.witness_name],
+                  ],
+                  blocks: [{ label: "Notes", text: c.notes }],
+                })}
+                columns={[
+                  {
+                    header: "Type",
+                    cell: (c: any) => (
+                      <CellStack
+                        primary={<span className="capitalize">{(c.consent_type ?? "Consent").replace(/_/g, " ")}</span>}
+                        secondary={c.witness_name ? `Witness: ${c.witness_name}` : undefined}
+                      />
+                    ),
+                  },
+                  {
+                    header: "Decision",
+                    width: "w-[130px]",
+                    cell: (c: any) => c.consented
+                      ? <Badge variant="outline" className="gap-1 text-xs border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"><CheckCircle2 className="h-2.5 w-2.5" />Consented</Badge>
+                      : <Badge variant="outline" className="gap-1 text-xs border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400"><XCircle className="h-2.5 w-2.5" />Refused</Badge>,
+                  },
+                  { header: "Captured by", width: "w-[150px]", className: "text-muted-foreground", cell: (c: any) => c.captured_by ?? "—" },
+                  { header: "Signed", width: "w-[150px]", className: "text-muted-foreground", cell: (c: any) => fmtDateTime(c.signed_at) },
+                ]}
+              />
             </div>
           )}
 
@@ -1469,203 +1987,180 @@ export default function PatientProfile() {
                   </Button>
                 </div>
               ) : (
-                specialistNotes.map((n: any, idx: number) => {
-                  const noteDataRows: [string, any][] = n.note_data && typeof n.note_data === "object"
-                    ? Object.entries(n.note_data as Record<string, any>)
-                        .filter(([, val]) => val != null && val !== "" && val !== false)
-                        .map(([key, val]): [string, any] => [
-                          key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-                          typeof val === "boolean" ? (val ? "Yes" : "No") : String(val),
-                        ])
-                    : [];
-                  return (
-                    <button
-                      key={n.id ?? idx}
-                      onClick={() => setRecordDetail({
-                        title: (n.specialty ?? n.template_specialty ?? "Specialist").replace(/_/g, " ") + " note",
-                        subtitle: `${fmtDateTime(n.noted_at)} · ${n.noted_by ?? "—"}`,
-                        rows: [
-                          ["Encounter", n.encounter_id],
-                          ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
-                          ["Amended", n.amended_at ? fmtDateTime(n.amended_at) : null],
-                          ...noteDataRows,
-                        ],
-                      })}
-                      className="block w-full rounded-xl border border-border/60 bg-card px-4 py-3 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className="text-[12px] capitalize bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-400">
-                            {(n.specialty ?? n.template_specialty ?? "specialist").replace(/_/g, " ")}
-                          </Badge>
-                          {n.icd10_codes && n.icd10_codes.length > 0 && n.icd10_codes.map((code: string) => (
-                            <span key={code} className="font-mono text-[12px] text-muted-foreground">{code}</span>
-                          ))}
-                          {!!n.amended_at && (
-                            <Badge variant="outline" className="text-[12px] border-yellow-500/30 text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 gap-1">
-                              <PenLine className="h-2.5 w-2.5" />Amended
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-[13px] text-muted-foreground">{fmtDateTime(n.noted_at)}</span>
-                      </div>
-                      {noteDataRows.length > 0 && (
-                        <p className="text-sm text-foreground/80 truncate">{String(noteDataRows[0][1])}</p>
-                      )}
-                      {n.noted_by && (
-                        <p className="mt-1 text-[12px] text-muted-foreground">Written by: {n.noted_by}</p>
-                      )}
-                    </button>
-                  );
-                })
+                <RecordTable
+                  rows={specialistNotes}
+                  rowKey={(n: any, i: number) => n.id ?? i}
+                  emptyLabel="No specialist notes"
+                  accent={(n: any) => (n.amended_at ? "border-l-amber-500" : undefined)}
+                  onRowClick={(n: any) => setRecordDetail({
+                    title: `${(n.specialty ?? n.template_specialty ?? "Specialist").replace(/_/g, " ")} note`,
+                    subtitle: `${fmtDateTime(n.noted_at)} · ${n.noted_by ?? "—"}`,
+                    icon: Stethoscope,
+                    badges: [
+                      ...(n.amended_at ? [{ label: "Amended", tone: "warning" as const }] : []),
+                      ...(n.icd10_codes ?? []).map((c: string) => ({ label: c, tone: "info" as const })),
+                    ],
+                    rows: [
+                      ["Encounter", n.encounter_id],
+                      ["Written by", n.noted_by],
+                      ["Amended", n.amended_at ? fmtDateTime(n.amended_at) : null],
+                    ],
+                    sections: specialistNoteRows(n).length > 0
+                      ? [{ label: "Full note", rows: specialistNoteRows(n) }]
+                      : undefined,
+                  })}
+                  columns={[
+                    {
+                      header: "Specialty",
+                      width: "w-[150px]",
+                      cell: (n: any) => (
+                        <Badge variant="outline" className="text-xs capitalize bg-indigo-500/10 border-indigo-500/30 text-indigo-700 dark:text-indigo-400">
+                          {(n.specialty ?? n.template_specialty ?? "specialist").replace(/_/g, " ")}
+                        </Badge>
+                      ),
+                    },
+                    {
+                      header: "Summary",
+                      cell: (n: any) => {
+                        const rows = specialistNoteRows(n);
+                        return (
+                          <CellStack
+                            primary={<span className="line-clamp-2 font-normal">{rows.length > 0 ? String(rows[0][1]) : "—"}</span>}
+                            secondary={n.icd10_codes?.length ? n.icd10_codes.join(" · ") : undefined}
+                            mono
+                          />
+                        );
+                      },
+                    },
+                    { header: "By", width: "w-[140px]", className: "text-muted-foreground", cell: (n: any) => n.noted_by ?? "—" },
+                    {
+                      header: "Amended",
+                      width: "w-[110px]",
+                      cell: (n: any) => n.amended_at
+                        ? <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"><PenLine className="h-2.5 w-2.5" />Yes</Badge>
+                        : <span className="text-muted-foreground">—</span>,
+                    },
+                    { header: "Date", width: "w-[150px]", className: "text-muted-foreground", cell: (n: any) => fmtDateTime(n.noted_at) },
+                  ]}
+                />
               )}
             </div>
           )}
 
           {/* ── Tab: Meds ── */}
           {mainTab === "meds" && (
-            <div className="space-y-4">
-              {/* Active */}
+            <div className="space-y-5">
+              {/* Active and past are separate tables rather than one list with a
+                  status column: "what is this patient on right now" is a
+                  different question from "what have they had". */}
               <div>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Medications</h3>
-                {activeMeds.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No active medications</p>
-                ) : activeMeds.map((rx: any) => {
-                  const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
-                  return (
-                    <button
-                      key={rx.id}
-                      onClick={() => setRecordDetail(rxRecordDetail(rx, noDetail))}
-                      className="mb-2 flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                    >
-                      <div>
-                        {noDetail ? (
-                          <>
-                            <p className="text-sm font-semibold italic text-muted-foreground">No drug detail captured</p>
-                            <p className="text-xs text-muted-foreground">Legacy billing record only — source system didn't record a medication name or dosage</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm font-semibold">{rx.drug_name}</p>
-                            <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency} · {rx.duration} · Route: {rx.route}</p>
-                          </>
-                        )}
-                      </div>
-                      <Badge variant="outline" className={cn("text-[12px] capitalize shrink-0", noDetail ? "bg-muted text-muted-foreground border-border" : "bg-green-50 text-green-700 border-green-300")}>{rx.status?.replace(/_/g," ")}</Badge>
-                    </button>
-                  );
-                })}
+                <RecordTable
+                  rows={activeMeds}
+                  rowKey={(rx: any) => rx.id}
+                  emptyIcon={<Pill className="h-6 w-6" />}
+                  emptyLabel="No active medications"
+                  onRowClick={(rx: any) => setRecordDetail(rxRecordDetail(rx, isPlaceholderRecord(rx.drug_name, rx.external_source)))}
+                  columns={MED_COLUMNS}
+                />
               </div>
-              {/* Past */}
-              {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).length > 0 && (
+
+              {pastMeds.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Past Medications</h3>
-                  {(data?.prescriptions ?? []).filter((rx: any) => !["pending","partially_dispensed"].includes(rx.status)).map((rx: any) => {
-                    const noDetail = isPlaceholderRecord(rx.drug_name, rx.external_source);
-                    return (
-                      <button
-                        key={rx.id}
-                        onClick={() => setRecordDetail(rxRecordDetail(rx, noDetail))}
-                        className="mb-2 flex w-full items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-left hover:bg-muted/60 hover:border-border transition-colors"
-                      >
-                        <div>
-                          {noDetail ? (
-                            <>
-                              <p className="text-sm italic text-muted-foreground">No drug detail captured</p>
-                              <p className="text-xs text-muted-foreground">Legacy billing record only</p>
-                            </>
-                          ) : (
-                            <>
-                              <p className="text-sm">{rx.drug_name}</p>
-                              <p className="text-xs text-muted-foreground">{rx.dosage} · {rx.frequency}</p>
-                            </>
-                          )}
-                        </div>
-                        <Badge variant="outline" className="text-[12px] capitalize shrink-0">{rx.status?.replace(/_/g," ")}</Badge>
-                      </button>
-                    );
-                  })}
+                  <RecordTable
+                    rows={pastMeds}
+                    rowKey={(rx: any) => rx.id}
+                    emptyLabel="No past medications"
+                    onRowClick={(rx: any) => setRecordDetail(rxRecordDetail(rx, isPlaceholderRecord(rx.drug_name, rx.external_source)))}
+                    columns={MED_COLUMNS}
+                  />
                 </div>
               )}
             </div>
           )}
 
-          {/* ── Tab: Orders ── */}
+          {/* ── Tab: Orders ──
+              A row per order, matching the Laboratory worklist. The card list
+              this replaced cost roughly three times the vertical space and made
+              two orders hard to compare side by side. */}
           {mainTab === "orders" && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lab Orders</h3>
-                {(data?.lab_orders ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No lab orders</p>
-                ) : (data?.lab_orders ?? []).map((o: any) => {
-                  const noDetail = isPlaceholderRecord(o.test_name, o.external_source);
-                  return (
-                    <button
-                      key={o.id}
-                      onClick={() => setRecordDetail({
-                        title: noDetail ? "Lab order" : o.test_name,
+                <RecordTable
+                  rows={data?.lab_orders ?? []}
+                  rowKey={(o: any) => o.id}
+                  emptyIcon={<FlaskConical className="h-6 w-6" />}
+                  emptyLabel="No lab orders"
+                  accent={(o: any) => URGENCY_ACCENT[o.urgency ?? "routine"]}
+                  onRowClick={(o: any) => {
+                    const noDetail = isPlaceholderRecord(o.test_name, o.external_source);
+                    // A placeholder row carries no test name, so the full lab
+                    // panel would open on nothing. Say why instead.
+                    if (noDetail) {
+                      setRecordDetail({
+                        title: "Lab order",
                         subtitle: `Ordered ${fmtDateTime(o.ordered_at)}`,
                         rows: [
-                          ["Urgency", o.urgency],
                           ["Status", o.status?.replace(/_/g, " ")],
-                          ["Sample type", o.sample_type],
                           ["Ordered by", formatAttribution(o.ordered_by)],
-                          ["Notes", o.notes],
-                          ["Result", o.result_summary],
-                          ["Reference range", o.reference_range],
-                          ["Interpretation", o.interpretation],
-                          ["Critical", o.is_critical ? "Yes" : null],
-                          ["Resulted by", o.resulted_by ? formatAttribution(o.resulted_by) : null],
-                          ["Verified by", o.verified_by ? formatAttribution(o.verified_by) : null],
-                          ["Result notes", o.result_notes],
                         ],
-                      })}
-                      className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                    >
-                      <div>
-                        <p className={cn("text-sm font-medium", noDetail && "italic text-muted-foreground")}>
-                          {noDetail ? "No test detail captured" : o.test_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{noDetail ? "Legacy record — source system only recorded an internal catalog ID" : fmtDate(o.ordered_at)}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Badge variant="outline" className="text-[12px] uppercase">{o.urgency}</Badge>
-                        <Badge variant="outline" className="text-[12px] capitalize">{o.status}</Badge>
-                      </div>
-                    </button>
-                  );
-                })}
+                        blocks: [{
+                          label: "Why there is no detail",
+                          text: "This came across from the legacy system as a billing line only — no test name, sample or result was recorded against it there.",
+                        }],
+                      });
+                    } else {
+                      setLabPanelOrder(o);
+                    }
+                  }}
+                  columns={[
+                    {
+                      header: "Test",
+                      cell: (o: any) => {
+                        const noDetail = isPlaceholderRecord(o.test_name, o.external_source);
+                        return (
+                          <CellStack
+                            muted={noDetail}
+                            primary={noDetail ? "No test detail captured" : o.test_name}
+                            secondary={noDetail ? "Legacy record — only an internal catalog ID was kept" : undefined}
+                          />
+                        );
+                      },
+                    },
+                    { header: "Result", cell: (o: any) => o.result_summary ?? <span className="text-muted-foreground">—</span> },
+                    { header: "Urgency", width: "w-[90px]", cell: (o: any) => <Badge variant="outline" className="text-xs uppercase">{o.urgency ?? "—"}</Badge> },
+                    { header: "Status", width: "w-[120px]", cell: (o: any) => <Badge variant="outline" className="text-xs capitalize">{o.status?.replace(/_/g, " ") ?? "—"}</Badge> },
+                    { header: "Ordered", width: "w-[110px]", className: "text-muted-foreground", cell: (o: any) => fmtDate(o.ordered_at) },
+                  ]}
+                />
               </div>
+
               <div>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Imaging Orders</h3>
-                {radOrders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No imaging orders</p>
-                ) : radOrders.map((o: any) => (
-                  <button
-                    key={o.id}
-                    onClick={() => setRecordDetail({
-                      title: `${o.modality?.toUpperCase() ?? "Imaging"}${o.body_part ? ` — ${o.body_part}` : ""}`,
-                      subtitle: `Ordered ${fmtDateTime(o.ordered_at)}`,
-                      rows: [
-                        ["Urgency", o.urgency],
-                        ["Status", o.status?.replace(/_/g, " ")],
-                        ["Clinical indication", o.clinical_indication],
-                        ["Ordered by", formatAttribution(o.ordered_by)],
-                        ["Reported at", o.reported_at ? fmtDateTime(o.reported_at) : null],
-                        ["Impression", o.impression],
-                        ["Findings", o.findings],
-                        ["Radiologist", o.radiologist_id],
-                      ],
-                    })}
-                    className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{o.modality?.toUpperCase()} — {o.body_part}</p>
-                      <p className="text-xs text-muted-foreground">{o.clinical_indication} · {fmtDate(o.ordered_at)}</p>
-                    </div>
-                    <Badge variant="outline" className="text-[12px] capitalize shrink-0">{o.status}</Badge>
-                  </button>
-                ))}
+                <RecordTable
+                  rows={radOrders}
+                  rowKey={(o: any) => o.id}
+                  emptyIcon={<ScanLine className="h-6 w-6" />}
+                  emptyLabel="No imaging orders"
+                  accent={(o: any) => URGENCY_ACCENT[o.urgency ?? "routine"]}
+                  onRowClick={(o: any) => { setRadPanelOrder(o); setRadPanelTab(o.reported_at ? "report" : "detail"); }}
+                  columns={[
+                    {
+                      header: "Study",
+                      cell: (o: any) => (
+                        <CellStack
+                          primary={`${o.modality?.toUpperCase() ?? "Imaging"}${o.body_part ? ` — ${o.body_part}` : ""}`}
+                          secondary={o.clinical_indication}
+                        />
+                      ),
+                    },
+                    { header: "Impression", cell: (o: any) => o.impression ?? <span className="text-muted-foreground">—</span> },
+                    { header: "Status", width: "w-[120px]", cell: (o: any) => <Badge variant="outline" className="text-xs capitalize">{o.status?.replace(/_/g, " ") ?? "—"}</Badge> },
+                    { header: "Ordered", width: "w-[110px]", className: "text-muted-foreground", cell: (o: any) => fmtDate(o.ordered_at) },
+                  ]}
+                />
               </div>
             </div>
           )}
@@ -1681,66 +2176,81 @@ export default function PatientProfile() {
                   </Button>
                 )}
               </div>
-              {encNotes.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                  <NotebookPen className="h-7 w-7 opacity-30" />No progress notes yet
-                </div>
-              ) : encNotes.map((n: any, idx: number) => {
-                // Structured columns first (new notes); fall back to the old
-                // JSON-in-content convention for notes written before this
-                // migration.
-                let soap: Record<string,string> | null =
-                  n.subjective || n.objective || n.assessment || n.plan
-                    ? { subjective: n.subjective, objective: n.objective, assessment: n.assessment, plan: n.plan }
-                    : null;
-                if (!soap) {
-                  try { soap = JSON.parse(n.content); } catch { /**/ }
-                }
-                const preview = soap?.assessment || soap?.subjective || n.content || "";
-                return (
-                  <button
-                    key={n.id ?? idx}
-                    onClick={() => setRecordDetail({
-                      title: `${(n.note_type ?? "note").replace(/_/g, " ")} note`,
-                      subtitle: `${fmtDateTime(n.created_at)} · ${n.author_name ?? "—"}`,
-                      rows: soap
-                        ? [
-                            ["Subjective", soap.subjective],
-                            ["Objective", soap.objective],
-                            ["Assessment", soap.assessment],
-                            ["Plan", soap.plan],
-                            ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
-                            ["Signed by", n.signed_by ? (n.signed_by_name ?? n.signed_by) : null],
-                            ["Signed at", n.signed_at ? fmtDateTime(n.signed_at) : null],
-                          ]
-                        : [
-                            ["Content", n.content],
-                            ["ICD-10", n.icd10_codes?.length ? n.icd10_codes.join(", ") : null],
-                            ["Signed by", n.signed_by ? (n.signed_by_name ?? n.signed_by) : null],
-                            ["Signed at", n.signed_at ? fmtDateTime(n.signed_at) : null],
-                          ],
-                    })}
-                    className="block w-full rounded-xl border border-border/60 bg-card px-4 py-3 text-left hover:bg-muted/40 hover:border-border transition-colors"
-                  >
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="outline" className="text-[12px] capitalize">{(n.note_type ?? "note").replace(/_/g," ")}</Badge>
-                        {n.icd10_codes && n.icd10_codes.length > 0 && n.icd10_codes.map((code: string) => (
-                          <span key={code} className="font-mono text-[12px] text-muted-foreground">{code}</span>
-                        ))}
-                        {n.signed_by && (
-                          <Badge variant="outline" className="text-[12px] border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10 gap-1">
-                            <CheckCircle2 className="h-2.5 w-2.5" />
-                            Signed by {n.signed_by_name ?? "—"}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="shrink-0 text-[13px] text-muted-foreground">{fmtDateTime(n.created_at)} · {n.author_name}</span>
-                    </div>
-                    {preview && <p className="text-sm text-foreground/80 truncate">{preview}</p>}
-                  </button>
-                );
-              })}
+              {/* One row per note. The soap parse below preserves the old
+                  JSON-in-content convention for notes written before the
+                  structured columns existed. */}
+              <RecordTable
+                rows={encNotes}
+                rowKey={(n: any, i: number) => n.id ?? i}
+                emptyIcon={<NotebookPen className="h-6 w-6" />}
+                emptyLabel="No progress notes yet"
+                accent={(n: any) => (n.signed_at ? undefined : "border-l-amber-500")}
+                onRowClick={(n: any) => {
+                  const soap = noteSoap(n);
+                  setRecordDetail({
+                    title: `${(n.note_type ?? "note").replace(/_/g, " ")} note`,
+                    subtitle: `${fmtDateTime(n.created_at)} · ${n.author_name ?? "—"}`,
+                    icon: NotebookPen,
+                    badges: [
+                      n.signed_at
+                        ? { label: "Signed", tone: "success" as const }
+                        : { label: "Unsigned", tone: "warning" as const },
+                      ...(n.icd10_codes ?? []).map((c: string) => ({ label: c, tone: "info" as const })),
+                    ],
+                    blocks: soap
+                      ? [
+                          { label: "Subjective", text: soap.subjective },
+                          { label: "Objective", text: soap.objective },
+                          { label: "Assessment", text: soap.assessment },
+                          { label: "Plan", text: soap.plan },
+                        ]
+                      : [{ label: "Note", text: n.content }],
+                    sections: [{
+                      label: "Attribution",
+                      rows: [
+                        ["Author", n.author_name],
+                        ["Written", n.created_at ? fmtDateTime(n.created_at) : null],
+                        ["Signed by", n.signed_by ? (n.signed_by_name ?? n.signed_by) : null],
+                        ["Signed at", n.signed_at ? fmtDateTime(n.signed_at) : null],
+                      ],
+                    }],
+                  });
+                }}
+                columns={[
+                  {
+                    header: "Type",
+                    width: "w-[140px]",
+                    cell: (n: any) => (
+                      <Badge variant="outline" className="text-xs capitalize">
+                        {(n.note_type ?? "note").replace(/_/g, " ")}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    header: "Assessment",
+                    cell: (n: any) => {
+                      const soap = noteSoap(n);
+                      const preview = soap?.assessment || soap?.subjective || n.content || "";
+                      return (
+                        <CellStack
+                          primary={<span className="line-clamp-2 font-normal">{preview || "—"}</span>}
+                          secondary={n.icd10_codes?.length ? n.icd10_codes.join(" · ") : undefined}
+                          mono
+                        />
+                      );
+                    },
+                  },
+                  { header: "Author", width: "w-[150px]", className: "text-muted-foreground", cell: (n: any) => n.author_name ?? "—" },
+                  {
+                    header: "Signed",
+                    width: "w-[130px]",
+                    cell: (n: any) => n.signed_at
+                      ? <Badge variant="outline" className="gap-1 text-xs border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"><CheckCircle2 className="h-2.5 w-2.5" />Signed</Badge>
+                      : <Badge variant="outline" className="text-xs border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">Unsigned</Badge>,
+                  },
+                  { header: "Date", width: "w-[150px]", className: "text-muted-foreground", cell: (n: any) => fmtDateTime(n.created_at) },
+                ]}
+              />
             </div>
           )}
 
@@ -1770,22 +2280,7 @@ export default function PatientProfile() {
                         return (
                           <tr
                             key={o.id}
-                            onClick={() => setRecordDetail({
-                              title: o.test_name,
-                              subtitle: `Resulted ${fmtDateTime(o.resulted_at ?? o.ordered_at)}`,
-                              rows: [
-                                ["Result", o.result_summary ?? o.result_value],
-                                ["Reference range", ref ? `${ref.normal_low ?? "?"}–${ref.normal_high ?? "?"} ${ref.unit ?? ""}` : o.reference_range],
-                                ["Interpretation", o.interpretation],
-                                ["Critical", o.is_critical ? "Yes" : null],
-                                ["Ordered by", formatAttribution(o.ordered_by)],
-                                ["Ordered at", o.ordered_at ? fmtDateTime(o.ordered_at) : null],
-                                ["Resulted by", o.resulted_by ? formatAttribution(o.resulted_by) : null],
-                                ["Verified by", o.verified_by ? formatAttribution(o.verified_by) : null],
-                                ["Result notes", o.result_notes],
-                                ["Sample type", o.sample_type],
-                              ],
-                            })}
+                            onClick={() => setLabPanelOrder(o)}
                             className={cn("border-b last:border-0 cursor-pointer hover:bg-muted/40 transition-colors", isAbnormal && "bg-red-50/50")}
                           >
                             <td className="px-3 py-2 font-medium">{o.test_name}</td>
@@ -1797,7 +2292,7 @@ export default function PatientProfile() {
                               {ref ? `${ref.normal_low ?? "?"}–${ref.normal_high ?? "?"} ${ref.unit ?? ""}` : o.reference_range ?? "—"}
                             </td>
                             <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-[12px] capitalize">{o.interpretation ?? "—"}</Badge>
+                              <Badge variant="outline" className="text-xs capitalize">{o.interpretation ?? "—"}</Badge>
                             </td>
                             <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(o.resulted_at ?? o.ordered_at)}</td>
                           </tr>
@@ -1831,37 +2326,21 @@ export default function PatientProfile() {
                       {theatreCases.map((c: any) => (
                         <tr
                           key={c.id}
-                          onClick={() => setRecordDetail({
-                            title: c.procedure_name,
-                            subtitle: `${c.theatre_name ?? "Theatre"} · ${fmtDate(c.scheduled_date)}`,
-                            rows: [
-                              ["Case type", c.case_type],
-                              ["Urgency", c.urgency],
-                              ["Status", c.status?.replace(/_/g, " ")],
-                              ["Surgeon", c.surgeon_id],
-                              ["Anaesthetist", c.anaesthetist_id],
-                              ["Scrub nurse", c.scrub_nurse],
-                              ["Circulating nurse", c.circulating_nurse],
-                              ["Scheduled start", c.start_time],
-                              ["Actual start", c.actual_start_time ? fmtDateTime(c.actual_start_time) : null],
-                              ["Actual end", c.actual_end_time ? fmtDateTime(c.actual_end_time) : null],
-                              ["Pre-op notes", c.notes],
-                              ["Anaesthetic record", c.anaesthetic_record],
-                              ["Operative notes", c.operative_notes],
-                              ["Post-op notes", c.post_op_notes],
-                              ["Booked by", c.booked_by],
-                            ],
-                          })}
+                          // The theatre panel renders the operative note,
+                          // anaesthetic record and post-op notes as documents.
+                          // They were previously crammed into value cells,
+                          // which is where an operative note reads worst.
+                          onClick={() => setTheatrePanelCase(c)}
                           className="border-b last:border-0 cursor-pointer hover:bg-muted/40 transition-colors"
                         >
                           <td className="px-3 py-2 font-medium">{c.procedure_name}</td>
                           <td className="px-3 py-2 text-muted-foreground">{c.theatre_name ?? "—"}</td>
                           <td className="px-3 py-2 text-muted-foreground">{c.surgeon_id ?? "—"}</td>
                           <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-[12px] capitalize">{c.urgency}</Badge>
+                            <Badge variant="outline" className="text-xs capitalize">{c.urgency}</Badge>
                           </td>
                           <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-[12px] capitalize">{c.status?.replace(/_/g," ")}</Badge>
+                            <Badge variant="outline" className="text-xs capitalize">{c.status?.replace(/_/g," ")}</Badge>
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(c.scheduled_date)}</td>
                         </tr>
@@ -1908,7 +2387,7 @@ export default function PatientProfile() {
             Add Lab Order
           </Button>
           {!hasActiveEnc && (
-            <p className="text-[12px] text-muted-foreground -mt-1 pl-1">Open encounter first</p>
+            <p className="text-xs text-muted-foreground -mt-1 pl-1">Open encounter first</p>
           )}
 
           <Button
@@ -1990,8 +2469,8 @@ export default function PatientProfile() {
             </>
           )}
           {hasActiveEnc && data?.active_encounter?.status !== "billing_pending" && (
-            <p className="text-[12px] text-muted-foreground pl-1">
-              Discharge available once billing is finalized (current: {String(data?.active_encounter?.status ?? "").replace(/_/g, " ")})
+            <p className="text-xs text-muted-foreground pl-1">
+              Discharge available once the consultation is over and every bill is paid (now: {encounterStatusLabel(data?.active_encounter?.status)})
             </p>
           )}
 
@@ -1999,7 +2478,7 @@ export default function PatientProfile() {
 
           {/* Summary counts */}
           <div className="rounded-xl border border-border/50 bg-card p-3 space-y-2">
-            <p className="text-[12px] uppercase tracking-wider text-muted-foreground font-semibold">Summary</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Summary</p>
             {[
               { label: "Encounters", value: data?.encounters.length ?? 0, icon: Stethoscope },
               { label: "Lab Orders", value: data?.lab_orders.length ?? 0, icon: FlaskConical },
@@ -2101,66 +2580,66 @@ export default function PatientProfile() {
                     <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />
                     Vitals Entry
                   </span>
-                  <span className="text-[13px] text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
+                  <span className="text-xs text-muted-foreground">{fmtDateTime(v.recorded_at)}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
                   {v.bp_systolic != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">BP</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">BP</p>
                       <p className="font-semibold">{v.bp_systolic}/{v.bp_diastolic} <span className="font-normal text-muted-foreground">mmHg</span></p>
                     </div>
                   )}
                   {v.pulse != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Pulse</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Pulse</p>
                       <p className="font-semibold">{v.pulse} <span className="font-normal text-muted-foreground">bpm</span></p>
                     </div>
                   )}
                   {v.temperature != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Temp</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Temp</p>
                       <p className="font-semibold">{v.temperature}<span className="font-normal text-muted-foreground">°C</span></p>
                     </div>
                   )}
                   {v.spo2 != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">SpO2</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">SpO2</p>
                       <p className="font-semibold">{v.spo2}<span className="font-normal text-muted-foreground">%</span></p>
                     </div>
                   )}
                   {v.respiratory_rate != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">RR</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">RR</p>
                       <p className="font-semibold">{v.respiratory_rate} <span className="font-normal text-muted-foreground">/min</span></p>
                     </div>
                   )}
                   {v.weight != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Weight</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Weight</p>
                       <p className="font-semibold">{v.weight} <span className="font-normal text-muted-foreground">kg</span></p>
                     </div>
                   )}
                   {v.height != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Height</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Height</p>
                       <p className="font-semibold">{v.height} <span className="font-normal text-muted-foreground">cm</span></p>
                     </div>
                   )}
                   {v.bmi != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">BMI</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">BMI</p>
                       <p className="font-semibold">{v.bmi}</p>
                     </div>
                   )}
                   {v.gcs != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">GCS</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">GCS</p>
                       <p className="font-semibold">{v.gcs}<span className="font-normal text-muted-foreground">/15</span></p>
                     </div>
                   )}
                   {v.pain_score != null && (
                     <div>
-                      <p className="text-[12px] text-muted-foreground uppercase tracking-wide">Pain</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Pain</p>
                       <p className="font-semibold">{v.pain_score}<span className="font-normal text-muted-foreground">/10</span></p>
                     </div>
                   )}
@@ -2169,7 +2648,7 @@ export default function PatientProfile() {
                   <p className="mt-2 text-xs text-muted-foreground italic border-t border-border/50 pt-1.5">"{v.notes}"</p>
                 )}
                 {v.recorded_by && (
-                  <p className="mt-1 text-[12px] text-muted-foreground">Recorded by: {v.recorded_by}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Recorded by: {v.recorded_by}</p>
                 )}
               </div>
             ))}
@@ -2419,34 +2898,59 @@ export default function PatientProfile() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Generic Record Detail Dialog (shared by every Cover Sheet card) ── */}
-      <Dialog open={!!recordDetail} onOpenChange={(open) => !open && setRecordDetail(null)}>
-        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{recordDetail?.title}</DialogTitle>
-            {recordDetail?.subtitle && <DialogDescription>{recordDetail.subtitle}</DialogDescription>}
-          </DialogHeader>
-          {recordDetail && (
-            <div className="space-y-1.5 text-sm">
-              {recordDetail.rows
-                .filter(([, value]) => value !== null && value !== undefined && value !== "")
-                .map(([label, value]) => (
-                  <div key={label} className="flex items-start justify-between gap-3 border-b border-border/40 py-1.5 last:border-0">
-                    <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-                    <span className="text-right min-w-0 break-words">{value}</span>
-                  </div>
-                ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* ── Record detail (shared by every clickable row on this page) ──
+          A workspace panel, not a centred dialog: it carries the patient
+          identity, groups sections, and gives clinical prose full width. */}
+      <RecordDetailPanel
+        detail={recordDetail}
+        onClose={() => { setRecordDetail(null); returnToStory(); }}
+        patientName={patient ? `${patient.first_name} ${patient.last_name}` : undefined}
+      />
+
+      {labPanelOrder && (
+        <LabWorkspacePanel
+          order={{
+            ...labPanelOrder,
+            patient_id: labPanelOrder.patient_id ?? patient?.id,
+            patient_mrn: labPanelOrder.patient_mrn ?? patient?.mrn,
+            patient_name: labPanelOrder.patient_name ?? (patient ? `${patient.first_name} ${patient.last_name}` : undefined),
+          }}
+          initialTab={labPanelOrder.result_summary || labPanelOrder.result_value ? "result" : "detail"}
+          onClose={() => { setLabPanelOrder(null); returnToStory(); }}
+        />
+      )}
+
+      {radPanelOrder && (
+        <RadiologyWorkspacePanel
+          order={{
+            ...radPanelOrder,
+            patient_id: radPanelOrder.patient_id ?? patient?.id,
+            patient_mrn: radPanelOrder.patient_mrn ?? patient?.mrn,
+            patient_name: radPanelOrder.patient_name ?? (patient ? `${patient.first_name} ${patient.last_name}` : undefined),
+          }}
+          initialTab={radPanelTab}
+          onClose={() => { setRadPanelOrder(null); setRadPanelTab(undefined); returnToStory(); }}
+        />
+      )}
+
+      {theatrePanelCase && (
+        <TheatreWorkspacePanel
+          case={{
+            ...theatrePanelCase,
+            patient_id: theatrePanelCase.patient_id ?? patient?.id,
+            patient_name: theatrePanelCase.patient_name ?? (patient ? `${patient.first_name} ${patient.last_name}` : undefined),
+          }}
+          onClose={() => { setTheatrePanelCase(null); returnToStory(); }}
+        />
+      )}
 
       {/* ── Encounter Story (full chronological detail for a visit) ────── */}
-      {storyEncounterId && (
+      {storyEncounterId && !labPanelOrder && !radPanelOrder && !theatrePanelCase && !recordDetail && (
         <EncounterStoryPanel
           encounterId={storyEncounterId}
           patientName={fullName}
-          onClose={() => setStoryEncounterId(null)}
+          onClose={() => { setStoryEncounterId(null); setStoryReturnId(null); }}
+          onOpenRecord={openStoryRecord}
         />
       )}
 
@@ -2756,7 +3260,12 @@ export default function PatientProfile() {
                 <div className="rounded-md border max-h-28 overflow-y-auto">
                   {drugResults.map((d: any) => (
                     <button key={d.id} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
-                      onClick={() => { setRxForm(f => ({ ...f, drug_name: `${d.generic_name}${d.strength ? " " + d.strength + (d.unit ?? "") : ""}`, dosage: d.strength ? `${d.strength}${d.unit ?? ""}` : f.dosage })); setDrugSearch(""); }}>
+                      onClick={() => { setRxForm(f => ({
+                        ...f,
+                        drug_name: `${d.generic_name}${d.strength ? " " + d.strength : ""}`,
+                        dosage: f.dosage || (d.strength ?? ""),
+                        route: f.route || (Array.isArray(d.route) && d.route.length === 1 ? d.route[0] : ""),
+                      })); setDrugSearch(""); }}>
                       {d.generic_name} {d.strength}{d.unit} {d.brand_name ? `(${d.brand_name})` : ""}
                     </button>
                   ))}
@@ -2783,11 +3292,12 @@ export default function PatientProfile() {
               </div>
               <div className="space-y-1">
                 <Label>Duration</Label>
-                <Input
-                  value={rxForm.duration}
-                  onChange={e => setRxForm(f => ({ ...f, duration: e.target.value }))}
-                  placeholder="e.g. 5 days"
-                />
+                <Select value={rxForm.duration} onValueChange={v => setRxForm(f => ({ ...f, duration: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {DURATION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label>Route</Label>
@@ -2811,7 +3321,7 @@ export default function PatientProfile() {
             <Button variant="outline" onClick={() => setRxOpen(false)}>Cancel</Button>
             <Button
               disabled={!rxForm.drug_name.trim() || !rxForm.frequency.trim() || rxMut.isPending}
-              onClick={() => rxMut.mutate()}
+              onClick={() => rxMut.mutate(false)}
             >
               {rxMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Write Prescription
@@ -2957,64 +3467,44 @@ export default function PatientProfile() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Add Progress Note Dialog (doctor-only) ────────────────────── */}
+      {/* ── Add Progress Note Dialog (doctor-only) ──────────────────────
+          Uses the SAME SoapNoteComposer as the OPD panel. This page used to
+          carry a second, divergent note UI — four free-text SOAP boxes and a
+          comma-separated ICD-10 field — writing a different shape to the same
+          endpoint. The composer is container-agnostic (renders no dialog of
+          its own, invalidates nothing), so this Dialog stays the container and
+          invalidation stays here via onSigned. */}
       <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <NotebookPen className="h-4 w-4" /> Add Progress Note
             </DialogTitle>
-            <DialogDescription>{fullName} — {data?.active_encounter ? `Encounter #${data.active_encounter.id}` : ""}</DialogDescription>
+            <DialogDescription>
+              {fullName} — {data?.active_encounter ? `Encounter #${data.active_encounter.id}` : "No active encounter"}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>Note Type</Label>
-              <Select value={noteForm.note_type} onValueChange={v => setNoteForm(f => ({ ...f, note_type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["soap","general","assessment","plan"].map(t => (
-                    <SelectItem key={t} value={t} className="capitalize">{t.replace(/_/g," ")}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {[
-              { key: "subjective", label: "S — Subjective (Patient's complaints)", placeholder: "Chief complaint, history..." },
-              { key: "objective", label: "O — Objective (Examination findings)", placeholder: "Exam findings, vitals..." },
-              { key: "assessment", label: "A — Assessment (Diagnosis)", placeholder: "Working diagnosis, ICD-10 codes..." },
-              { key: "plan", label: "P — Plan (Management)", placeholder: "Investigations ordered, treatment plan, follow-up..." },
-            ].map(({ key, label, placeholder }) => (
-              <div key={key} className="space-y-1">
-                <Label className="text-xs font-semibold">{label}</Label>
-                <Textarea
-                  value={(noteForm as any)[key]}
-                  onChange={e => setNoteForm(f => ({ ...f, [key]: e.target.value }))}
-                  placeholder={placeholder}
-                  rows={2}
-                  className="text-sm"
-                />
-              </div>
-            ))}
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">ICD-10 Codes (comma-separated)</Label>
-              <Input
-                value={noteForm.icd10}
-                onChange={e => setNoteForm(f => ({ ...f, icd10: e.target.value }))}
-                placeholder="I10, J45.0"
-                className="text-sm"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoteOpen(false)}>Cancel</Button>
-            <Button
-              disabled={!noteForm.assessment.trim() || noteMut.isPending || !data?.active_encounter}
-              onClick={() => noteMut.mutate()}
-            >
-              {noteMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Note
-            </Button>
-          </DialogFooter>
+
+          {data?.active_encounter ? (
+            <SoapNoteComposer
+              encounterId={data.active_encounter.id}
+              patientId={patientNumId ?? undefined}
+              patientSex={patient?.gender}
+              patientName={fullName}
+              patientMeta={[patient?.gender, mrn && `MRN ${mrn}`].filter(Boolean).join(" · ")}
+              allergies={patient?.allergies}
+              bloodGroup={patient?.blood_group}
+              genotype={patient?.genotype}
+              onSigned={() => {
+                setNoteOpen(false);
+                void qc.invalidateQueries({ queryKey: ["patient-profile", mrn] });
+              }}
+            />
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              A clinical note must belong to an encounter. Start an encounter for this patient first.
+            </p>
+          )}
         </DialogContent>
       </Dialog>
     </motion.div>

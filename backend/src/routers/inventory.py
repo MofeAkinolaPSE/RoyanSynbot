@@ -61,7 +61,7 @@ def require_inventory_read(request: Request) -> Dict[str, Any]:
 # --- Endpoints ---
 
 @router.post("/event")
-async def post_inventory_event(
+def post_inventory_event(
     event: InventoryEventRequest,
     user: Dict[str, Any] = Depends(require_inventory_write)
 ):
@@ -94,7 +94,7 @@ async def post_inventory_event(
         raise HTTPException(500, detail="Failed to record inventory event")
 
 @router.get("/sku/{sku}")
-async def get_sku_stock(
+def get_sku_stock(
     sku: str,
     user: Dict[str, Any] = Depends(require_inventory_read)
 ):
@@ -109,7 +109,7 @@ async def get_sku_stock(
         raise HTTPException(500, detail="Failed to retrieve stock data")
 
 @router.get("/summary")
-async def get_summary_view(
+def get_summary_view(
     request: Request,
     user: Dict[str, Any] = Depends(require_inventory_read)
 ):

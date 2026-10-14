@@ -32,13 +32,24 @@ const EMPTY_BABY_FORM = {
 const STATUS_BADGE: Record<string, string> = {
   overdue:     "bg-red-100 text-red-700 border-red-300",
   due_soon:    "bg-orange-100 text-orange-700 border-orange-300",
+  // Distinct from up_to_date on purpose: nothing to action today, but doses
+  // remain. Green "Up to Date" on a child with doses still ahead reads as
+  // "fully vaccinated" and would stop someone looking further.
+  on_schedule: "bg-blue-100 text-blue-700 border-blue-300",
   up_to_date:  "bg-green-100 text-green-700 border-green-300",
+  // Deliberately NOT red. "No record" means this hospital has never recorded a
+  // dose for this child — most were vaccinated elsewhere, which is normal here.
+  // Colouring it like a missed dose sends staff chasing families who have done
+  // nothing wrong, and buries the children who genuinely are overdue.
+  no_record:   "bg-slate-100 text-slate-700 border-slate-300",
 };
 
 const STATUS_LABEL: Record<string, string> = {
   overdue: "Overdue",
   due_soon: "Due Soon",
-  up_to_date: "Up to Date",
+  on_schedule: "On Schedule",
+  up_to_date: "Schedule Complete",
+  no_record: "No record on file",
 };
 
 function ageFromDob(dob?: string): string {
@@ -147,6 +158,9 @@ export default function Immunisation() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="border-border" onClick={() => { window.location.hash = "#/hospital/stores?dept=IMMUNISATION"; }}>
+            <Syringe className="w-4 h-4 mr-1" /> Vaccine stock
+          </Button>
           <Button variant="outline" size="sm" className="border-border" onClick={() => refetch()}>
             <RefreshCw className={cn("w-4 h-4 mr-1", isFetching && "animate-spin")} /> Refresh
           </Button>
@@ -170,8 +184,10 @@ export default function Immunisation() {
           <TabsList className="bg-muted border border-border">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="overdue">Overdue</TabsTrigger>
+            <TabsTrigger value="no_record">No record</TabsTrigger>
             <TabsTrigger value="due_soon">Due Soon</TabsTrigger>
-            <TabsTrigger value="up_to_date">Up to Date</TabsTrigger>
+            <TabsTrigger value="on_schedule">On Schedule</TabsTrigger>
+            <TabsTrigger value="up_to_date">Complete</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -226,13 +242,31 @@ export default function Immunisation() {
                     <TableCell>
                       <Badge variant="outline" className={STATUS_BADGE[b.overall_status] || ""}>
                         {STATUS_LABEL[b.overall_status] || b.overall_status}
-                        {b.overdue_count > 0 ? ` (${b.overdue_count})` : ""}
+                        {b.overall_status !== "no_record" && b.overdue_count > 0 ? ` (${b.overdue_count})` : ""}
                       </Badge>
                     </TableCell>
+                    {/* Missed doses and the next appointment are different facts
+                        and now render as different lines. They previously shared
+                        one slot, so a missed dose displaced the next due date and
+                        the column showed a date in the past under "Next Due". */}
                     <TableCell className="text-sm">
+                      {b.oldest_overdue && (
+                        <div className="text-red-600 dark:text-red-400">
+                          Missed {b.oldest_overdue.vaccine_name}
+                          <span className="ml-1 text-xs">
+                            ({b.oldest_overdue.days_overdue}d overdue)
+                          </span>
+                        </div>
+                      )}
                       {b.next_due ? (
-                        <span>{b.next_due.vaccine_name} <span className="text-xs text-muted-foreground">({b.next_due.due_date})</span></span>
-                      ) : "—"}
+                        <div className={b.oldest_overdue ? "text-xs text-muted-foreground" : ""}>
+                          {b.oldest_overdue && "Next: "}
+                          {b.next_due.vaccine_name}
+                          <span className="ml-1 text-xs text-muted-foreground">({b.next_due.due_date})</span>
+                        </div>
+                      ) : !b.oldest_overdue ? "—" : (
+                        <div className="text-xs text-muted-foreground">Schedule complete</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); navigate(`/hospital/immunisation/${b.id}`); }}>

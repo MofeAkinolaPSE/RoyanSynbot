@@ -138,7 +138,7 @@ def _cashflow_summary(periods: int = 6, limit: int = 5000) -> Dict[str, Any]:
     return {"mode": "cashflow", "periods": chart_periods}
 
 @router.get("/kpis")
-async def get_analytics_kpis(
+def get_analytics_kpis(
     request: Request,
     user: Dict[str, Any] = Depends(require_analytics_access)
 ):
@@ -189,7 +189,7 @@ async def get_analytics_kpis(
     return response_data
 
 @router.get("/trend")
-async def get_financial_trend(user: Dict[str, Any] = Depends(require_finance_trend_access)):
+def get_financial_trend(user: Dict[str, Any] = Depends(require_finance_trend_access)):
     """
     Get 6-month AR/AP trend for charts.
     """
@@ -201,7 +201,7 @@ async def get_financial_trend(user: Dict[str, Any] = Depends(require_finance_tre
 
 
 @router.get("/ar_trends")
-async def get_ar_trends(
+def get_ar_trends(
     periods: int = 6,
     user: Dict[str, Any] = Depends(require_analytics_access),
 ):
@@ -221,7 +221,7 @@ async def get_ar_trends(
         }
 
 @router.get("/gl")
-async def get_general_ledger(
+def get_general_ledger(
     limit: int = 1000,
     user: Dict[str, Any] = Depends(require_analytics_access)
 ):
@@ -237,7 +237,7 @@ async def get_general_ledger(
         raise HTTPException(500, "Failed to retrieve GL data")
 
 @router.get("/transactions")
-async def get_recent_transactions(
+def get_recent_transactions(
     limit: int = 5, 
     user: Dict[str, Any] = Depends(require_analytics_access)
 ):
@@ -268,7 +268,7 @@ async def get_recent_transactions(
 
 
 @router.get("/profitability")
-async def get_profitability_summary(
+def get_profitability_summary(
     limit: int = 1000,
     user: Dict[str, Any] = Depends(require_analytics_access),
 ):
@@ -343,7 +343,7 @@ async def get_profitability_summary(
         }
 
 @router.get("/margin_drivers")
-async def get_margin_drivers(
+def get_margin_drivers(
     user: Dict[str, Any] = Depends(require_analytics_access),
 ):
     """Return margin driver decomposition across GL cost buckets.
@@ -361,7 +361,7 @@ async def get_margin_drivers(
 
 
 @router.post("/scenarios")
-async def run_scenarios(
+def run_scenarios(
     payload: Dict[str, Any],
     user: Dict[str, Any] = Depends(require_analytics_access),
 ):

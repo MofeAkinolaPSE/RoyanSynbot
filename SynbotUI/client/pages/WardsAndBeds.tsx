@@ -47,6 +47,11 @@ interface Bed {
   patient_mrn?: string;
   admitted_at?: string;
   notes?: string;
+  /** Real room identity, seeded from Hope's ward history (migration 209). */
+  room_id?: number;
+  room_name?: string;
+  room_daily_rate?: number;
+  room_type?: string;
 }
 
 function occupancyColor(pct: number) {
@@ -261,7 +266,9 @@ export default function WardsAndBeds() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Room</TableHead>
                       <TableHead>Bed No.</TableHead>
+                      <TableHead>Rate / night</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Patient</TableHead>
@@ -272,19 +279,27 @@ export default function WardsAndBeds() {
                   <TableBody>
                     {beds.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No beds found for this ward</TableCell>
+                        <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No beds found for this ward</TableCell>
                       </TableRow>
                     ) : beds.map(bed => (
                       <TableRow key={bed.id} className="cursor-pointer hover:bg-muted/40"
                         onClick={() => setSelectedBed({ ...bed, ward_name: selectedWardObj?.name } as any)}>
+                        <TableCell className="text-sm font-medium">
+                          {bed.room_name ?? <span className="text-xs italic text-muted-foreground">Unassigned</span>}
+                        </TableCell>
                         <TableCell className="font-mono text-sm">{bed.bed_number ?? String(bed.id).slice(0, 6)}</TableCell>
+                        <TableCell className="text-xs tabular-nums">
+                          {bed.room_daily_rate
+                            ? `₦${Number(bed.room_daily_rate).toLocaleString()}`
+                            : <span className="text-amber-600">Not priced</span>}
+                        </TableCell>
                         <TableCell className="capitalize text-xs">{bed.bed_type ?? "standard"}</TableCell>
                         <TableCell><BedBadge status={bed.status} /></TableCell>
                         <TableCell className="text-xs">
                           {bed.patient_name ? (
                             <div className="flex flex-col">
                               <span className="font-medium">{bed.patient_name}</span>
-                              {bed.patient_mrn && <span className="font-mono text-[12px] text-muted-foreground">{bed.patient_mrn}</span>}
+                              {bed.patient_mrn && <span className="font-mono text-xs text-muted-foreground">{bed.patient_mrn}</span>}
                             </div>
                           ) : bed.current_patient_id ? (
                             <span className="text-muted-foreground/50 italic">Empty</span>

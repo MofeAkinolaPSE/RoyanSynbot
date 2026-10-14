@@ -55,14 +55,28 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '3.0'
+          memory: 3G
 
   # ── PostgreSQL + pgvector (official pre-built image — no compilation needed) ─
   db:
     image: pgvector/pgvector:pg17
     container_name: royan_db
     restart: unless-stopped
+    # Sized to the 3 CPU / 4 GB limit below, for 30-50 laptops on the 8 CPU / 16 GB server: the
+    # defaults (128MB buffers, 4MB work_mem) left the 3.6 GB database reading from disk. The backend
+    # alone opens up to UVICORN_WORKERS x PG_MAX_CONN = 75 connections, and GlitchTip shares this server.
+    # Keep in step with docker-compose.swarm.yml.
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=1GB
+      -c effective_cache_size=3GB
+      -c work_mem=8MB
+      -c maintenance_work_mem=256MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+    shm_size: 512mb   # parallel query workers share memory here; Docker's 64MB default is too small
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-royan}
@@ -90,8 +104,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '3.0'
+          memory: 4G
 
   # ── SynbotUI (HMS Staff Dashboard) ───────────────────────────────────────
   frontend:
@@ -128,15 +142,18 @@ services:
 
   # ── Nginx Reverse Proxy ───────────────────────────────────────────────────
   nginx:
-    image: cgr.dev/chainguard/nginx:latest
-    user: root
+    # Alpine nginx (has a shell): it reloads itself every 6 hours so a renewed Let's Encrypt certificate is picked
+    # up with no restart (go-live certificate kit, Oct 2026). The chainguard image had no shell for that loop.
+    image: nginx:1.27-alpine
     container_name: royan_nginx
     restart: unless-stopped
+    command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec nginx -g 'daemon off;'"]
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/security-headers.conf:/etc/nginx/security-headers.conf:ro
       - nginx_ssl:/etc/nginx/ssl:ro
       - portal_dist:/usr/share/nginx/portal:ro
       - certbot_webroot:/var/www/certbot:ro
@@ -175,19 +192,28 @@ services:
         -addext "subjectAltName=DNS:localhost,IP:127.0.0.1")
     restart: "no"
 
-  # ── TLS Certificate — Let's Encrypt (dormant; run manually once a real
-  # domain's DNS points at this server) ─────────────────────────────────────
-  # `profiles: ["tls"]` keeps this out of a plain `docker compose up -d` — it
-  # only runs via `docker compose run --rm certbot ...`, which is exactly what
-  # scripts/issue-cert.sh and scripts/renew-cert.sh do. See DEPLOYMENT.md for
-  # the one-time setup step and the crontab line for renewal.
+  # ── TLS Certificate — Let's Encrypt ──────────────────────────────────────
+  # The certificate is issued once on the server with deploy/issue-cert.ps1 (backend/docs/cert-kit/
+  # GO-LIVE-CERTIFICATE.md, Stage 6). From then on this container checks twice a day and renews when fewer
+  # than 30 days remain, copying the new files over the two nginx reads (/etc/nginx/ssl/cert.pem, key.pem);
+  # nginx reloads itself every 6 hours. On a laptop with no real certificate it simply finds nothing to renew.
   certbot:
-    image: certbot/certbot:latest
-    profiles: ["tls"]
+    image: certbot/certbot:v2.11.0
+    container_name: royan_certbot
     volumes:
       - certbot_conf:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
-      - nginx_ssl:/nginx-ssl
+      - nginx_ssl:/etc/nginx/ssl
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        trap exit TERM
+        while :; do
+          certbot renew --quiet --webroot -w /var/www/certbot             --deploy-hook 'cp -L "$$RENEWED_LINEAGE/fullchain.pem" /etc/nginx/ssl/cert.pem && cp -L "$$RENEWED_LINEAGE/privkey.pem" /etc/nginx/ssl/key.pem && chmod 644 /etc/nginx/ssl/cert.pem && chmod 640 /etc/nginx/ssl/key.pem'
+          sleep 12h & wait $$!
+        done
+    restart: unless-stopped
     networks:
       - royan_net
 

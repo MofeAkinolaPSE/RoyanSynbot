@@ -291,7 +291,7 @@ async def verify_payment(reference: str, user=Depends(verify_jwt)):
 
 
 @router.get("")
-async def list_payments(
+def list_payments(
     patient_id:   Optional[int] = Query(None),
     encounter_id: Optional[int] = Query(None),
     status:       Optional[str] = Query(None),

@@ -12,13 +12,22 @@ the loader can do a normal ON CONFLICT upsert instead of the old
 one-payment-per-bill restriction -- a bill legitimately has 0..N payments.
 
 billing_id is deliberately NOT resolved: `service_cash_payments.billing_id`
-was originally verified to reference Hope's `billings` table, which is
-confirmed EMPTY in this dump export. Passing that raw value through to the
+references Hope's `billings` table. Passing that raw value through to the
 loader's royan_billing.external_id lookup produced spurious matches
 against `service_bills` rows (a coincidentally-overlapping but unrelated
 auto-increment id sequence) -- confirmed by finding "linked" payments
 whose patient didn't match the bill's own patient. patient_id is the only
 reliable link here.
+
+CORRECTION (2026-08-22): this docstring previously asserted Hope's
+`billings` table was "confirmed EMPTY in this dump export". That was
+WRONG -- it came from the keyword-search candidates cache
+(scan_reports/db_drmnigeria_candidates.json), which reports row_count 0
+as a placeholder for any table its earlier keyword scan didn't match, and
+must never be used as evidence of emptiness. `billings` actually holds
+419,135 real rows spanning 2016-2025 and is now loaded into
+royan_billing_transactions (migration 190, transformers/billing_archive.py).
+The billing_id non-resolution above still stands on its own merits.
 """
 from __future__ import annotations
 

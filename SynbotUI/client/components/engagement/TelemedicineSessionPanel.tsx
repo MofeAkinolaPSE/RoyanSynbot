@@ -12,6 +12,7 @@ import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { TELE_STATUS_COLORS, TELE_ACTIONS, DetailRow, SectionLabel } from "@/components/engagement/engagement-shared";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface TelemedicineSessionPanelProps {
   session: any;
@@ -64,7 +65,7 @@ export function TelemedicineSessionPanel({ session: initialSession, onClose }: T
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">

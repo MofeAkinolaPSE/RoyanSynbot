@@ -26,7 +26,7 @@ export function OnlineStaffCard() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">Online Now</p>
+                <p className="text-xs text-muted-foreground">Online Now</p>
                 <p className="text-2xl font-bold">{count}</p>
                 <p className="text-sm text-muted-foreground mt-0.5">staff logged in</p>
               </div>

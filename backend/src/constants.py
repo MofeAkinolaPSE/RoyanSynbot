@@ -34,6 +34,8 @@ TABLE_ORDERS = "royan_orders"
 TABLE_STOCK_CACHE = "royan_stock_cache"
 TABLE_INVENTORY_EVENTS = "royan_inventory_events"
 TABLE_STAFF = "royan_staff"
+TABLE_ROOM_ASSIGNMENTS      = "royan_room_assignments"
+TABLE_ADMISSION_REQUESTS    = "royan_admission_requests"
 TABLE_STAFF_REGISTRATIONS = "royan_staff_registrations"
 TABLE_PRESENCE_SESSIONS = "royan_presence_sessions"
 TABLE_TIMESHEETS = "royan_timesheets"
@@ -77,6 +79,9 @@ TABLE_HMOS                  = "royan_hmos"
 TABLE_HMO_PLANS             = "royan_hmo_plans"
 TABLE_PATIENT_INSURANCE     = "royan_patient_insurance"
 TABLE_SERVICE_CATALOG       = "royan_service_catalog"
+# Per-HMO negotiated prices (migration 198). A missing row means the payer pays
+# the service catalog's list price.
+TABLE_PAYER_SERVICE_PRICES  = "royan_payer_service_prices"  # 28,750 (migration 198)
 TABLE_COVERAGE_RULES        = "royan_coverage_rules"
 TABLE_COVERAGE_AUTHORIZATIONS = "royan_coverage_authorizations"
 TABLE_BILL_ITEMS            = "royan_bill_items"
@@ -237,6 +242,12 @@ ENCOUNTER_STATUS_ALLOWED = {
     "called",
     "consulting",
     "lab_ordered",
+    # Labs are back and the doctor has not seen them yet. Asked for directly:
+    # "if a patient is just waiting for a test result, let's move them from the
+    # main queue and move them to the queue for lab reviews". Already permitted
+    # by the royan_encounters CHECK constraint; the app enum simply never
+    # listed it, so nothing could ever reach this state.
+    "awaiting_results",
     "pharmacy_dispensing",
     "billing_pending",
     "discharged",
@@ -249,7 +260,13 @@ ENCOUNTER_STATUS_TRANSITIONS = {
     # "consulting" self-loop lets /queue/encounters/{id}/consult be re-called on an
     # already-consulting encounter to (re)assign the doctor without a status change.
     "consulting":         {"consulting", "lab_ordered", "pharmacy_dispensing", "billing_pending"},
-    "lab_ordered":        {"consulting", "pharmacy_dispensing", "billing_pending"},
+    # lab_ordered -> awaiting_results fires automatically when the last pending
+    # lab is resulted (see lab.py). Everything else stays clinician-driven.
+    "lab_ordered":        {"consulting", "awaiting_results", "pharmacy_dispensing", "billing_pending"},
+    # From review the doctor either sees the patient again, or the visit moves
+    # on. Back to lab_ordered too, since reviewing a result often means ordering
+    # another test.
+    "awaiting_results":   {"consulting", "lab_ordered", "pharmacy_dispensing", "billing_pending"},
     "pharmacy_dispensing": {"billing_pending"},
     "billing_pending":    {"discharged", "consulting"},
     "discharged":         set(),
@@ -260,9 +277,9 @@ LAB_URGENCY_ALLOWED = {"routine", "urgent", "stat"}
 LAB_INTERPRETATION_ALLOWED = {"normal", "abnormal", "critical", "inconclusive"}
 PRESCRIPTION_STATUS_ALLOWED = {"pending", "dispensed", "partially_dispensed", "cancelled", "returned"}
 PRESCRIPTION_ROUTES_ALLOWED = {"oral", "iv", "im", "topical", "inhaled", "sublingual", "rectal", "other"}
-BILL_STATUS_ALLOWED = {"pending", "partial", "paid", "waived", "disputed", "written_off"}
+BILL_STATUS_ALLOWED = {"pending", "partial", "paid", "waived", "disputed", "written_off", "void"}
 CLAIM_STATUS_ALLOWED = {"submitted", "pre_authorised", "approved", "rejected", "paid", "disputed"}
-PAYMENT_METHODS_ALLOWED = {"cash", "card", "transfer", "hmo", "waiver"}
+PAYMENT_METHODS_ALLOWED = {"cash", "pos", "card", "transfer", "hmo", "waiver"}
 COVERAGE_TYPES_ALLOWED = {"percent", "fixed", "none", "capitation"}
 LIMIT_TYPES_ALLOWED = {"none", "per_visit", "per_month"}
 
@@ -503,6 +520,11 @@ STAFF_ROLES: list[str] = [
     "hr",
     "ops",
     "quality_assurance",
+    # Oct 2026 (finance + HMO meetings): the teams that work billing, HMO claims, stores and audit
+    "hmo",
+    "cashier",
+    "store",
+    "auditor",
 ]
 
 JWT_ALGORITHM               = "HS256"
@@ -556,7 +578,7 @@ ACCESS_TOKEN_MINUTES = int(os.getenv(ENV_ACCESS_TOKEN_MINUTES, "45"))
 # use, and how far past the last heartbeat a session is still counted as
 # online (3x the heartbeat, so one missed beat doesn't flip someone offline).
 PRESENCE_HEARTBEAT_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_SECONDS", "30"))
-PRESENCE_STALE_SECONDS = int(os.getenv("PRESENCE_STALE_SECONDS", "90"))
+PRESENCE_STALE_SECONDS = int(os.getenv("PRESENCE_STALE_SECONDS", "300"))   # background tabs ping about once a minute at best
 REFRESH_TOKEN_DAYS = int(os.getenv(ENV_REFRESH_TOKEN_DAYS, "7"))
 WEBSOCKET_ENABLED = os.getenv(ENV_WEBSOCKET_ENABLED, "1") not in ("0", "false", "False")
 PROCUREMENT_CLEARANCE_DELAY_DAYS = int(os.getenv(ENV_PROCUREMENT_CLEARANCE_DELAY_DAYS, "5"))
@@ -586,6 +608,73 @@ TABLE_DIAGNOSIS_CATALOG= "royan_diagnosis_catalog"
 TABLE_PROCEDURE_CATALOG= "royan_procedure_catalog"
 TABLE_MDM_CHANGE_REQS  = "royan_mdm_change_requests"
 TABLE_MDM_AUDIT        = "royan_mdm_audit"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase A migrated Hope data (migrations 179-195).
+# These tables hold 5.2M rows of real migrated clinical/reference data. Until
+# Phase B0 they had NO API at all — the data was in Postgres and unreachable
+# from the browser. Endpoints live in routers/clinical_docs.py.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Per-SOAP-section note templates (a template is a BUNDLE OF SELECTABLE
+# PHRASES tagged by context_type, not a text blob — see migration 181)
+TABLE_NOTE_TEMPLATES        = "royan_note_templates"        # 528
+TABLE_NOTE_TEMPLATE_TEXTS   = "royan_note_template_texts"   # 8,370 phrases
+
+# ROS / physical-exam sentence builder (migration 182)
+TABLE_EXAM_TEMPLATES        = "royan_exam_templates"        # 62
+TABLE_EXAM_TEMPLATE_FINDINGS= "royan_exam_template_findings"# 44,405 — MUST be capped/searched
+
+# Dot-phrase macros with {token:id::default} fill-ins (migrations 185/186)
+TABLE_SMART_PHRASES         = "royan_smart_phrases"         # 1,209
+TABLE_SMART_PHRASE_OPTIONS  = "royan_smart_phrase_options"  # 1,056, keyed by token_id
+
+# Order sets — "select a template -> bulk-fill the standard orders" (migration 179)
+TABLE_ORDER_SETS            = "royan_order_sets"            # 4
+TABLE_ORDER_SET_ITEMS       = "royan_order_set_items"       # 60
+
+# Catalogs powering the Plan-section pickers
+TABLE_RADIOLOGY_CATALOG     = "royan_radiology_catalog"     # 211 (migration 194)
+TABLE_SURGERY_CATALOG       = "royan_surgery_catalog"       # 112 (migration 194)
+TABLE_ALLERGEN_CATALOG      = "royan_allergen_catalog"      # 18,926 (migration 183)
+TABLE_TARIFF_CATALOG        = "royan_tariff_catalog"        # 396 (migration 188)
+
+# Radiology report section templates (migration 184).
+# NOTE: distinct from TABLE_REPORT_TEMPLATES ("royan_report_templates"), which
+# GET /radiology/templates already serves. Both are real; do not conflate.
+TABLE_RADIOLOGY_REPORT_TEMPLATES      = "royan_radiology_report_templates"      # 175
+TABLE_RADIOLOGY_REPORT_TEMPLATE_TEXTS = "royan_radiology_report_template_texts" # 181
+
+# Patient-scoped migrated history
+TABLE_NURSING_FLOWSHEET     = "royan_nursing_flowsheet"     # 47,153 ICU observations
+TABLE_WARD_STAY_HISTORY     = "royan_ward_stay_history"     # 11,313 admit/discharge
+TABLE_PATIENT_DOCUMENTS_IDX = "royan_patient_documents"     # 9,145 (metadata index only)
+TABLE_MEDICATION_ADMIN      = "royan_medication_administration"  # 109
+TABLE_WARD_SERVICE_CHARGES  = "royan_ward_service_charges"  # 34,036
+TABLE_WARD_CONSUMPTION      = "royan_ward_consumption"      # 9,265
+
+# Billing archive — supplements royan_billing, never replaces it (migration 190)
+TABLE_BILLING_TRANSACTIONS  = "royan_billing_transactions"  # 419,128
+TABLE_BILLING_SUMMARIES     = "royan_billing_summaries"     # 333,542
+
+# Pharmacy per-batch pricing: mrp / purchase_price / cost_price / sale_price
+TABLE_PHARMACY_ITEM_RATES   = "royan_pharmacy_item_rates"   # 2,005 (migration 195)
+
+# Note addenda — child table so migration 171's note_type CHECK is untouched
+TABLE_NOTE_ADDENDA          = "royan_encounter_note_addenda"
+
+# Accounting ledger archive (migration 192) — finance-side records
+TABLE_ACCOUNT_RECEIPTS          = "royan_account_receipts"           # 50,820
+TABLE_VOUCHER_ENTRIES           = "royan_voucher_entries"            # 78,672
+TABLE_PATIENT_CARD_TRANSACTIONS = "royan_patient_card_transactions"  # 29,357
+TABLE_DISCOUNT_REQUESTS         = "royan_discount_requests"          # 2,082
+TABLE_SETTLEMENT_BILLINGS       = "royan_settlement_billings"        # 302
+
+# Doctor availability blocks (migration 191)
+TABLE_DOCTOR_SCHEDULE_BLOCKS    = "royan_doctor_schedule_blocks"     # 749
+
+# Generic Hope archive (migration 194) — 501,227 rows / 105 source tables
+TABLE_HOPE_REFERENCE_ARCHIVE    = "royan_hope_reference_archive"
 
 # Workflow schema (workflow.*)
 TABLE_WORKFLOW_INSTANCES  = "workflow.instances"

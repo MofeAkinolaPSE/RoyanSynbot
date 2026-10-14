@@ -674,6 +674,38 @@ class RPCQuery:
                 pass
 
 
+class WaitingConnectionPool(psycopg2.pool.ThreadedConnectionPool):
+    """A pool that WAITS (up to PG_POOL_WAIT seconds) for a free connection instead of failing.
+
+    psycopg2's ThreadedConnectionPool raises "connection pool exhausted" the instant every connection
+    is in use, which turned a short burst (one page firing ten requests, a few laptops at once) into
+    500 errors and blank pages. Waiting a moment turns the burst into a queue. The semaphore counts
+    connections handed out; it is released only for connections this pool actually lent."""
+
+    def __init__(self, minconn: int, maxconn: int, wait_seconds: float, *args, **kwargs):
+        super().__init__(minconn, maxconn, *args, **kwargs)
+        import threading
+        self._slots = threading.BoundedSemaphore(maxconn)
+        self._wait = wait_seconds
+
+    def getconn(self, key=None):
+        if not self._slots.acquire(timeout=self._wait):
+            raise psycopg2.pool.PoolError(f"connection pool exhausted (waited {self._wait:g}s)")
+        try:
+            return super().getconn(key)
+        except Exception:
+            self._slots.release()
+            raise
+
+    def putconn(self, conn=None, key=None, close=False):
+        lent = conn is not None and id(conn) in self._rused
+        try:
+            super().putconn(conn, key, close)
+        finally:
+            if lent:
+                self._slots.release()
+
+
 class LocalDBClient:
     def __init__(self, database_url: str | None = None):
         if database_url is None:
@@ -682,9 +714,11 @@ class LocalDBClient:
             raise RuntimeError('DATABASE_URL is required for LocalDBClient')
         # psycopg2 accepts the URL directly. Use a threaded connection pool to reduce overhead.
         try:
-            # minconn=1, maxconn configurable via env
-            maxconn = int(os.getenv('PG_MAX_CONN', '10'))
-            self.pool = psycopg2.pool.ThreadedConnectionPool(1, maxconn, dsn=database_url)
+            # Sized to the request threads (the server runs up to 40 requests at once, each may need
+            # a connection) and kept well under Postgres's max_connections (100). Waits instead of failing.
+            maxconn = int(os.getenv('PG_MAX_CONN', '40'))
+            wait = float(os.getenv('PG_POOL_WAIT', '20'))
+            self.pool = WaitingConnectionPool(2, maxconn, wait, dsn=database_url)
         except Exception:
             # Fallback to direct connection to preserve compatibility
             conn = psycopg2.connect(database_url)

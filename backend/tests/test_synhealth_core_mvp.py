@@ -142,6 +142,28 @@ def test_coverage_quote_applies_percent_limit_and_approval(monkeypatch):
     assert quote["limit_exceeded"] is True
 
 
+def test_coverage_quote_hmo_without_rule_bills_hmo_in_full(monkeypatch):
+    """Royan's practice: an HMO patient pays nothing at the till unless a rule says so (co-pay, %, exclusion)."""
+    fake = FakeDb({
+        TABLE_PATIENT_INSURANCE: [{"id": 1, "patient_id": 10, "hmo_id": 1, "plan_id": None, "membership_id": "AV-1", "status": "active", "is_primary": True}],
+        TABLE_HMOS: [{"id": 1, "name": "AVON", "is_active": True}],
+        TABLE_HMO_PLANS: [],
+        TABLE_SERVICE_CATALOG: [{"id": 5, "service_code": "CONSULT-GEN", "name": "General Consultation", "category": "consultation", "base_price": 5000, "is_active": True}],
+        TABLE_COVERAGE_RULES: [],
+    })
+    monkeypatch.setattr(coverage_service, "db", fake)
+
+    quote = coverage_service.calculate_coverage(
+        coverage_service.CoverageInput(patient_id=10, service_code="CONSULT-GEN", quantity=1, unit_price=5000)
+    )
+
+    assert quote["insurance"]["active"] is True
+    assert quote["covered_amount"] == 5000
+    assert quote["patient_amount"] == 0
+    assert quote["coverage_type"] == "default_full"
+    assert "hmo_default_full_cover" in quote["warnings"]
+
+
 def test_coverage_quote_without_insurance_charges_patient(monkeypatch):
     fake = FakeDb({
         TABLE_PATIENT_INSURANCE: [],

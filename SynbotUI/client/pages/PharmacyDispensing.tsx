@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DoneTodayCard, type DoneRow } from "@/components/shared/DoneTodayCard";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -11,6 +12,7 @@ import {
   Pill, RefreshCw, Loader2, ClipboardList, CheckCircle2, Undo2, Boxes,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
@@ -35,7 +37,8 @@ export default function PharmacyDispensing() {
   const navigate = useNavigate();
 
   const [tab, setTab]                   = useState("prescriptions");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // "active" = still to dispense, any day; dispensed ones move to "Dispensed today" (starts empty each morning)
+  const [statusFilter, setStatusFilter] = useState("active");
 
   // Workspace panel state
   const [panelRx, setPanelRx]                 = useState<Prescription | null>(null);
@@ -44,9 +47,19 @@ export default function PharmacyDispensing() {
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["pharmacy-rx", statusFilter],
-    queryFn: () => api.hospital.pharmacy.listRx(statusFilter !== "all" ? { status: statusFilter } : undefined),
+    queryFn: () => api.hospital.pharmacy.listRx(statusFilter === "active" ? { view: "active" } : statusFilter !== "all" ? { status: statusFilter } : undefined),
     refetchInterval: 60_000,
   });
+  const { data: doneData } = useQuery({
+    queryKey: ["pharmacy-rx", "done-today"],
+    queryFn: () => api.hospital.pharmacy.listRx({ view: "done" }),
+    refetchInterval: 60_000,
+  });
+  const doneList: any[] = doneData?.prescriptions ?? [];
+  const doneRows: DoneRow[] = doneList.map((r: any) => ({
+    id: r.id, patient: r.patient_name ?? `Patient ${r.patient_id}`, mrn: r.patient_mrn,
+    what: [r.drug_name, r.quantity ? `× ${r.quantity}` : null].filter(Boolean).join(" "), at: r.dispensed_at,
+  }));
   const rxList: Prescription[] = Array.isArray(data?.prescriptions) ? data.prescriptions : Array.isArray(data) ? data : [];
 
   const { data: statsData } = useQuery({
@@ -87,11 +100,14 @@ export default function PharmacyDispensing() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pharmacy</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Pharmacy</h1>
+            <ShowMeHow only={["dispensing"]} />
+          </div>
           <p className="text-sm text-muted-foreground">Prescriptions, dispensing, and returns</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate("/hospital/pharmacy/inventory")}>
+          <Button variant="outline" size="sm" className="gap-2" data-tour-id="pharmacy-inventory-link" onClick={() => navigate("/hospital/pharmacy/inventory")}>
             <Boxes className="h-3.5 w-3.5" /> Inventory Workspace
           </Button>
           <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
@@ -124,14 +140,14 @@ export default function PharmacyDispensing() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
+          <TabsTrigger value="prescriptions" data-tour-id="pharmacy-queue">Prescriptions</TabsTrigger>
           <TabsTrigger value="returns">Returns</TabsTrigger>
         </TabsList>
 
         {/* ── Prescriptions Tab ─────────────────────────────────────────── */}
         <TabsContent value="prescriptions" className="space-y-4">
           <div className="mt-4 flex flex-wrap gap-2">
-            {["all", "pending", "partially_dispensed", "dispensed", "cancelled", "returned"].map(s => (
+            {["active", "all", "pending", "partially_dispensed", "dispensed", "cancelled", "returned"].map(s => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
@@ -139,7 +155,7 @@ export default function PharmacyDispensing() {
                   "rounded-full border px-3 py-1 text-xs capitalize transition-colors",
                   statusFilter === s ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted",
                 )}
-              >{s === "all" ? "All" : s.replace(/_/g, " ")}</button>
+              >{s === "active" ? "To dispense" : s === "all" ? "All" : s.replace(/_/g, " ")}</button>
             ))}
           </div>
 
@@ -174,7 +190,7 @@ export default function PharmacyDispensing() {
                             <span className="text-sm font-medium leading-tight">
                               {rx.patient_name ?? <span className="text-muted-foreground italic text-xs">ID {rx.patient_id}</span>}
                             </span>
-                            {rx.patient_mrn && <span className="font-mono text-[12px] text-muted-foreground">{rx.patient_mrn}</span>}
+                            {rx.patient_mrn && <span className="font-mono text-xs text-muted-foreground">{rx.patient_mrn}</span>}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm font-medium">{rx.drug_name}</TableCell>
@@ -188,6 +204,8 @@ export default function PharmacyDispensing() {
               )}
             </CardContent>
           </Card>
+          <DoneTodayCard title="Dispensed today" whatLabel="Drug" rows={doneRows}
+            onOpen={(id) => { const r = doneList.find((x) => x.id === id); if (r) openPanel(r); }} />
         </TabsContent>
 
         {/* ── Returns (SOR) Tab ──────────────────────────────────────────── */}

@@ -6,6 +6,7 @@ owned by Synbot.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,8 +17,11 @@ from src.constants import (
     TABLE_PATIENT_INSURANCE,
     TABLE_PATIENTS,
     TABLE_SERVICE_CATALOG,
+    TABLE_PAYER_SERVICE_PRICES,
 )
 from src.db import db
+
+logger = logging.getLogger("coverage")
 
 
 def _rows(result: Any) -> list[dict[str, Any]]:
@@ -159,15 +163,52 @@ class CoverageInput:
     encounter_id: int | None = None
 
 
+def _payer_price(hmo_id: Any, service_id: Any) -> float | None:
+    """This payer's negotiated price for this service, if one exists.
+
+    Hope priced per payer; migration 188 flattened that to one charge, so every
+    HMO quoted identically. Migration 198 rebuilt the grid from
+    pharmacy_tariff_amounts — 28,750 overrides across 109 payers.
+
+    A missing row is normal and means "no negotiated rate, use the list price":
+    the grid covers pharmacy only, because Hope's general tariff_amounts table
+    was never staged. Returning None lets the caller fall back rather than
+    quoting zero.
+    """
+    if not hmo_id or not service_id:
+        return None
+    try:
+        row = _first(
+            db.table(TABLE_PAYER_SERVICE_PRICES)
+            .select("price")
+            .eq("hmo_id", hmo_id)
+            .eq("service_id", service_id)
+            .limit(1)
+            .execute()
+        )
+        return _num(row.get("price"), None) if row else None
+    except Exception as exc:  # pragma: no cover - degrade to list price
+        logger.warning("payer price lookup failed (hmo=%s service=%s): %s", hmo_id, service_id, exc)
+        return None
+
+
 def calculate_coverage(payload: CoverageInput) -> dict[str, Any]:
     service = _service_lookup(service_id=payload.service_id, service_code=payload.service_code)
+    # Insurance is resolved BEFORE the price, because which payer this is
+    # determines what the service costs.
+    insurance = get_active_patient_insurance(payload.patient_id)
+
+    negotiated = _payer_price((insurance or {}).get("hmo_id"), (service or {}).get("id"))
+    price_basis = "explicit" if payload.unit_price is not None else (
+        "payer_rate" if negotiated is not None else "list_price"
+    )
     unit_price = (
         _num(payload.unit_price, None) if payload.unit_price is not None
+        else negotiated if negotiated is not None
         else _num((service or {}).get("base_price"), 0.0)
     )
     quantity = max(_num(payload.quantity, 1.0), 0.0001)
     gross_amount = _num(payload.amount, quantity * _num(unit_price, 0.0))
-    insurance = get_active_patient_insurance(payload.patient_id)
 
     service_snapshot = {
         "id": (service or {}).get("id") or payload.service_id,
@@ -175,6 +216,10 @@ def calculate_coverage(payload: CoverageInput) -> dict[str, Any]:
         "name": (service or {}).get("name") or payload.service_name or payload.service_code or "Uncatalogued service",
         "category": (service or {}).get("category") or payload.category or "misc",
         "base_price": _num((service or {}).get("base_price"), 0.0),
+        # Which price this quote used, so the UI can show whether a negotiated
+        # rate applied or the list price was assumed.
+        "price_basis": price_basis,
+        "unit_price": _num(unit_price, 0.0),
     }
 
     warnings: list[str] = []
@@ -200,7 +245,12 @@ def calculate_coverage(payload: CoverageInput) -> dict[str, Any]:
 
     rule = _coverage_rule(insurance.get("hmo_id"), insurance.get("plan_id"), service_snapshot.get("id"))
     if not rule:
+        # No rule for this HMO / service: the HMO pays in full (Royan's practice, confirmed by the user Oct 2026;
+        # Hope since 2024: HMO patients paid 0.0% of ₦345m HMO charges at the till). The HMO team confirms the
+        # patient's eligibility and package on the HMO's own platform. A rule (co-pay, percentage, excluded service)
+        # overrides this.
         warnings.append("no_matching_coverage_rule")
+        warnings.append("hmo_default_full_cover")
         return {
             "patient_id": payload.patient_id,
             "encounter_id": payload.encounter_id,
@@ -215,10 +265,10 @@ def calculate_coverage(payload: CoverageInput) -> dict[str, Any]:
                 "legacy_only": bool(insurance.get("legacy_only")),
             },
             "gross_amount": round(gross_amount, 2),
-            "covered_amount": 0.0,
-            "patient_amount": round(gross_amount, 2),
-            "coverage_type": "none",
-            "coverage_value": 0.0,
+            "covered_amount": round(gross_amount, 2),
+            "patient_amount": 0.0,
+            "coverage_type": "default_full",
+            "coverage_value": 100.0,
             "requires_approval": False,
             "approval_required_reason": None,
             "limit_type": "none",

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -378,6 +379,9 @@ export default function QualitySafety() {
                                     Investigate
                                   </Button>
                                 )}
+                                <Link to={`/reports/new?type=incident&kind=incident&id=${inc.id}`}>
+                                  <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border">Report</Button>
+                                </Link>
                                 {nextStatus && (
                                   <Button size="sm" className="h-6 text-xs px-2 bg-blue-700 hover:bg-blue-600"
                                     disabled={statusMut.isPending}

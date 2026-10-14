@@ -1,6 +1,7 @@
 import { defineConfig, Plugin, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { pathToFileURL } from "url";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode, command }) => {
@@ -35,6 +36,7 @@ export default defineConfig(({ mode, command }) => {
       "/audit": { target: backendTarget, changeOrigin: true },
       "/stock": { target: backendTarget, changeOrigin: true },
       "/hr": { target: backendTarget, changeOrigin: true },
+      "/workspace": { target: backendTarget, changeOrigin: true },
       "/ops": { target: backendTarget, changeOrigin: true },
       "/crm": { target: backendTarget, changeOrigin: true },
       "/procurement": { target: backendTarget, changeOrigin: true, ws: true },
@@ -49,6 +51,7 @@ export default defineConfig(({ mode, command }) => {
       "/patients": { target: backendTarget, changeOrigin: true },
       "/realtime": { target: backendTarget, changeOrigin: true, ws: true },
       "/billing_hospital": { target: backendTarget, changeOrigin: true },
+      "/fin": { target: backendTarget, changeOrigin: true },
       "/lab": { target: backendTarget, changeOrigin: true },
       "/pharmacy": { target: backendTarget, changeOrigin: true },
       "/wards": { target: backendTarget, changeOrigin: true },
@@ -95,12 +98,26 @@ function expressPlugin(): Plugin {
       // Non-literal import path prevents esbuild from resolving this at config-load time.
       // apply:"serve" already stops this running during builds; the variable just
       // prevents the static-analysis error when ./server is absent in Docker.
-      const serverEntry = "./server";
-      const { createServer } = await import(serverEntry);
-      const app = createServer();
+      //
+      // Must be an ABSOLUTE file:// URL, not "./server". Vitest transforms this
+      // config into node_modules/.vite-temp/ and then runs it from there, so a
+      // relative specifier resolved to .vite-temp/server and threw
+      // ERR_MODULE_NOT_FOUND — which broke `npx vitest --run` for every spec in
+      // the repo, not just new ones. pathToFileURL also keeps the dynamic
+      // import working on Windows, where a bare absolute path is not a legal
+      // ESM specifier.
+      const serverEntry = pathToFileURL(path.resolve(__dirname, "./server/index.ts")).href;
+      try {
+        const { createServer } = await import(/* @vite-ignore */ serverEntry);
+        const app = createServer();
 
-      // Add Express app as middleware to Vite dev server
-      server.middlewares.use(app);
+        // Add Express app as middleware to Vite dev server
+        server.middlewares.use(app);
+      } catch (err) {
+        // ./server is intentionally absent in some deployments (Docker builds
+        // the SPA only). Dev server should still come up serving the frontend.
+        console.warn("[express-plugin] optional API server not mounted:", (err as Error).message);
+      }
     },
   };
 }

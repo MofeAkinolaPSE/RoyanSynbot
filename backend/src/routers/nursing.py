@@ -115,7 +115,7 @@ class FluidEntry(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/vitals", status_code=201)
-async def record_vitals(payload: VitalsCreate, user=Depends(verify_jwt)):
+def record_vitals(payload: VitalsCreate, user=Depends(verify_jwt)):
     """Record a vitals observation for a patient."""
     data = payload.model_dump(exclude_none=True)
 
@@ -153,7 +153,7 @@ async def record_vitals(payload: VitalsCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/vitals/{patient_id}")
-async def list_vitals(
+def list_vitals(
     patient_id: int,
     encounter_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
@@ -183,7 +183,7 @@ async def list_vitals(
 # ---------------------------------------------------------------------------
 
 @router.post("/care-plans", status_code=201)
-async def create_care_plan(payload: CarePlanCreate, user=Depends(verify_jwt)):
+def create_care_plan(payload: CarePlanCreate, user=Depends(verify_jwt)):
     """Create a nursing care plan entry for a patient problem."""
     if payload.status not in CARE_PLAN_STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of {CARE_PLAN_STATUSES}")
@@ -203,7 +203,7 @@ async def create_care_plan(payload: CarePlanCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/care-plans/{patient_id}")
-async def list_care_plans(
+def list_care_plans(
     patient_id: int,
     encounter_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -220,7 +220,7 @@ async def list_care_plans(
 
 
 @router.patch("/care-plans/{plan_id}")
-async def update_care_plan(plan_id: int, payload: CarePlanUpdate, user=Depends(verify_jwt)):
+def update_care_plan(plan_id: int, payload: CarePlanUpdate, user=Depends(verify_jwt)):
     r = db.table(TABLE_NURSING_CARE_PLANS).select("id").eq("id", plan_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Care plan {plan_id} not found")
@@ -238,7 +238,7 @@ async def update_care_plan(plan_id: int, payload: CarePlanUpdate, user=Depends(v
 # ---------------------------------------------------------------------------
 
 @router.post("/fluid-balance", status_code=201)
-async def log_fluid_entry(payload: FluidEntry, user=Depends(verify_jwt)):
+def log_fluid_entry(payload: FluidEntry, user=Depends(verify_jwt)):
     """Log a single fluid intake or output entry for a patient encounter."""
     if payload.fluid_type not in FLUID_TYPES:
         raise HTTPException(status_code=422, detail=f"fluid_type must be one of {FLUID_TYPES}")
@@ -257,7 +257,7 @@ async def log_fluid_entry(payload: FluidEntry, user=Depends(verify_jwt)):
 
 
 @router.get("/fluid-balance/{encounter_id}")
-async def get_fluid_balance(encounter_id: int, user=Depends(verify_jwt)):
+def get_fluid_balance(encounter_id: int, user=Depends(verify_jwt)):
     """Return all fluid entries for an encounter with running totals."""
     result = (
         db.table(TABLE_FLUID_BALANCE)
@@ -310,7 +310,7 @@ class MARUpdate(BaseModel):
 
 
 @router.post("/mar", status_code=201)
-async def record_mar_entry(payload: MARCreate, user=Depends(verify_jwt)):
+def record_mar_entry(payload: MARCreate, user=Depends(verify_jwt)):
     """Record a medication administration event."""
     if payload.status not in MAR_STATUS_ALLOWED:
         raise HTTPException(status_code=422, detail=f"status must be one of {MAR_STATUS_ALLOWED}")
@@ -347,7 +347,7 @@ async def record_mar_entry(payload: MARCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/mar/{encounter_id}")
-async def list_mar(
+def list_mar(
     encounter_id: int,
     status: Optional[str] = Query(None),
     user=Depends(verify_jwt),
@@ -378,7 +378,7 @@ async def list_mar(
 
 
 @router.patch("/mar/{entry_id}")
-async def update_mar_entry(entry_id: int, payload: MARUpdate, user=Depends(verify_jwt)):
+def update_mar_entry(entry_id: int, payload: MARUpdate, user=Depends(verify_jwt)):
     """Update the status or notes of a MAR entry."""
     r = db.table(TABLE_MAR_ENTRIES).select("id").eq("id", entry_id).execute()
     if not r.data:

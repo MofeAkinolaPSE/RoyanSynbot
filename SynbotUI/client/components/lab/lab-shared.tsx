@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+// Re-exported so existing call sites keep their import path.
+export { DetailRow } from "@/components/shared/panel-shared";
 
 export const ORDER_STATUS_COLORS: Record<string, string> = {
   ordered:          "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
@@ -91,7 +93,7 @@ export function WorkflowProgress({ status, verified }: { status?: string; verifi
                 active && "ring-4 ring-blue-500/20",
               )} />
               <span className={cn(
-                "text-[12px] text-center leading-tight",
+                "text-xs text-center leading-tight",
                 done ? "text-blue-700 dark:text-blue-400 font-medium" : "text-muted-foreground",
               )}>{step.label}</span>
             </div>
@@ -109,14 +111,3 @@ export function WorkflowProgress({ status, verified }: { status?: string; verifi
 }
 
 // ─── Detail row: label + value ─────────────────────────────────────────────
-export function DetailRow({ label, value, mono = false, accent }: {
-  label: string; value?: string | null; mono?: boolean; accent?: string;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex items-start justify-between gap-3 py-1 border-b border-border/30 last:border-0">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className={cn("text-xs text-right font-medium", mono && "font-mono", accent)}>{value}</span>
-    </div>
-  );
-}

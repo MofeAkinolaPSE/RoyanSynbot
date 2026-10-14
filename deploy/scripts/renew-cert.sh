@@ -18,9 +18,9 @@ docker compose run --rm certbot renew --webroot -w /var/www/certbot --quiet
 
 echo "[$(date)] Re-installing certificate for nginx (idempotent if unchanged) ..."
 docker compose run --rm --entrypoint sh certbot -c "
-  cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /nginx-ssl/cert.pem &&
-  cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem /nginx-ssl/key.pem
+  cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /etc/nginx/ssl/cert.pem &&
+  cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem /etc/nginx/ssl/key.pem
 "
-docker compose restart nginx
+docker compose exec nginx nginx -s reload
 
 echo "[$(date)] Done."

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import os
@@ -29,12 +29,16 @@ from pydantic import BaseModel, Field
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
 from src.services.event_service import emit_clinical_event
+from src.cache import invalidate_cache_tags
+from src.services.clinical_shared import attach_staff_names
 from src.services.realtime import realtime_hub
 from src.constants import (
     LAB_INTERPRETATION_ALLOWED,
     LAB_ORDER_STATUS_ALLOWED,
     LAB_URGENCY_ALLOWED,
     TABLE_LAB_CATALOG,
+    TABLE_HMOS,
+    TABLE_PAYER_SERVICE_PRICES,
     TABLE_LAB_ORDERS,
     TABLE_LAB_RESULTS,
     TABLE_LAB_REFERENCE_RANGES,
@@ -42,6 +46,7 @@ from src.constants import (
     TABLE_LAB_TEST_TEMPLATES,
     TABLE_PATIENTS,
     TABLE_ENCOUNTERS,
+    TABLE_PRESCRIPTIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -240,6 +245,67 @@ def _get_latest_result(order_id: int) -> Optional[dict]:
     return result.data[0] if result.data else None
 
 
+def _advance_encounter_after_result(encounter_id: Optional[int]) -> None:
+    """Move an encounter out of `lab_ordered` once its last lab is resulted.
+
+    THE BUG THIS FIXES, as reported: "on the lab dashboard, it showed resulted.
+    But on the OPD dashboard, it still showed lab ordered."
+
+    end_consultation() parks an encounter in `lab_ordered` while results are
+    outstanding, but nothing ever moved it back -- resulting a lab updated the
+    ORDER and left the ENCOUNTER untouched. So the two screens disagreed
+    permanently, and the doctor had no signal that results had arrived.
+
+    The encounter lands in `awaiting_results`, not `billing_pending`: results
+    being ready is not the same as the doctor having read them. That distinction
+    is what makes the results-review queue possible.
+
+    Best-effort. A lab result must never fail because a queue move failed.
+    """
+    if not encounter_id:
+        return
+    try:
+        enc = (
+            db.table(TABLE_ENCOUNTERS).select("id,status,review_after_results")
+            .eq("id", encounter_id).limit(1).execute().data
+        )
+        if not enc or enc[0].get("status") != "lab_ordered":
+            return
+
+        still_pending = (
+            db.table(TABLE_LAB_ORDERS).select("id")
+            .eq("encounter_id", encounter_id)
+            .not_in("status", ["resulted", "sent_out", "cancelled"])
+            .limit(1).execute().data
+        )
+        if still_pending:
+            return
+
+        # The doctor asked to see the patient again with the results -> back for review ("Results ready").
+        # Otherwise the consultation is over: on to the pharmacy if drugs are waiting, else to payment / discharge.
+        target = "awaiting_results"
+        if enc[0].get("review_after_results") is False:
+            rx_pending = (
+                db.table(TABLE_PRESCRIPTIONS).select("id").eq("encounter_id", encounter_id)
+                .in_("status", ["pending", "partially_dispensed"]).limit(1).execute().data
+            )
+            target = "pharmacy_dispensing" if rx_pending else "billing_pending"
+        db.table(TABLE_ENCOUNTERS).update({
+            "status": target,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", encounter_id).execute()
+
+        invalidate_cache_tags("hospital", "queue", "encounters", "patient_flow")
+        realtime_hub.publish("encounter_updates", {
+            "event": "results_ready",
+            "encounter_id": encounter_id,
+            "status": target,
+        })
+        logger.info("Encounter %s -> %s (all labs resulted)", encounter_id, target)
+    except Exception as exc:
+        logger.warning("Could not advance encounter %s after result: %s", encounter_id, exc)
+
+
 def _build_result_row(order: dict, payload: "LabResultCreate", resulted_by: str) -> dict:
     """Build a royan_lab_results row from a result payload — shared by
     record_result (insert/update) and amend_result (always insert)."""
@@ -305,7 +371,7 @@ def _get_specimen_for_order(order_id: int, specimen_id: Optional[int], statuses:
 # ---------------------------------------------------------------------------
 
 @router.post("/orders", status_code=201)
-async def place_lab_order(payload: LabOrderCreate, user=Depends(verify_jwt)):
+def place_lab_order(payload: LabOrderCreate, user=Depends(verify_jwt)):
     """Place a new lab order for a patient encounter."""
     if payload.urgency not in URGENCY_LEVELS:
         raise HTTPException(status_code=422, detail=f"urgency must be one of {URGENCY_LEVELS}")
@@ -332,7 +398,7 @@ async def place_lab_order(payload: LabOrderCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/stats")
-async def lab_stats(user=Depends(verify_jwt)):
+def lab_stats(user=Depends(verify_jwt)):
     """Return aggregate counts per status for the KPI dashboard cards."""
     result = db.table(TABLE_LAB_ORDERS).select("status, urgency, ordered_at").is_("external_source", None).execute()
     rows = result.data or []
@@ -371,16 +437,19 @@ async def lab_stats(user=Depends(verify_jwt)):
 
 
 @router.get("/orders")
-async def list_lab_orders(
+def list_lab_orders(
     status: Optional[str] = Query(None),
     patient_id: Optional[int] = Query(None),
     encounter_id: Optional[int] = Query(None),
     urgency: Optional[str] = Query(None),
     ordered_by: Optional[str] = Query(None, description="Filter to orders placed by this user (JWT sub)"),
+    view: Optional[str] = Query(None, pattern="^(active|done)$", description="active: still to do (any day); done: resulted today"),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
     query = db.table(TABLE_LAB_ORDERS).select("*").is_("external_source", None).order("ordered_at", desc=True).limit(limit)
+    from src.services.worklist import apply_view
+    query = apply_view(query, view, {"ordered", "sample_collected", "processing", "sent_out"}, {"resulted"}, "updated_at")
     if status:
         query = query.eq("status", status)
     if patient_id:
@@ -422,7 +491,7 @@ async def list_lab_orders(
 
 
 @router.get("/orders/{order_id}")
-async def get_lab_order(order_id: int, user=Depends(verify_jwt)):
+def get_lab_order(order_id: int, user=Depends(verify_jwt)):
     order = _get_order(order_id)
     result = _get_latest_result(order_id)
     specimens = (
@@ -432,15 +501,25 @@ async def get_lab_order(order_id: int, user=Depends(verify_jwt)):
         .order("id", desc=True)
         .execute()
     )
+    # "the test should show who authenticated that result" — these columns hold a
+    # JWT uuid, so the panel was printing one. Resolved to names on read.
+    if result:
+        attach_staff_names([result], {
+            "resulted_by": "resulted_by_name",
+            "verified_by": "verified_by_name",
+        })
+    attach_staff_names(specimens.data or [], {"collected_by": "collected_by_name"})
     return {"order": order, "result": result, "specimens": specimens.data or []}
 
 
 @router.post("/orders/{order_id}/collect")
-async def collect_sample(order_id: int, payload: SampleCollectedRequest, user=Depends(verify_jwt)):
+def collect_sample(order_id: int, payload: SampleCollectedRequest, user=Depends(verify_jwt)):
     """Mark a sample as collected and log the specimen."""
     order = _get_order(order_id)
     if order["status"] != "ordered":
         raise HTTPException(status_code=409, detail=f"Order is '{order['status']}'; sample collection requires 'ordered' status")
+    from src.services.stage_billing import require_clearance   # pay before the sample is taken (private outpatients)
+    require_clearance("lab_order", order_id)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     specimen_type = payload.specimen_type or order.get("sample_type") or "blood"
@@ -498,7 +577,7 @@ async def collect_sample(order_id: int, payload: SampleCollectedRequest, user=De
 
 
 @router.post("/orders/{order_id}/receive")
-async def receive_specimen(order_id: int, payload: ReceiveRequest, user=Depends(verify_jwt)):
+def receive_specimen(order_id: int, payload: ReceiveRequest, user=Depends(verify_jwt)):
     """Mark a collected specimen as received by the lab and start processing."""
     order = _get_order(order_id)
     if order["status"] != "sample_collected":
@@ -524,7 +603,7 @@ async def receive_specimen(order_id: int, payload: ReceiveRequest, user=Depends(
 
 
 @router.post("/orders/{order_id}/reject")
-async def reject_specimen(order_id: int, payload: RejectRequest, user=Depends(verify_jwt)):
+def reject_specimen(order_id: int, payload: RejectRequest, user=Depends(verify_jwt)):
     """Reject a specimen and reopen the order for a redraw."""
     order = _get_order(order_id)
     if order["status"] not in ("sample_collected", "processing"):
@@ -584,7 +663,8 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
         raise HTTPException(status_code=500, detail="Failed to save result")
 
     # Update order status
-    db.table(TABLE_LAB_ORDERS).update({"status": "resulted"}).eq("id", order_id).execute()
+    db.table(TABLE_LAB_ORDERS).update({"status": "resulted", "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", order_id).execute()
+    _advance_encounter_after_result(order.get("encounter_id"))
 
     res_row = result.data[0] if result.data else {**data, "id": existing["id"] if existing else None}
     if payload.is_critical:
@@ -616,18 +696,18 @@ async def record_result(order_id: int, payload: LabResultCreate, user=Depends(ve
     # to connected clients without it, so the OPD queue/doctor dashboard
     # would only pick a new result up on a manual refresh.
     if order.get("encounter_id"):
-        asyncio.create_task(realtime_hub.broadcast("encounter_updates", {
+        realtime_hub.publish("encounter_updates", {
             "event": "lab_result_ready",
             "encounter_id": order.get("encounter_id"),
             "order_id": order_id,
             "test_name": order.get("test_name"),
             "is_critical": payload.is_critical,
-        }))
+        })
     return {"ok": True, "result": res_row}
 
 
 @router.post("/orders/{order_id}/verify")
-async def verify_result(order_id: int, payload: VerifyRequest, user=Depends(verify_jwt)):
+def verify_result(order_id: int, payload: VerifyRequest, user=Depends(verify_jwt)):
     """Verify and authenticate the current lab result. This also serves as
     critical-result acknowledgement — /lab/critical already filters on
     verified_at IS NULL. Authenticated results are immutable from here on;
@@ -662,7 +742,7 @@ async def verify_result(order_id: int, payload: VerifyRequest, user=Depends(veri
 
 
 @router.post("/orders/{order_id}/result/amend", status_code=201)
-async def amend_result(order_id: int, payload: ResultAmendRequest, user=Depends(verify_jwt)):
+def amend_result(order_id: int, payload: ResultAmendRequest, user=Depends(verify_jwt)):
     """Correct a verified result. Authenticated results are immutable, so
     this inserts a new row referencing the one it supersedes rather than
     editing verified_by/verified_at in place. The amendment starts its own
@@ -701,7 +781,7 @@ async def amend_result(order_id: int, payload: ResultAmendRequest, user=Depends(
 
 
 @router.get("/orders/{order_id}/results")
-async def list_result_versions(order_id: int, user=Depends(verify_jwt)):
+def list_result_versions(order_id: int, user=Depends(verify_jwt)):
     """All result-row versions for an order, oldest first — the amendment trail."""
     _get_order(order_id)
     result = (
@@ -720,7 +800,7 @@ async def list_result_versions(order_id: int, user=Depends(verify_jwt)):
 # Bilirubin" → "Total Bilirubin" / "Direct Bilirubin").
 
 @router.post("/templates", status_code=201)
-async def create_lab_template(payload: LabTemplateCreate, user=Depends(verify_jwt)):
+def create_lab_template(payload: LabTemplateCreate, user=Depends(verify_jwt)):
     """Create a lab test template, or a new version if one is already active
     for this test_name (the prior version is deactivated, not deleted, so
     existing results keep resolving to the template they were entered against)."""
@@ -762,7 +842,7 @@ async def create_lab_template(payload: LabTemplateCreate, user=Depends(verify_jw
 
 
 @router.get("/templates")
-async def list_lab_templates(
+def list_lab_templates(
     test_name: Optional[str] = Query(None),
     active_only: bool = Query(True),
     user=Depends(verify_jwt),
@@ -778,7 +858,7 @@ async def list_lab_templates(
 
 
 @router.get("/templates/for-test")
-async def get_template_for_test(
+def get_template_for_test(
     test_name: str = Query(..., min_length=1),
     user=Depends(verify_jwt),
 ):
@@ -789,7 +869,7 @@ async def get_template_for_test(
 
 
 @router.get("/turnaround")
-async def lab_turnaround(
+def lab_turnaround(
     limit: int = Query(50, ge=1, le=500),
     user=Depends(verify_jwt),
 ):
@@ -812,7 +892,7 @@ async def lab_turnaround(
 
 
 @router.get("/critical")
-async def critical_results(user=Depends(verify_jwt)):
+def critical_results(user=Depends(verify_jwt)):
     """List all critical lab results that have not been verified. Enriched
     with the parent order's test_name and the patient's name/MRN so this can
     drive a clickable worklist — note `id` here is the *result* row id, the
@@ -852,8 +932,238 @@ async def critical_results(user=Depends(verify_jwt)):
 
 # ─── Lab Catalog Search ───────────────────────────────────────────────────────
 
+# -- Test catalogue -----------------------------------------------------------
+#
+# "we need to see the different types of tests, and the cost of those tests, and
+# have the ability to add a new test and the information that comes along with
+# the test."
+#
+# Only /catalog/search existed, which serves a typeahead and nothing else --
+# there was no way to see the catalogue as a list, and no way to add to it.
+# Migration 200 priced 281 of 288 tests, so the cost is now real data rather
+# than a column of zeros.
+
+class LabCatalogEntry(BaseModel):
+    name: str = Field(..., min_length=2, max_length=200)
+    code: Optional[str] = Field(None, max_length=50)
+    category: Optional[str] = Field(None, max_length=60)
+    specimen_type: Optional[str] = Field(None, max_length=60)
+    unit: Optional[str] = Field(None, max_length=40)
+    reference_range: Optional[str] = Field(None, max_length=200)
+    turnaround_hours: Optional[int] = Field(None, ge=0, le=720)
+    base_price: Optional[float] = Field(None, ge=0)
+    loinc_code: Optional[str] = Field(None, max_length=40)
+    requires_fasting: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/catalog")
+def list_lab_catalog(
+    q: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
+    limit: int = Query(300, ge=1, le=1000),
+    user=Depends(verify_jwt),
+):
+    """The full test catalogue, with prices."""
+    try:
+        query = db.table(TABLE_LAB_CATALOG).select(
+            "id,name,code,loinc_code,category,specimen_type,unit,reference_range,"
+            "turnaround_hours,base_price,requires_fasting,is_active,external_source"
+        )
+        if not include_inactive:
+            query = query.eq("is_active", True)
+        if category:
+            query = query.eq("category", category)
+        if q:
+            query = query.ilike("name", "%%%s%%" % q)
+        rows = query.order("name").limit(limit).execute().data or []
+    except Exception as exc:
+        logger.warning("Lab catalogue listing failed: %s", exc)
+        return {"tests": [], "count": 0, "unpriced": 0, "categories": []}
+
+    # Surfaced rather than left for someone to notice on an invoice: an unpriced
+    # test bills at zero.
+    unpriced = sum(1 for r in rows if not (r.get("base_price") or 0))
+
+    try:
+        all_rows = db.table(TABLE_LAB_CATALOG).select("category").execute().data or []
+        categories = sorted({(r.get("category") or "").strip() for r in all_rows if r.get("category")})
+    except Exception:
+        categories = []
+
+    return {"tests": rows, "count": len(rows), "unpriced": unpriced, "categories": categories}
+
+
+@router.post("/catalog", status_code=201)
+def create_lab_catalog_entry(payload: LabCatalogEntry, user=Depends(verify_jwt)):
+    """Add a test to the catalogue."""
+    name = payload.name.strip()
+    try:
+        clash = db.table(TABLE_LAB_CATALOG).select("id,name").ilike("name", name).limit(1).execute().data
+    except Exception:
+        clash = []
+    if clash:
+        # A duplicate test splits its results across two catalogue entries, so
+        # neither shows the patient's full history for that test.
+        raise HTTPException(
+            status_code=409,
+            detail="A test named '%s' already exists in the catalogue." % clash[0].get("name"),
+        )
+
+    row = {k: v for k, v in payload.model_dump().items() if v is not None}
+    row["name"] = name
+    row.setdefault("is_active", True)
+    try:
+        created = db.table(TABLE_LAB_CATALOG).insert(row).execute()
+    except Exception as exc:
+        logger.error("Lab catalogue insert failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not add the test")
+
+    audit_event("lab_catalog_created", {"name": name, "base_price": payload.base_price},
+                actor_id=user.get("sub"), subject_type="lab_catalog", subject_id=name)
+    invalidate_cache_tags("lab", "hospital")
+    return {"ok": True, "test": (created.data or [row])[0]}
+
+
+@router.patch("/catalog/{test_id}")
+def update_lab_catalog_entry(test_id: int, payload: LabCatalogEntry, user=Depends(verify_jwt)):
+    """Correct a test's details or price."""
+    row = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not row:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    try:
+        db.table(TABLE_LAB_CATALOG).update(row).eq("id", test_id).execute()
+    except Exception as exc:
+        logger.error("Lab catalogue update failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not update the test")
+
+    audit_event("lab_catalog_updated", {"test_id": test_id, **row},
+                actor_id=user.get("sub"), subject_type="lab_catalog", subject_id=str(test_id))
+    invalidate_cache_tags("lab", "hospital")
+    return {"ok": True, "test_id": test_id}
+
+
+@router.get("/catalog/{test_id}/detail")
+def lab_test_detail(test_id: int, user=Depends(verify_jwt)):
+    """Configuration, every payer's price, and how the test actually performs.
+
+    Gives the lab an administrative workspace rather than a list: what this test
+    is, what each HMO pays for it, how often it is ordered and how long it
+    really takes.
+
+    ORDER VOLUME IS MATCHED BY NAME, NOT catalog_id.
+    royan_lab_orders.catalog_id is populated on 0 of 203,525 rows -- the FK
+    exists but was never written. 237 of the 239 distinct test names on orders
+    do match the catalogue, so the name is the only working link. Recorded here
+    because it looks like a bug in this endpoint otherwise.
+    """
+    found = db.table(TABLE_LAB_CATALOG).select("*").eq("id", test_id).limit(1).execute().data
+    if not found:
+        raise HTTPException(status_code=404, detail="Test %s not found" % test_id)
+    test = found[0]
+    name = (test.get("name") or "").strip()
+
+    # --- per-payer pricing ---------------------------------------------------
+    payer_prices = []
+    try:
+        rows = (
+            db.table(TABLE_PAYER_SERVICE_PRICES)
+            .select("id,hmo_id,price").eq("lab_catalog_id", test_id).execute().data or []
+        )
+        hmo_ids = list({r["hmo_id"] for r in rows if r.get("hmo_id")})
+        names = {}
+        if hmo_ids:
+            hm = db.table(TABLE_HMOS).select("id,name,is_active").in_("id", hmo_ids).execute()
+            names = {h["id"]: h for h in hm.data or []}
+        for r in rows:
+            h = names.get(r.get("hmo_id")) or {}
+            # Retired payers still carry historical rates; showing them as
+            # current would misrepresent what the hospital can bill today.
+            if h.get("is_active") is False:
+                continue
+            payer_prices.append({
+                "id": r["id"], "hmo_id": r["hmo_id"],
+                "hmo_name": h.get("name"), "price": r.get("price"),
+            })
+        payer_prices.sort(key=lambda x: float(x.get("price") or 0), reverse=True)
+    except Exception as exc:
+        logger.warning("Payer price lookup failed for test %s: %s", test_id, exc)
+
+    # --- activity ------------------------------------------------------------
+    stats = {"orders_total": 0, "orders_30d": 0, "resulted": 0, "pending": 0,
+             "avg_turnaround_hours": None}
+    recent = []
+    if name:
+        try:
+            orders = (
+                db.table(TABLE_LAB_ORDERS)
+                .select("id,status,ordered_at,patient_id,urgency")
+                .ilike("test_name", name).order("ordered_at", desc=True)
+                .limit(500).execute().data or []
+            )
+            stats["orders_total"] = len(orders)
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=30))
+            for o in orders:
+                if o.get("status") in ("resulted", "sent_out"):
+                    stats["resulted"] += 1
+                elif o.get("status") not in ("cancelled",):
+                    stats["pending"] += 1
+                ts = o.get("ordered_at")
+                if ts:
+                    try:
+                        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        if d.tzinfo is None:
+                            d = d.replace(tzinfo=timezone.utc)
+                        if d >= cutoff:
+                            stats["orders_30d"] += 1
+                    except (ValueError, TypeError):
+                        pass
+            recent = orders[:10]
+        except Exception as exc:
+            logger.warning("Order activity lookup failed for '%s': %s", name, exc)
+
+    # Measured turnaround, rather than the configured target -- the gap between
+    # the two is the number a lab manager actually wants.
+    try:
+        oids = [o["id"] for o in recent if o.get("id")]
+        if oids:
+            res = (
+                db.table(TABLE_LAB_RESULTS).select("lab_order_id,resulted_at")
+                .in_("lab_order_id", oids).execute().data or []
+            )
+            by_order = {r["lab_order_id"]: r.get("resulted_at") for r in res}
+            deltas = []
+            for o in recent:
+                a, b = o.get("ordered_at"), by_order.get(o.get("id"))
+                if not a or not b:
+                    continue
+                try:
+                    da = datetime.fromisoformat(str(a).replace("Z", "+00:00"))
+                    dbb = datetime.fromisoformat(str(b).replace("Z", "+00:00"))
+                    if da.tzinfo is None: da = da.replace(tzinfo=timezone.utc)
+                    if dbb.tzinfo is None: dbb = dbb.replace(tzinfo=timezone.utc)
+                    hours = (dbb - da).total_seconds() / 3600.0
+                    if 0 <= hours < 24 * 30:
+                        deltas.append(hours)
+                except (ValueError, TypeError):
+                    continue
+            if deltas:
+                stats["avg_turnaround_hours"] = round(sum(deltas) / len(deltas), 1)
+    except Exception:
+        pass
+
+    return {
+        "test": test,
+        "payer_prices": payer_prices,
+        "payer_count": len(payer_prices),
+        "stats": stats,
+        "recent_orders": recent,
+    }
+
+
 @router.get("/catalog/search")
-async def search_lab_catalog(
+def search_lab_catalog(
     q: str = Query(..., min_length=2, description="Code, name, or abbreviation keyword"),
     limit: int = Query(20, ge=1, le=50),
     user=Depends(verify_jwt),
@@ -895,7 +1205,7 @@ class ReferenceRangeCreate(BaseModel):
 
 
 @router.get("/reference-ranges")
-async def list_reference_ranges(
+def list_reference_ranges(
     test_name: Optional[str] = Query(None),
     user=Depends(verify_jwt),
 ):
@@ -908,7 +1218,7 @@ async def list_reference_ranges(
 
 
 @router.post("/reference-ranges", status_code=201)
-async def create_reference_range(payload: ReferenceRangeCreate, user=Depends(verify_jwt)):
+def create_reference_range(payload: ReferenceRangeCreate, user=Depends(verify_jwt)):
     """Create a lab reference range entry."""
     data = payload.model_dump(exclude_none=True)
     try:
@@ -922,7 +1232,7 @@ async def create_reference_range(payload: ReferenceRangeCreate, user=Depends(ver
 
 
 @router.patch("/reference-ranges/{range_id}")
-async def update_reference_range(range_id: int, payload: ReferenceRangeCreate, user=Depends(verify_jwt)):
+def update_reference_range(range_id: int, payload: ReferenceRangeCreate, user=Depends(verify_jwt)):
     r = db.table(TABLE_LAB_REFERENCE_RANGES).select("id").eq("id", range_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Reference range {range_id} not found")
@@ -932,7 +1242,7 @@ async def update_reference_range(range_id: int, payload: ReferenceRangeCreate, u
 
 
 @router.delete("/reference-ranges/{range_id}")
-async def delete_reference_range(range_id: int, user=Depends(verify_jwt)):
+def delete_reference_range(range_id: int, user=Depends(verify_jwt)):
     r = db.table(TABLE_LAB_REFERENCE_RANGES).select("id").eq("id", range_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Reference range {range_id} not found")
@@ -943,7 +1253,7 @@ async def delete_reference_range(range_id: int, user=Depends(verify_jwt)):
 # ─── Cumulative Patient History ───────────────────────────────────────────────
 
 @router.get("/patients/{patient_id}/history")
-async def patient_lab_history(
+def patient_lab_history(
     patient_id: int,
     test_name: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
@@ -984,7 +1294,7 @@ class SendOutRequest(BaseModel):
 
 
 @router.post("/orders/{order_id}/send-out")
-async def mark_sent_out(order_id: int, payload: SendOutRequest, user=Depends(verify_jwt)):
+def mark_sent_out(order_id: int, payload: SendOutRequest, user=Depends(verify_jwt)):
     """Mark a lab order as sent to an external laboratory."""
     order = _get_order(order_id)
     if order["status"] in ("resulted", "cancelled"):
@@ -1058,7 +1368,7 @@ async def upload_lab_report(
 
 
 @router.get("/reports/{filename}")
-async def serve_lab_report(filename: str, user=Depends(verify_jwt)):
+def serve_lab_report(filename: str, user=Depends(verify_jwt)):
     """Serve a stored lab report file to authenticated users."""
     # Prevent path traversal
     safe_filename = os.path.basename(filename)

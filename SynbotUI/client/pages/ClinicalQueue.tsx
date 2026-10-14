@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +22,7 @@ import {
   Activity, Users, Clock, AlertTriangle, RefreshCw, Loader2,
   ClipboardCheck, Stethoscope, LogOut, Plus, LayoutGrid, List,
   Syringe, PhoneCall, HeartPulse, UserCog, FlaskConical, ScanLine, FileCheck2,
-  ReceiptText, Pill,
+  ReceiptText, Pill, BedDouble
 } from "lucide-react";
 import { PatientCprsPanel } from "@/components/PatientCprsPanel";
 import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
@@ -33,7 +33,12 @@ import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AlertBanner } from "@/components/AlertBanner";
-import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
+import { ENCOUNTER_STATUS_COLORS, encounterStatusLabel } from "@/lib/encounter-status";
+import { doneToday } from "@/components/shared/DoneTodayCard";
+import { InpatientQueue } from "@/components/opd/InpatientQueue";
+import { BedWorkspacePanel } from "@/components/wards/BedWorkspacePanel";
+import { NoteEntryButtons } from "@/components/shared/NoteEntryButtons";
+import { NursingWorkspacePanel } from "@/components/nursing/NursingWorkspacePanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Encounter {
@@ -57,6 +62,19 @@ interface Encounter {
   paused_at?: string;
   hmo_provider?: string;
   patient_type?: string;
+  doctor_id?: string;
+  consulting_doctor?: string;
+  discharge_at?: string;
+  /** What the patient still owes on this visit (bills less receipts; the HMO's share excluded). */
+  amount_owed?: number;
+  /** "hmo" when a live policy exists, else "private". Derived server-side. */
+  payer_type?: "hmo" | "private";
+  /** Set when a private outpatient must pay at the cashier before the next service. */
+  pay_first?: { owed: number; bills: string[] } | null;
+  insurance?: { membership_id?: string; plan_name?: string; hmo_name?: string } | null;
+  /** Hours for a newborn, days, then months, then years — see format_patient_age. */
+  age_display?: string;
+  gender?: string;
   assigned_nurse_id?: string;
   assigned_nurse_name?: string;
   lab_order_count?: number;
@@ -79,8 +97,8 @@ const TRIAGE_COLORS: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   const cls = STATUS_COLORS[status] ?? "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30";
   return (
-    <Badge variant="outline" className={cn("text-xs capitalize whitespace-nowrap", cls)}>
-      {status.replace(/_/g, " ")}
+    <Badge variant="outline" className={cn("text-xs font-semibold whitespace-nowrap", cls)}>
+      {encounterStatusLabel(status)}
     </Badge>
   );
 }
@@ -95,44 +113,32 @@ function waitMins(ts?: string): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 // ─── Kanban column config ─────────────────────────────────────────────────────
 const KANBAN_COLUMNS = [
-  {
-    key: "waiting",
-    label: "Waiting",
-    color: "border-yellow-500/30 bg-yellow-500/5",
-    headerColor: "text-yellow-700 dark:text-yellow-400",
-    statuses: ["patient_registered"],
-  },
-  {
-    key: "triaged",
-    label: "Triaged",
-    color: "border-orange-500/30 bg-orange-500/5",
-    headerColor: "text-orange-700 dark:text-orange-400",
-    statuses: ["triaged"],
-  },
-  {
-    key: "nurse",
-    label: "Nurse / Called",
-    color: "border-teal-500/30 bg-teal-500/5",
-    headerColor: "text-teal-700 dark:text-teal-400",
-    statuses: ["nurse_assessment", "called"],
-  },
-  {
-    key: "consulting",
-    label: "Consulting",
-    color: "border-blue-500/30 bg-blue-500/5",
-    headerColor: "text-blue-700 dark:text-blue-400",
-    statuses: ["consulting", "lab_ordered", "pharmacy_dispensing"],
-  },
-  {
-    key: "billing",
-    label: "Billing / Done",
-    color: "border-green-500/30 bg-green-500/5",
-    headerColor: "text-green-700 dark:text-green-400",
-    statuses: ["billing_pending", "discharged"],
-  },
+  { key: "vitals", label: "Waiting for vitals", color: "border-amber-500/30 bg-amber-500/5", headerColor: "text-amber-800 dark:text-amber-400",
+    statuses: ["patient_registered", "triaged"] },
+  { key: "ready", label: "Ready for doctor", color: "border-sky-500/30 bg-sky-500/5", headerColor: "text-sky-800 dark:text-sky-400",
+    statuses: ["nurse_assessment", "called"] },
+  { key: "doctor", label: "With doctor", color: "border-blue-500/30 bg-blue-500/5", headerColor: "text-blue-800 dark:text-blue-400",
+    statuses: ["consulting"] },
+  { key: "results", label: "Results", color: "border-teal-500/30 bg-teal-500/5", headerColor: "text-teal-800 dark:text-teal-300",
+    statuses: ["lab_ordered", "awaiting_results"] },
+  { key: "done", label: "Pharmacy · pay · discharge", color: "border-green-500/30 bg-green-500/5", headerColor: "text-green-800 dark:text-green-400",
+    statuses: ["pharmacy_dispensing", "billing_pending"] },
 ] as const;
 
-const ROOMS = ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"];
+// Named "Consulting Room N" rather than "Room N" — asked for directly, and it
+// removes a real ambiguity: ward rooms carry the same numbers (Room101, Room103)
+// and appear in the same system.
+const ROOMS = ["Consulting Room 1", "Consulting Room 2", "Consulting Room 3", "Consulting Room 4", "Consulting Room 5"];
+
+/**
+ * "Waiting" spans two statuses, so it cannot be expressed as a single backend
+ * status filter. It is kept here rather than inlined because the same pair
+ * defines the dashboards' "Patients Waiting" figure (see
+ * hospital_ops.get_patient_flow_kpis) — if the two ever disagree, a tile links
+ * to a list that contradicts it.
+ */
+export const WAITING_FILTER = "waiting";
+export const WAITING_STATUSES = ["patient_registered", "triaged"];
 
 export default function ClinicalQueue() {
   const qc = useQueryClient();
@@ -140,7 +146,44 @@ export default function ClinicalQueue() {
   const navigate = useNavigate();
 
   const [viewMode, setViewMode] = useState<"table" | "board">("table");
-  const [filter, setFilter] = useState<string>("all");
+  // Seeded from ?status= so a dashboard tile can deep-link into the exact slice
+  // of the queue it was counting.
+  //
+  // MUST be declared before any useState whose lazy initialiser reads it.
+  // useState runs that initialiser immediately, so a reference from above this
+  // line throws "Cannot access 'searchParams' before initialization" and blanks
+  // the whole page. tsc does not catch it: the read sits inside an arrow
+  // function, so it cannot prove when the closure runs.
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // OPD (people waiting to be seen) vs IPD (people in a bed). Two genuinely
+  // different worklists that staff alternate between, so a switch rather than
+  // two pages -- the patient identity, the panel and the muscle memory are the
+  // same either way.
+  const [queueKind, setQueueKind] = useState<"opd" | "ipd">(
+    () => (searchParams.get("kind") === "ipd" ? "ipd" : "opd"),
+  );
+  const [ipdBed, setIpdBed] = useState<any | null>(null);
+  const [filter, setFilter] = useState<string>(() => searchParams.get("status") ?? "all");
+
+  // Keep the URL in step, so the filtered view is shareable and survives reload.
+  useEffect(() => {
+    const current = searchParams.get("status") ?? "all";
+    if (current === filter) return;
+    const next = new URLSearchParams(searchParams);
+    if (filter === "all") next.delete("status");
+    else next.set("status", filter);
+    setSearchParams(next, { replace: true });
+  }, [filter, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const current = searchParams.get("kind") ?? "opd";
+    if (current === queueKind) return;
+    const next = new URLSearchParams(searchParams);
+    if (queueKind === "opd") next.delete("kind");
+    else next.set("kind", queueKind);
+    setSearchParams(next, { replace: true });
+  }, [queueKind, searchParams, setSearchParams]);
   const [triageOpen, setTriageOpen] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
@@ -149,9 +192,11 @@ export default function ClinicalQueue() {
   const [cprsMrn, setCprsMrn] = useState<string | null>(null);
   const [opdPanelEnc, setOpdPanelEnc] = useState<Encounter | null>(null);
   const [opdPanelInitialTab, setOpdPanelInitialTab] = useState<string | undefined>(undefined);
+  // The nursing record is a different panel from the doctor's, not a tab on it.
+  const [nursePanelEnc, setNursePanelEnc] = useState<any | null>(null);
   const [callRoomEnc, setCallRoomEnc] = useState<Encounter | null>(null);
   const [billEnc, setBillEnc] = useState<Encounter | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState("Room 1");
+  const [selectedRoom, setSelectedRoom] = useState("Consulting Room 1");
   const [consultForm, setConsultForm] = useState({ doctor_id: "", diagnosis_notes: "", icd10_search: "" });
   const [icd10Search, setIcd10Search] = useState("");
 
@@ -167,12 +212,32 @@ export default function ClinicalQueue() {
     spo2: "", respiratory_rate: "", weight: "",
   });
 
-  // Queue data
+  // Queue data.
+  //
+  // "waiting" is a client-side pseudo-status covering the two statuses that
+  // together mean "not yet seen". It exists so the dashboards' "Patients
+  // Waiting" tile can link somewhere that shows exactly the patients it
+  // counted — linking to a single status would land the reader on a list
+  // shorter than the number they clicked.
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["clinical-queue", filter],
-    queryFn: () => api.hospital.queue.list(filter !== "all" ? { status: filter } : undefined),
+    queryFn: () =>
+      api.hospital.queue.list(
+        filter === "all" || filter === WAITING_FILTER
+          ? { active_only: true }
+          : { status: filter },
+      ),
     refetchInterval: 30_000,
   });
+  const { data: dischargedData } = useQuery({
+    queryKey: ["clinical-queue", "discharged"],
+    queryFn: () => api.hospital.queue.list({ status: "discharged" }),
+    refetchInterval: 60_000,
+  });
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const recentlyDischarged: Encounter[] = (dischargedData?.encounters ?? [])
+    .filter((e: Encounter) => doneToday(e.discharge_at))   // discharged today; tomorrow the list starts clean
+    .slice(0, 30);
 
   // Doctors for the Start Consultation assignment picker — sourced from
   // royan_staff (not free text) so the value written to doctor_id actually
@@ -194,14 +259,21 @@ export default function ClinicalQueue() {
     void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
   });
 
-  const encounters: Encounter[] = Array.isArray(data?.encounters)
+  const allEncounters: Encounter[] = Array.isArray(data?.encounters)
     ? data.encounters
     : Array.isArray(data)
     ? data
     : [];
 
-  // Count by status
-  const counts = encounters.reduce<Record<string, number>>((acc, e) => {
+  const encounters: Encounter[] =
+    filter === WAITING_FILTER
+      ? allEncounters.filter((e) => WAITING_STATUSES.includes(e.status))
+      : allEncounters;
+
+  // Count by status off the UNFILTERED set — otherwise selecting "waiting"
+  // would zero out every other chip, since those rows are filtered out of
+  // `encounters`.
+  const counts = allEncounters.reduce<Record<string, number>>((acc, e) => {
     acc[e.status] = (acc[e.status] ?? 0) + 1;
     return acc;
   }, {});
@@ -343,7 +415,74 @@ export default function ClinicalQueue() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const statuses = ["all", "patient_registered", "triaged", "nurse_assessment", "called", "consulting", "lab_ordered", "pharmacy_dispensing", "billing_pending"];
+  const statuses = ["all", "triaged", "nurse_assessment", "consulting", "lab_ordered", "awaiting_results", "pharmacy_dispensing", "billing_pending"];
+
+  // ── One clear next step per patient (finance-meeting workflow) ──────────────────────────────────────────────
+  // Before vitals: Vitals. After vitals: Doctor (the doctor and room the front desk chose; opens the doctor's notes).
+  // Results back for review: Review. Consultation over: Discharge once every bill is paid (otherwise what is owed).
+  // The Nurse note button is there throughout; the old Triage / Call / Consult / Workspace / Generate Bill buttons
+  // are gone - the front desk already triaged, the doctor is known, and bills are raised automatically.
+  const startDoctor = async (enc: Encounter, tab = "notes") => {
+    const needsStart = ["patient_registered", "triaged", "nurse_assessment", "called", "awaiting_results", "billing_pending"].includes(enc.status);
+    if (needsStart) {
+      try {
+        await api.hospital.queue.consult(enc.id, { doctor_id: enc.doctor_id || undefined });
+        void qc.invalidateQueries({ queryKey: ["clinical-queue"] });
+      } catch (e: any) {
+        toast({ title: "Could not start the consultation", description: e.message, variant: "destructive" });
+        return;
+      }
+    }
+    setOpdPanelInitialTab(tab);
+    setOpdPanelEnc(enc);
+  };
+  const owed = (enc: Encounter) => Number(enc.amount_owed ?? 0);
+  const renderActions = (enc: Encounter, compact = false) => {
+    const h = compact ? "h-6" : "h-8";
+    const btn = cn(h, "px-2.5 text-xs font-semibold gap-1");
+    // Pay first: after every stop a private patient pays at the cashier before the next service
+    const held = !!enc.pay_first && ["patient_registered", "triaged", "nurse_assessment", "called", "awaiting_results"].includes(enc.status);
+    return (
+      <div className="flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {held && (
+          <Button size="sm" variant="outline" className={cn(btn, "border-amber-500/60 text-amber-800 dark:text-amber-300")}
+                  onClick={() => navigate("/hospital/billing")} title={`Pay first: ${enc.pay_first!.bills.join(", ")}`}>
+            <ReceiptText className="h-3.5 w-3.5" /> ₦{Number(enc.pay_first!.owed).toLocaleString()} to pay first
+          </Button>
+        )}
+        {!held && ["patient_registered", "triaged"].includes(enc.status) && (
+          <Button size="sm" className={cn(btn, "bg-teal-600 text-white hover:bg-teal-700")} onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
+            <Syringe className="h-3.5 w-3.5" /> Vitals
+          </Button>
+        )}
+        {(["consulting", "lab_ordered", "pharmacy_dispensing"].includes(enc.status) || (!held && ["nurse_assessment", "called"].includes(enc.status))) && (
+          <Button size="sm" className={cn(btn, "bg-blue-600 text-white hover:bg-blue-700")} onClick={() => void startDoctor(enc)}>
+            <Stethoscope className="h-3.5 w-3.5" /> Doctor
+          </Button>
+        )}
+        {!held && enc.status === "awaiting_results" && (
+          <Button size="sm" className={cn(btn, "bg-teal-700 text-white hover:bg-teal-800")} onClick={() => void startDoctor(enc, "results")}
+                  title="Results are back: the doctor sees the patient again">
+            <FlaskConical className="h-3.5 w-3.5" /> Review results
+          </Button>
+        )}
+        {enc.status === "billing_pending" && (owed(enc) > 0.009 ? (
+          <Button size="sm" variant="outline" className={cn(btn, "border-amber-500/60 text-amber-800 dark:text-amber-300")}
+                  onClick={() => navigate("/hospital/billing")} title="The patient pays at the cashier before discharge">
+            <ReceiptText className="h-3.5 w-3.5" /> ₦{owed(enc).toLocaleString()} to pay
+          </Button>
+        ) : (
+          <Button size="sm" className={cn(btn, "bg-green-600 text-white hover:bg-green-700")} onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
+            <LogOut className="h-3.5 w-3.5" /> Discharge
+          </Button>
+        ))}
+        <Button size="sm" variant="outline" className={cn(btn, "border-rose-500/40 text-rose-700 hover:bg-rose-500/10 dark:text-rose-400")}
+                title="Nursing note" onClick={() => setNursePanelEnc({ ...enc, patient_mrn: enc.mrn })}>
+          <HeartPulse className="h-3.5 w-3.5" /> Nurse
+        </Button>
+      </div>
+    );
+  };
 
   return (
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
@@ -351,11 +490,36 @@ export default function ClinicalQueue() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">OPD Workspace</h1>
-          <p className="text-sm text-muted-foreground">Active patient encounters and workflow progression</p>
+          <h1 className="text-2xl font-bold tracking-tight">{queueKind === "ipd" ? "IPD Workspace" : "OPD Workspace"}</h1>
+          <p className="text-sm text-foreground/80">{queueKind === "ipd"
+            ? "Patients on the wards: their beds, doctor's rounds and nursing care"
+            : "Today's outpatients in order: vitals → doctor → cashier → services → discharge"}</p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
+        <div className="flex flex-wrap gap-2">
+          {/* OPD / IPD. First control on the row because it changes what the
+              whole page is about, not just how it is drawn. */}
+          <div className="flex overflow-hidden rounded-lg border border-border">
+            <button
+              onClick={() => setQueueKind("opd")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                queueKind === "opd" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <Users className="h-3.5 w-3.5" /> OPD
+            </button>
+            <button
+              onClick={() => setQueueKind("ipd")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                queueKind === "ipd" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <BedDouble className="h-3.5 w-3.5" /> IPD
+            </button>
+          </div>
+
+          <div className={cn("flex rounded-lg border border-border overflow-hidden", queueKind === "ipd" && "hidden")}>
             <button
               onClick={() => setViewMode("table")}
               className={cn(
@@ -384,13 +548,15 @@ export default function ClinicalQueue() {
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI cards — OPD only. The IPD view carries its own summary badges,
+          because "awaiting triage" means nothing for someone already in a bed. */}
+      {queueKind === "opd" && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Total Active", value: encounters.length, icon: <Users className="h-4 w-4" />, color: "text-blue-400" },
-          { label: "Awaiting Triage", value: counts.patient_registered ?? 0, icon: <Clock className="h-4 w-4" />, color: "text-yellow-400" },
-          { label: "In Consultation", value: counts.consulting ?? 0, icon: <Stethoscope className="h-4 w-4" />, color: "text-green-400" },
-          { label: "Billing Pending", value: counts.billing_pending ?? 0, icon: <AlertTriangle className="h-4 w-4" />, color: "text-orange-400" },
+          { label: "Waiting for vitals", value: (counts.patient_registered ?? 0) + (counts.triaged ?? 0), icon: <Clock className="h-4 w-4" />, color: "text-amber-600" },
+          { label: "With doctor", value: counts.consulting ?? 0, icon: <Stethoscope className="h-4 w-4" />, color: "text-blue-600" },
+          { label: "Results ready for review", value: counts.awaiting_results ?? 0, icon: <FlaskConical className="h-4 w-4" />, color: "text-teal-600" },
         ].map(k => (
           <Card key={k.label}>
             <CardContent className="pt-5">
@@ -405,33 +571,63 @@ export default function ClinicalQueue() {
           </Card>
         ))}
       </div>
+      )}
+
+      {/* IPD: everyone currently in a bed. */}
+      {queueKind === "ipd" && (
+        <InpatientQueue
+          onOpen={(row) => setIpdBed(row)}
+          onDoctorNote={(row) => {
+            setOpdPanelInitialTab("notes");
+            setOpdPanelEnc({ ...row, id: row.encounter_id, mrn: row.mrn });
+          }}
+          onNurseNote={(row) =>
+            setNursePanelEnc({
+              id: row.encounter_id,
+              patient_id: row.patient_id,
+              patient_name: row.patient_name,
+              patient_mrn: row.mrn,
+              department: row.ward_name,
+              status: row.status,
+              created_at: row.admitted_at,
+            })
+          }
+        />
+      )}
 
       {/* Filter tabs */}
+      {queueKind === "opd" && (
       <div className="flex flex-wrap gap-2">
         {statuses.map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
             className={cn(
-              "rounded-full border px-3 py-1 text-xs capitalize transition-colors",
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               filter === s
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border hover:bg-muted",
             )}
           >
-            {s === "all" ? "All" : s.replace(/_/g, " ")}{" "}
-            {s !== "all" && counts[s] !== undefined && (
+            {s === "all" ? "All" : s === WAITING_FILTER ? "Waiting" : encounterStatusLabel(s)}{" "}
+            {s === WAITING_FILTER ? (
+              <span className="ml-1 rounded-full bg-muted-foreground/20 px-1.5 py-0.5">
+                {WAITING_STATUSES.reduce((n, st) => n + (counts[st] ?? 0), 0)}
+              </span>
+            ) : s !== "all" && counts[s] !== undefined ? (
               <span className="ml-1 rounded-full bg-muted-foreground/20 px-1.5 py-0.5">{counts[s]}</span>
-            )}
+            ) : null}
           </button>
         ))}
       </div>
 
+      )}
+
       {/* ── Kanban Board View ─────────────────────────────────────────────── */}
-      {viewMode === "board" && (
+      {queueKind === "opd" && viewMode === "board" && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
           {KANBAN_COLUMNS.map(col => {
-            const colEncounters = encounters.filter(e => col.statuses.includes(e.status as any));
+            const colEncounters = encounters.filter(e => (col.statuses as readonly string[]).includes(e.status as string));
             return (
               <div key={col.key} className={cn("rounded-xl border p-3", col.color)}>
                 {/* Column header */}
@@ -456,7 +652,7 @@ export default function ClinicalQueue() {
                           <span className="font-mono text-xs text-muted-foreground">{String(enc.id).slice(0, 8)}</span>
                         )}
                         {(enc.triage_level || enc.triage_priority) && (
-                          <Badge variant="outline" className={cn("shrink-0 text-[12px] capitalize", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
+                          <Badge variant="outline" className={cn("shrink-0 text-xs capitalize", TRIAGE_COLORS[enc.triage_level || enc.triage_priority || ""] ?? "")}>
                             {(enc.triage_level || enc.triage_priority || "").replace(/_/g, " ")}
                           </Badge>
                         )}
@@ -464,60 +660,15 @@ export default function ClinicalQueue() {
                       <p className="text-sm font-medium leading-tight truncate mb-1">
                         {enc.patient_name || enc.mrn || `…${String(enc.patient_id ?? "").slice(-6)}`}
                       </p>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />{waitMins(enc.created_at)}
                         </span>
                         {enc.department && <span>· {enc.department}</span>}
                         {enc.consulting_room && <span>· {enc.consulting_room}</span>}
                       </div>
-                      {/* Quick actions */}
-                      <div className="mt-2 flex flex-wrap gap-1" onClick={e => e.stopPropagation()}>
-                        {enc.status === "patient_registered" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setTriageOpen(true); }}>
-                            <ClipboardCheck className="h-3 w-3" /> Triage
-                          </Button>
-                        )}
-                        {enc.status === "triaged" && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-teal-500/40 text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
-                              onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
-                              <Syringe className="h-3 w-3" /> Vitals
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
-                              <Stethoscope className="h-3 w-3" /> Consult
-                            </Button>
-                          </>
-                        )}
-                        {enc.status === "nurse_assessment" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/10"
-                            onClick={() => { setCallRoomEnc(enc); setSelectedRoom("Room 1"); }}>
-                            <PhoneCall className="h-3 w-3" /> Call
-                          </Button>
-                        )}
-                        {enc.status === "called" && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
-                            <Stethoscope className="h-3 w-3" /> Start
-                          </Button>
-                        )}
-                        {["consulting", "lab_ordered", "pharmacy_dispensing"].includes(enc.status) && (
-                          <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1" onClick={() => setOpdPanelEnc(enc)}>
-                            <Stethoscope className="h-3 w-3" /> Workspace
-                          </Button>
-                        )}
-                        {enc.status === "billing_pending" && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
-                              onClick={() => setBillEnc(enc)}>
-                              <ReceiptText className="h-3 w-3" /> Generate Bill
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[12px] gap-1 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
-                              onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
-                              <LogOut className="h-3 w-3" /> Discharge
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      {/* Next step */}
+                      <div className="mt-2">{renderActions(enc, true)}</div>
                     </div>
                   ))}
                 </div>
@@ -528,7 +679,7 @@ export default function ClinicalQueue() {
       )}
 
       {/* ── Encounters table ─────────────────────────────────────────────── */}
-      {viewMode === "table" && <Card>
+      {queueKind === "opd" && viewMode === "table" && <Card>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -567,12 +718,30 @@ export default function ClinicalQueue() {
                     <TableCell className="font-mono text-xs font-bold text-primary">
                       {enc.queue_number ?? String(enc.id).slice(0, 8)}
                     </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{enc.patient_name || enc.mrn || (enc.patient_id ? String(enc.patient_id).slice(0, 8) : "—")}</TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">
-                      {enc.hmo_provider ? (
-                        <Badge variant="outline" className="text-[12px] whitespace-nowrap">{enc.hmo_provider}</Badge>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="text-sm leading-tight">
+                        {enc.patient_name || enc.mrn || (enc.patient_id ? String(enc.patient_id).slice(0, 8) : "—")}
+                      </div>
+                      {(enc.age_display || enc.gender) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[enc.age_display, enc.gender].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {enc.payer_type === "hmo" || enc.hmo_provider ? (
+                        <>
+                          <Badge variant="outline" className="text-xs whitespace-nowrap">
+                            {enc.insurance?.hmo_name ?? enc.hmo_provider ?? "HMO"}
+                          </Badge>
+                          {enc.insurance?.membership_id && (
+                            <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+                              {enc.insurance.membership_id}
+                            </div>
+                          )}
+                        </>
                       ) : (
-                        <span className="text-muted-foreground capitalize">{enc.patient_type ?? "Private"}</span>
+                        <span className="text-xs text-muted-foreground">Private</span>
                       )}
                     </TableCell>
                     <TableCell className="capitalize text-xs whitespace-nowrap">{enc.encounter_type ?? "—"}</TableCell>
@@ -580,7 +749,7 @@ export default function ClinicalQueue() {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <StatusBadge status={enc.status} />
-                        {enc.paused_at && <Badge variant="outline" className="text-[12px] bg-amber-500/10 text-amber-500 border-amber-500/30">Paused</Badge>}
+                        {enc.paused_at && <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-500 border-amber-500/30">Paused</Badge>}
                       </div>
                     </TableCell>
                     <TableCell onClick={e => e.stopPropagation()}>
@@ -619,7 +788,7 @@ export default function ClinicalQueue() {
                               onClick={() => openTab("orders")}
                             >
                               <FlaskConical className="h-3 w-3" />{enc.lab_resulted_count ?? 0}/{enc.lab_order_count ?? 0}
-                              {labReady && <span className="text-[10px] uppercase tracking-wide">· Ready</span>}
+                              {labReady && <span className="text-xs uppercase tracking-wide">· Ready</span>}
                             </button>
                             <button
                               className={cn(
@@ -630,7 +799,7 @@ export default function ClinicalQueue() {
                               onClick={() => openTab("orders")}
                             >
                               <ScanLine className="h-3 w-3" />{enc.radiology_resulted_count ?? 0}/{enc.radiology_order_count ?? 0}
-                              {radReady && <span className="text-[10px] uppercase tracking-wide">· Ready</span>}
+                              {radReady && <span className="text-xs uppercase tracking-wide">· Ready</span>}
                             </button>
                             <button
                               className={cn(
@@ -641,7 +810,7 @@ export default function ClinicalQueue() {
                               onClick={() => openTab("prescribe")}
                             >
                               <Pill className="h-3 w-3" />{enc.prescription_dispensed_count ?? 0}/{enc.prescription_count ?? 0}
-                              {rxReady && <span className="text-[10px] uppercase tracking-wide">· Dispensed</span>}
+                              {rxReady && <span className="text-xs uppercase tracking-wide">· Dispensed</span>}
                             </button>
                           </div>
                         );
@@ -662,54 +831,7 @@ export default function ClinicalQueue() {
                       ) : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{waitMins(enc.created_at)}</TableCell>
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        {enc.status === "patient_registered" && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setActiveEnc(enc); setTriageOpen(true); }}>
-                            <ClipboardCheck className="h-3 w-3" /> Triage
-                          </Button>
-                        )}
-                        {enc.status === "triaged" && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-teal-500/40 text-teal-700 dark:text-teal-400 hover:bg-teal-500/10"
-                              onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
-                              <Syringe className="h-3 w-3" /> Vitals
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
-                              <Stethoscope className="h-3 w-3" /> Consult
-                            </Button>
-                          </>
-                        )}
-                        {enc.status === "nurse_assessment" && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-cyan-500/40 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-500/10"
-                            onClick={() => { setCallRoomEnc(enc); setSelectedRoom("Room 1"); }}>
-                            <PhoneCall className="h-3 w-3" /> Call
-                          </Button>
-                        )}
-                        {enc.status === "called" && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => { setActiveEnc(enc); setConsultOpen(true); }}>
-                            <Stethoscope className="h-3 w-3" /> Start
-                          </Button>
-                        )}
-                        {["consulting", "lab_ordered", "pharmacy_dispensing"].includes(enc.status) && (
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpdPanelEnc(enc)}>
-                            <Stethoscope className="h-3 w-3" /> Workspace
-                          </Button>
-                        )}
-                        {enc.status === "billing_pending" && (
-                          <>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-blue-500/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
-                              onClick={() => setBillEnc(enc)}>
-                              <ReceiptText className="h-3 w-3" /> Generate Bill
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
-                              onClick={() => { setActiveEnc(enc); setDischargeOpen(true); }}>
-                              <LogOut className="h-3 w-3" /> Discharge
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>{renderActions(enc)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -717,6 +839,27 @@ export default function ClinicalQueue() {
           )}
         </CardContent>
       </Card>}
+
+      {queueKind === "opd" && recentlyDischarged.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Discharged today ({recentlyDischarged.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Queue #</TableHead><TableHead>Patient</TableHead><TableHead>Doctor</TableHead><TableHead>Discharged</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>{recentlyDischarged.map((enc) => (
+                <TableRow key={enc.id} className="cursor-pointer hover:bg-muted/30" onClick={() => enc.mrn && setCprsMrn(enc.mrn)}>
+                  <TableCell className="font-mono text-sm font-bold">{enc.queue_number ?? "—"}</TableCell>
+                  <TableCell className="text-sm font-medium">{enc.patient_name ?? enc.mrn}</TableCell>
+                  <TableCell className="text-sm">{enc.consulting_doctor ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{enc.discharge_at ? new Date(enc.discharge_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—"}</TableCell>
+                </TableRow>
+              ))}</TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Open Encounter Dialog ──────────────────────────────────────── */}
       <Dialog open={openEncOpen} onOpenChange={setOpenEncOpen}>
@@ -1019,6 +1162,38 @@ export default function ClinicalQueue() {
       </Dialog>
 
       {/* ── Patient CPRS slide panel (read-only quick peek) ─────────────── */}
+      {/* IPD row opens the bed panel — the same one the wards page uses, so an
+          inpatient has one workspace regardless of which screen you came from.
+          It carries the running bill, nursing record, vitals and notes. */}
+      {ipdBed && (
+        <BedWorkspacePanel
+          bed={{
+            id: ipdBed.bed_id,
+            ward_id: ipdBed.ward_id,
+            ward_name: ipdBed.ward_name,
+            room_name: ipdBed.room_name,
+            bed_number: ipdBed.bed_number,
+            status: "occupied",
+            current_patient_id: ipdBed.patient_id,
+            current_encounter_id: ipdBed.encounter_id,
+            patient_name: ipdBed.patient_name,
+            patient_mrn: ipdBed.mrn,
+            admitted_at: ipdBed.admitted_at,
+          }}
+          onClose={() => setIpdBed(null)}
+        />
+      )}
+
+      {/* Nursing record — visually and structurally distinct from the doctor's
+          consultation panel, so it is obvious which record is being written. */}
+      {nursePanelEnc && (
+        <NursingWorkspacePanel
+          encounter={nursePanelEnc}
+          initialTab="notes"
+          onClose={() => setNursePanelEnc(null)}
+        />
+      )}
+
       {cprsMrn && (
         <PatientCprsPanel patientMrn={cprsMrn} onClose={() => setCprsMrn(null)} />
       )}

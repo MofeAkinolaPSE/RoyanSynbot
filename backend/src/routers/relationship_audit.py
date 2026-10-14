@@ -27,7 +27,7 @@ def _require_audit_access(request: Request, user=Depends(verify_jwt)):
 
 
 @router.get("/integrity")
-async def api_get_integrity(user_ctx=Depends(_require_audit_access)):
+def api_get_integrity(user_ctx=Depends(_require_audit_access)):
     """Latest cached integrity insight; runs the audit fresh if nothing is cached."""
     from src.routers.cache_ui import get_shared_cache
     cache = get_shared_cache()
@@ -49,7 +49,7 @@ async def api_get_integrity(user_ctx=Depends(_require_audit_access)):
 
 
 @router.post("/run")
-async def api_run_audit(user_ctx=Depends(_require_audit_access)):
+def api_run_audit(user_ctx=Depends(_require_audit_access)):
     """Force a fresh integrity audit run (bypasses the cached insight)."""
     from src.agents.relationship_auditor_agent import RelationshipAuditorAgent
     insight = RelationshipAuditorAgent({"actor_id": user_ctx.get("sub")}).run()

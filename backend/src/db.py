@@ -482,6 +482,36 @@ def _compute_signature_hash_ref(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _json_safe(value):
+    """Coerce values Postgres returns but json.dumps cannot encode.
+
+    Audit details are routinely built straight from query results, and numeric
+    columns come back as decimal.Decimal. json.dumps rejects those, the insert
+    raises, and the audit row is lost -- while the action it was recording
+    succeeds. A pharmacy discount approval hit exactly that: the approval went
+    through and the trail proving who approved it did not.
+
+    Datetimes and UUIDs are handled for the same reason.
+    """
+    from decimal import Decimal
+    import datetime as _dt
+    import uuid as _uuid
+
+    if isinstance(value, Decimal):
+        # float, not str: these are amounts, and a downstream reader summing
+        # them should not have to parse strings back to numbers.
+        return float(value)
+    if isinstance(value, (_dt.datetime, _dt.date, _dt.time)):
+        return value.isoformat()
+    if isinstance(value, _uuid.UUID):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def audit_event(
     event_type: str,
     details: dict | None = None,
@@ -501,7 +531,9 @@ def audit_event(
     signature_hash_ref: str | None = None,
 ) -> None:
     trace_id = trace_id or correlation_id
-    details = details or {}
+    # Sanitised before anything reads it: _derive_audit_taxonomy and the
+    # insert both serialise this dict.
+    details = _json_safe(details or {})
     derived = _derive_audit_taxonomy(event_type, details)
     try:
         resolved_actor_id = actor_id or derived.get("actor_id")

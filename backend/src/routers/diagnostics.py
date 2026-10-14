@@ -43,7 +43,7 @@ def _get_internal_token() -> str:
 
 
 @router.get("/full")
-async def full_diagnostics(user: Dict[str, Any] = Depends(_require_admin)):
+def full_diagnostics(user: Dict[str, Any] = Depends(_require_admin)):
     """
     Run data validation checks across all dashboard pages and return a
     structured report showing which pages have healthy data and which are broken.
@@ -61,7 +61,7 @@ async def full_diagnostics(user: Dict[str, Any] = Depends(_require_admin)):
 
 
 @router.get("/page/{page_name}")
-async def single_page_diagnostics(
+def single_page_diagnostics(
     page_name: str,
     user: Dict[str, Any] = Depends(_require_admin),
 ):
@@ -116,7 +116,7 @@ async def single_page_diagnostics(
 
 
 @router.get("/summary")
-async def diagnostics_summary(user: Dict[str, Any] = Depends(_require_admin)):
+def diagnostics_summary(user: Dict[str, Any] = Depends(_require_admin)):
     """
     Lightweight version: runs all checks but returns only the summary
     (total/passed/failed counts and list of failed pages) without full field detail.

@@ -1,0 +1,65 @@
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+All right, let's move on to billing. And for the billing, let's make the payment service detailed automatically. So whenever a patient walks in, whatever service they're provided in that encounter, once that bill is generated, all the services that they went through during that encounter needs to automatically be in that bill. 
+
+We can't go ahead and start having to add the services one after the other every time we want to generate a bill. So we need to fix that. Also, I know I talked about a discount column. 
+
+So we need to add that discount column in the billing page so that the cashier can, in the billing works panel, so like the cashier can add a discount and then admin can then confirm or reject that discount. So admin will have a UI card in their dashboard as well, in the admin dashboard that shows them that there is a new discount waiting for approval. So admin can either accept or reject that billing. 
+
+Also, I know I mentioned about receipt number is automatic. So the receipt number is automatic after a client's bill has been generated and we want to confirm the payment. That too should be automatic. 
+
+The fee or the payment of the services that the patient encountered needs to also be automatic during the payment recording session. So once the cashier records that payment, the receipt number should be generated and can be printed. You know, we talked about this. 
+
+Then we talked about the correction pen. In the correction pen, it's supposed to give admin the overall ability to make certain things. Like for example, if a patient was to come into the hospital and request a bag of blood for transfusion, which is about 90k. 
+
+If the patient now goes ahead and doesn't use that bag of blood, apparently what happens is they have to split the bill into three places so that the patient doesn't pay the full bill for the blood transfusion. Admin also needs to be able to track that and see that they can handle the billing correctly. So that if there is, so that client can receive that service and be satisfied.
+
+The cashier also needs access to the admission page. So I think we should give them access to PCE, to the words embed, so they can see all the information that goes across that. They also need to be able to add, so in the billing, right, for a patient that was in-house, they need to be able to add a nurses fee, consultation fee, servicing fees, constant notifications are made for patients that are in the ward. 
+
+So if the patient is currently in the ward, every time there is a new medication added, we need the UI for that inpatient work. So what I think we should do now is when a patient is in admission, we should take that words embed into another level, right? Give it that whole, should take words embed page to another level, give it that whole dashboard field where you can interact with the patients. You can see what drugs they've been exposed to, what consultants they're talking to, what medications they're taking. 
+
+Because of this, we need to make sure that the words embed has that work panel field so that patients can really interact with, really interact with, so the nurses, the cashiers, anyone that has to interact with that work page can really interact with the page, and you can even generate the billing for the patient that's in admission. So let's create a whole energy around the words in the admission page. So also there has to be a different work panel, like I just said, a different work panel for inpatients and outpatients, right? The design has to be different because patients that have been admitted will need constant attention, constant updates, constant addition, constant nurses updates, and all those things.
+
+So that when there is a new feature added for an admitted patient, the bill is automatically updated. So also we need to add room for tariffs to the word details. I would like us to check our data and see if there's any information about the word pricing so that when a patient is assigned to a ward, so like I said, the workflow, a doctor requests admission, right, and the nurse's dashboard pops up. 
+
+The nurse then clicks on that admission ticket that just popped up on our dashboard, right, and then it moves them to the words embed. So it could just be that the page comes up and then the nurse can then interact with it, right? But we need to make sure that each room has a tariff. So we need to find out the room tariffs so that every time a patient is added to the room, that is also added to their billing, right? So remember, we can add a new consultant, add a new lab, add a new scan, add drug, and every time you do that for an admitted patient, that billing, the bill must also keep track of that, right? And then also, again, Ambulance Service, if it was required for that patient, you also need to check our data if you can have any billing for that. 
+
+If not, just make sure that anytime Ambulance Service is requested, it is added to the billing, right? And also, admin should stay aware of that. That's pretty much it about billing, right? We just need to make sure it's well-detailed, like I've said, as detailed. So every back-end logic that we're designing for all the features we've mentioned now needs to have the UI counterpart, right? As detailed as it needs to be. 
+
+Now, we're moving on to lab, and our lab doctors need to see... So once a test is authenticated, right? After a test has been done, the test should show who authenticated that result. The same thing with the billing, right? Whatever consultant, whatever doctor generated that bill needs to be... The username needs to be on that billing, right? So the result status also didn't change. So when I ran a test, and I ran a test for a patient, and the lab result came out, on the lab dashboard, it showed resulted. 
+
+But on the OPD dashboard, it still showed lab ordered. So something happened, and I know there's a bug. It's probably because we're still working on it that it's delaying. 
+
+But just so to be sure, can we check that? So we also need to see for lab, we need to see the different types of tests, and the cost of those tests, and have the ability to add a new test and the information that comes along with the test. So right now, I think we just have the test. We don't have any information.
+
+So let's check our database to find out all the pricing information that's available to us, and ensure that we link them up to the accurate or the actual department. All right, let's move to HMO. So when selected, a patient's HMO should show and reflect their entire encounter. 
+
+So in the HMO page, when I click on a patient, it just shows the coverage rules and some random things. But it should show the entire history of that patient's encounter, right? So the way it works is... Also, let's check our database for insurance numbers. Currently, there are no insurance numbers being displayed on the HMO dashboard, along with any other information about the client or the HMO providers, right? All we currently have are just phone numbers. 
+
+So we should give them the ability to modify or edit the HMO's details, for example. Okay, so there's already a button for that. Okay, so we can do that email and note.
+
+Okay, that's fine. But what about the code? So let's check for the code as well. Also, for the HMO, we are going to have to add an import page where they can upload the tabs for the different HMO providers, right? So each HMO provider has an Excel file, right, that allows them to... That shows all the tabs for all the services that HMO provides with the pricing. 
+
+So this will just help us further back up all our billing knowledge and all our pricing, so that we're not just opening blank pages. Like I said, we need to make sure all the input boxes in our work panels need to be automated drop-down box with pre-filled settings, right? So that if there's a terrorist change, we can just upload the new Excel file and update the HMO's details. Also, I'm not sure if I mentioned this before, but on the OPDQ, we need to make sure that the front desk, they can decide whether the patient that they're about to create the encounter for is private or HMO. 
+
+So you need to start reflecting. So by the time it goes to the queue, we can see on the queue that the patient is either private HMO, and we also need to add the person's age and gender on that OPDQ. For every patient, we need to add their age and their gender. 
+
+And for babies, right? So the thing is, for the age, we need to start from hours. So if the baby is 24 hours old, it needs to write 24 hours. If the baby is four days old, it needs to write four days. 
+
+If it's one month old, it needs to write one month, and like that, like that, until it gets to one year. After that, we just start counting years and years and years. So it should be three days female slash female or 40 days, 40 years slash male, that type of thing.
+
+So the targets will help us calculate all the services. So let's make sure to prepare for that. Pharmacy and the lab and all the services that the HMO covers will be there.
+
+So all that tariff will do is guide our billing to make it more efficient. Okay, and then submit a claim button in our billing should just generate a claims for the account internal audit, right? So it should just show that there's a claim, a claim has been submitted for that particular client. So let's just record that and keep it in our financial records. 
+
+So we should also be able to separate the HMO services so that we know what services went to HMO and at what cost what services went to private and at what cost. So this will most likely be in finance. And then finally, we go to pharmacy.
+
+We need to give the pharmacy the ability to remove any expired inventory. All right, they also need to add patients discount for internal staff. So again, in the pharmacy department, we're going to have a column for discounts, just like we did in billing, right? They can view, so pharmacy can also view the complete dosage regimen. 
+
+So like for a particular patient, you can see the entire history just by clicking on that patient, right? The pharmacy should also be able to see the input on the details. So I think it's best to give the pharmacy access to the PCE so they can really see all the information about the particular patient. And also, we need to have inventory reports. 
+
+So we need to create an inventory report and add whatever metrics that we think we can also add to make our inventory a lot better. With that said, I think that is it for my most recent meeting. Let's design a plan to implement every single item that I've mentioned on this list. 
+
+It's all just in the same sphere. So let's just pick out, pick it out, make sense of it, and then design and implement that design. Thank you.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)

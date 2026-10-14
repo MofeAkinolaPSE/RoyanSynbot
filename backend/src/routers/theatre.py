@@ -198,7 +198,7 @@ def _enrich_patients(rows: list) -> None:
 # ---------------------------------------------------------------------------
 
 @router.post("/cases", status_code=201)
-async def schedule_case(payload: TheatreCaseCreate, user=Depends(verify_jwt)):
+def schedule_case(payload: TheatreCaseCreate, user=Depends(verify_jwt)):
     """Schedule a new theatre case."""
     if payload.urgency not in URGENCIES:
         raise HTTPException(status_code=422, detail=f"urgency must be one of {URGENCIES}")
@@ -225,7 +225,7 @@ async def schedule_case(payload: TheatreCaseCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/cases")
-async def list_cases(
+def list_cases(
     status: Optional[str]   = Query(None),
     urgency: Optional[str]  = Query(None),
     surgeon_id: Optional[str] = Query(None),
@@ -252,7 +252,7 @@ async def list_cases(
 
 
 @router.get("/stats")
-async def theatre_stats(user=Depends(verify_jwt)):
+def theatre_stats(user=Depends(verify_jwt)):
     rows = db.table(TABLE_THEATRE_CASES).select("status,urgency").execute().data or []
     counts = {s: sum(1 for r in rows if r.get("status") == s) for s in STATUSES}
     emergency_active = sum(
@@ -262,7 +262,7 @@ async def theatre_stats(user=Depends(verify_jwt)):
 
 
 @router.get("/cases/{case_id}")
-async def get_case(case_id: int, user=Depends(verify_jwt)):
+def get_case(case_id: int, user=Depends(verify_jwt)):
     case = _get_case(case_id)
     pt = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name,gender,date_of_birth").eq("id", case["patient_id"]).execute()
     if pt.data:
@@ -279,7 +279,7 @@ async def get_case(case_id: int, user=Depends(verify_jwt)):
 
 
 @router.patch("/cases/{case_id}/status")
-async def advance_status(case_id: int, payload: StatusAdvance, user=Depends(verify_jwt)):
+def advance_status(case_id: int, payload: StatusAdvance, user=Depends(verify_jwt)):
     """Advance theatre case through status workflow."""
     case = _get_case(case_id)
     current = case["status"]
@@ -316,7 +316,7 @@ async def advance_status(case_id: int, payload: StatusAdvance, user=Depends(veri
 
 
 @router.patch("/cases/{case_id}/pre-op")
-async def submit_preop(case_id: int, payload: PreOpChecklist, user=Depends(verify_jwt)):
+def submit_preop(case_id: int, payload: PreOpChecklist, user=Depends(verify_jwt)):
     """Submit pre-operative safety checklist (WHO Surgical Safety Checklist)."""
     _get_case(case_id)
     updates = {
@@ -330,7 +330,7 @@ async def submit_preop(case_id: int, payload: PreOpChecklist, user=Depends(verif
 
 
 @router.patch("/cases/{case_id}/anaesthetic")
-async def submit_anaesthetic(case_id: int, payload: AnaestheticRecord, user=Depends(verify_jwt)):
+def submit_anaesthetic(case_id: int, payload: AnaestheticRecord, user=Depends(verify_jwt)):
     """Record anaesthetic details. Merges onto whatever is already stored so a
     resubmission that omits a previously-set optional field doesn't silently
     wipe it out."""
@@ -342,7 +342,7 @@ async def submit_anaesthetic(case_id: int, payload: AnaestheticRecord, user=Depe
 
 
 @router.patch("/cases/{case_id}/operative-notes")
-async def submit_operative_notes(case_id: int, payload: OperativeNotes, user=Depends(verify_jwt)):
+def submit_operative_notes(case_id: int, payload: OperativeNotes, user=Depends(verify_jwt)):
     """Surgeon submits intraoperative notes."""
     case = _get_case(case_id)
     if case.get("operative_notes_verified_at"):
@@ -357,7 +357,7 @@ async def submit_operative_notes(case_id: int, payload: OperativeNotes, user=Dep
 
 
 @router.post("/cases/{case_id}/operative-notes/verify")
-async def verify_operative_notes(case_id: int, payload: OperativeNotesVerifyRequest, user=Depends(verify_jwt)):
+def verify_operative_notes(case_id: int, payload: OperativeNotesVerifyRequest, user=Depends(verify_jwt)):
     case = _get_case(case_id)
     if not case.get("operative_notes"):
         raise HTTPException(status_code=409, detail="No operative notes recorded for this case yet")
@@ -374,7 +374,7 @@ async def verify_operative_notes(case_id: int, payload: OperativeNotesVerifyRequ
 
 
 @router.patch("/cases/{case_id}/operative-notes/amend")
-async def amend_operative_notes(case_id: int, payload: OperativeNotesAmend, user=Depends(verify_jwt)):
+def amend_operative_notes(case_id: int, payload: OperativeNotesAmend, user=Depends(verify_jwt)):
     case = _get_case(case_id)
     if not case.get("operative_notes_verified_at"):
         raise HTTPException(status_code=409, detail="No verified operative notes exist to amend — unverified notes can be corrected directly via PATCH /theatre/cases/{case_id}/operative-notes")
@@ -402,7 +402,7 @@ async def amend_operative_notes(case_id: int, payload: OperativeNotesAmend, user
 
 
 @router.patch("/cases/{case_id}/post-op")
-async def submit_postop(case_id: int, payload: PostOpRecord, user=Depends(verify_jwt)):
+def submit_postop(case_id: int, payload: PostOpRecord, user=Depends(verify_jwt)):
     """Record post-operative recovery status."""
     case = _get_case(case_id)
     merged = _merge_jsonb(case.get("post_op_notes"), payload.model_dump(exclude_none=True))
@@ -416,7 +416,7 @@ async def submit_postop(case_id: int, payload: PostOpRecord, user=Depends(verify
 
 
 @router.get("/schedule")
-async def daily_schedule(
+def daily_schedule(
     date: str = Query(..., description="ISO date e.g. 2026-06-01"),
     theatre_name: Optional[str] = Query(None),
     user=Depends(verify_jwt),

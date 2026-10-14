@@ -141,7 +141,7 @@ def _get_maintenance(task_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/audits", status_code=201)
-async def create_audit(payload: AuditCreate, user=Depends(require_role(*FACILITY_ROLES))):
+def create_audit(payload: AuditCreate, user=Depends(require_role(*FACILITY_ROLES))):
     if payload.risk_level not in FACILITY_AUDIT_RISK_ALLOWED:
         raise HTTPException(status_code=422, detail=f"risk_level must be one of {sorted(FACILITY_AUDIT_RISK_ALLOWED)}")
 
@@ -164,7 +164,7 @@ async def create_audit(payload: AuditCreate, user=Depends(require_role(*FACILITY
 
 
 @router.get("/audits")
-async def list_audits(
+def list_audits(
     status: Optional[str]     = Query(None),
     department: Optional[str] = Query(None),
     limit: int                = Query(100, ge=1, le=500),
@@ -185,12 +185,12 @@ async def list_audits(
 
 
 @router.get("/audits/{audit_id}")
-async def get_audit(audit_id: str, user=Depends(require_role(*FACILITY_ROLES))):
+def get_audit(audit_id: str, user=Depends(require_role(*FACILITY_ROLES))):
     return {"audit": _get_audit(audit_id)}
 
 
 @router.patch("/audits/{audit_id}/start")
-async def start_audit(audit_id: str, user=Depends(require_role(*FACILITY_ROLES))):
+def start_audit(audit_id: str, user=Depends(require_role(*FACILITY_ROLES))):
     audit = _get_audit(audit_id)
     if audit["status"] != "scheduled":
         raise HTTPException(status_code=409, detail=f"Cannot start an audit in '{audit['status']}' status")
@@ -201,7 +201,7 @@ async def start_audit(audit_id: str, user=Depends(require_role(*FACILITY_ROLES))
 
 
 @router.patch("/audits/{audit_id}/complete")
-async def complete_audit(audit_id: str, payload: AuditComplete, user=Depends(require_role(*FACILITY_ROLES))):
+def complete_audit(audit_id: str, payload: AuditComplete, user=Depends(require_role(*FACILITY_ROLES))):
     audit = _get_audit(audit_id)
     if audit["status"] != "in_progress":
         raise HTTPException(status_code=409, detail=f"Cannot complete an audit in '{audit['status']}' status")
@@ -219,7 +219,7 @@ async def complete_audit(audit_id: str, payload: AuditComplete, user=Depends(req
 # ---------------------------------------------------------------------------
 
 @router.post("/maintenance", status_code=201)
-async def create_maintenance(payload: MaintenanceCreate, user=Depends(require_role(*FACILITY_ROLES))):
+def create_maintenance(payload: MaintenanceCreate, user=Depends(require_role(*FACILITY_ROLES))):
     if payload.maintenance_type not in EQUIPMENT_MAINTENANCE_TYPE_ALLOWED:
         raise HTTPException(status_code=422, detail=f"maintenance_type must be one of {sorted(EQUIPMENT_MAINTENANCE_TYPE_ALLOWED)}")
 
@@ -242,7 +242,7 @@ async def create_maintenance(payload: MaintenanceCreate, user=Depends(require_ro
 
 
 @router.get("/maintenance")
-async def list_maintenance(
+def list_maintenance(
     status_filter: Optional[str] = Query(None, description="all | overdue | upcoming"),
     limit: int                   = Query(100, ge=1, le=500),
     user=Depends(require_role(*FACILITY_ROLES)),
@@ -262,12 +262,12 @@ async def list_maintenance(
 
 
 @router.get("/maintenance/{task_id}")
-async def get_maintenance(task_id: str, user=Depends(require_role(*FACILITY_ROLES))):
+def get_maintenance(task_id: str, user=Depends(require_role(*FACILITY_ROLES))):
     return {"task": _get_maintenance(task_id)}
 
 
 @router.patch("/maintenance/{task_id}/complete")
-async def complete_maintenance(task_id: str, payload: MaintenanceComplete, user=Depends(require_role(*FACILITY_ROLES))):
+def complete_maintenance(task_id: str, payload: MaintenanceComplete, user=Depends(require_role(*FACILITY_ROLES))):
     task = _get_maintenance(task_id)
     if task["status"] != "pending":
         raise HTTPException(status_code=409, detail=f"Cannot complete a task in '{task['status']}' status")
@@ -318,7 +318,7 @@ async def complete_maintenance(task_id: str, payload: MaintenanceComplete, user=
 # ---------------------------------------------------------------------------
 
 @router.get("/stats")
-async def facility_stats(user=Depends(require_role(*FACILITY_ROLES))):
+def facility_stats(user=Depends(require_role(*FACILITY_ROLES))):
     today = _today()
 
     audits_result = db.table(TABLE_FACILITY_AUDITS).select("status,scheduled_date").execute()

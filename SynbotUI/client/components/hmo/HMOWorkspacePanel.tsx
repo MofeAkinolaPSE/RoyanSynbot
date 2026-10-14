@@ -11,13 +11,15 @@ import {
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Building2, CheckCircle2, XCircle, ListChecks, FileText, Loader2, Plus, Pencil, Check, X,
+  Building2, CheckCircle2, XCircle, ListChecks, FileText, Loader2, Plus, Pencil, Check, X, Receipt, FileSpreadsheet
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { DetailRow, SectionLabel, HMO, Service } from "@/components/hmo/hmo-shared";
 import { AddCoverageRuleDialog } from "@/components/hmo/AddCoverageRuleDialog";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { TariffImportDialog } from "@/components/hmo/TariffImportDialog";
 
 interface HMOWorkspacePanelProps {
   hmo: HMO;
@@ -25,6 +27,8 @@ interface HMOWorkspacePanelProps {
   services: Service[];
   onClose: () => void;
 }
+
+const naira = (v: any) => (v == null ? "—" : `₦${Number(v).toLocaleString("en-NG")}`);
 
 export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspacePanelProps) {
   const qc = useQueryClient();
@@ -35,7 +39,9 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
   const [planForm, setPlanForm] = useState({ name: "", plan_code: "", notes: "" });
 
   const [editingInfo, setEditingInfo] = useState(false);
+  const [tariffOpen, setTariffOpen] = useState(false);
   const [infoForm, setInfoForm] = useState({
+    code: "",
     contact_phone: hmo.contact_phone ?? "", contact_email: hmo.contact_email ?? "", notes: hmo.notes ?? "",
   });
 
@@ -71,6 +77,26 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
   });
   const plans: any[] = plansData?.plans ?? [];
 
+  // Claims volume and value for this provider. The panel previously showed
+  // configuration only — rules and plans — with no indication of whether the
+  // relationship was worth anything or how much was outstanding against it.
+  const { data: claimsData, isLoading: claimsLoading } = useQuery({
+    queryKey: ["hmo-panel-claims", hmo.id],
+    queryFn: () => api.hospital.coverage.listClaims({ hmo_provider_id: hmo.id }),
+  });
+  const claims: any[] = claimsData?.claims ?? [];
+  const claimTotals = claims.reduce(
+    (acc, c: any) => {
+      const amt = Number(c.claim_amount ?? c.amount ?? 0);
+      acc.total += amt;
+      if (["submitted", "pending"].includes(c.status)) acc.outstanding += amt;
+      if (c.status === "paid") acc.paid += amt;
+      if (c.status === "rejected") acc.rejected += amt;
+      return acc;
+    },
+    { total: 0, outstanding: 0, paid: 0, rejected: 0 },
+  );
+
   const planMut = useMutation({
     mutationFn: () => api.hospital.coverage.createPlan(hmo.id, planForm),
     onSuccess: () => {
@@ -84,7 +110,7 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -115,8 +141,18 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
             <div className="flex items-center justify-between mb-2">
               <SectionLabel icon={<Building2 className="h-3.5 w-3.5" />} label="HMO Detail" />
               {!editingInfo && (
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 gap-1 px-1.5 text-xs"
+                  title="Upload this payer's tariff spreadsheet"
+                  onClick={() => setTariffOpen(true)}
+                >
+                  <FileSpreadsheet className="h-3 w-3" /> Tariff
+                </Button>
+              )}
+              {!editingInfo && (
                 <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
-                  setInfoForm({ contact_phone: hmo.contact_phone ?? "", contact_email: hmo.contact_email ?? "", notes: hmo.notes ?? "" });
+                  setInfoForm({ code: hmo.code ?? "", contact_phone: hmo.contact_phone ?? "", contact_email: hmo.contact_email ?? "", notes: hmo.notes ?? "" });
                   setEditingInfo(true);
                 }}>
                   <Pencil className="h-3 w-3" />
@@ -125,6 +161,7 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
             </div>
             {editingInfo ? (
               <div className="space-y-2">
+                <Input className="h-8 text-xs" placeholder="Payer code" value={infoForm.code} onChange={e => setInfoForm(f => ({ ...f, code: e.target.value }))} />
                 <Input className="h-8 text-xs" placeholder="Phone" value={infoForm.contact_phone} onChange={e => setInfoForm(f => ({ ...f, contact_phone: e.target.value }))} />
                 <Input className="h-8 text-xs" placeholder="Email" value={infoForm.contact_email} onChange={e => setInfoForm(f => ({ ...f, contact_email: e.target.value }))} />
                 <Input className="h-8 text-xs" placeholder="Notes" value={infoForm.notes} onChange={e => setInfoForm(f => ({ ...f, notes: e.target.value }))} />
@@ -137,9 +174,50 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
               </div>
             ) : (
               <>
+                <DetailRow label="Payer code" value={hmo.code} />
+                {!hmo.code && (
+                  <p className="py-1 text-xs text-muted-foreground">
+                    No code recorded. Hope never held one — its payer table stores
+                    names only — so codes must be entered here rather than
+                    recovered from the migration.
+                  </p>
+                )}
                 <DetailRow label="Phone" value={hmo.contact_phone} />
                 <DetailRow label="Email" value={hmo.contact_email} />
                 <DetailRow label="Notes" value={hmo.notes} />
+              </>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* What this relationship is actually worth, and what is still owed
+              against it. The panel used to show configuration only. */}
+          <section>
+            <SectionLabel icon={<Receipt className="h-3.5 w-3.5" />} label="Claims" />
+            {claimsLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : claims.length === 0 ? (
+              <p className="py-2 text-xs italic text-muted-foreground">
+                No claims recorded against this provider yet.
+              </p>
+            ) : (
+              <>
+                <DetailRow label="Claims submitted" value={claims.length} />
+                <DetailRow label="Total claimed" value={naira(claimTotals.total)} />
+                <DetailRow
+                  label="Awaiting settlement"
+                  value={naira(claimTotals.outstanding)}
+                  accent={claimTotals.outstanding > 0 ? "text-amber-600 font-semibold" : undefined}
+                />
+                <DetailRow label="Settled" value={naira(claimTotals.paid)} />
+                <DetailRow
+                  label="Rejected"
+                  value={naira(claimTotals.rejected)}
+                  accent={claimTotals.rejected > 0 ? "text-red-600" : undefined}
+                />
               </>
             )}
           </section>
@@ -205,7 +283,7 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
                     <span className="font-medium">{p.name}</span>
                     <span className="flex items-center gap-2">
                       {p.plan_code && <span className="text-muted-foreground font-mono">{p.plan_code}</span>}
-                      {p.is_active === false && <Badge variant="outline" className="text-[12px] bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30">Inactive</Badge>}
+                      {p.is_active === false && <Badge variant="outline" className="text-xs bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30">Inactive</Badge>}
                     </span>
                   </div>
                 ))}
@@ -253,6 +331,7 @@ export function HMOWorkspacePanel({ hmo, hmos, services, onClose }: HMOWorkspace
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <TariffImportDialog hmo={hmo} open={tariffOpen} onOpenChange={setTariffOpen} />
     </Sheet>
   );
 }

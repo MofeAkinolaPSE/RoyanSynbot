@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import { api } from "@/lib/api-client";
 import { AlertBanner } from "@/components/AlertBanner";
 import { OnlineStaffCard } from "@/components/dashboard/OnlineStaffCard";
 import { cn } from "@/lib/utils";
+import { NeedsAttentionCard } from "@/components/admin/NeedsAttentionCard";
 
 function fmtCurrency(n: number) {
   return `₦${Number(n || 0).toLocaleString("en-NG")}`;
@@ -26,6 +28,7 @@ function fmtCurrency(n: number) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const today = new Date().toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -118,15 +121,29 @@ export default function AdminDashboard() {
         </Button>
       </div>
 
+      {/* The correction pen: every decision waiting on an admin — bill
+          discounts, pharmacy discounts, front-desk drug approvals. Top of the
+          page because somebody is standing at a till or a pharmacy counter
+          while each one sits here, and it renders even when empty so the
+          workflow can be found before it is urgent. */}
+      <NeedsAttentionCard />
+
       {/* Row 1 — Hospital Census */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: "Queue Waiting (Today)",  value: patientsWaiting, icon: Users,       color: "text-blue-700",   bg: "bg-blue-50" },
-          { label: "Lab Pending",    value: labPending,      icon: FlaskConical, color: "text-orange-700", bg: "bg-orange-50" },
-          { label: "Rx Pending",     value: rxPending,       icon: Activity,     color: "text-purple-700", bg: "bg-purple-50" },
-          { label: "Avg Wait (min)", value: `${avgWait}m`,   icon: Activity,     color: avgWait > 60 ? "text-red-700" : "text-green-700", bg: avgWait > 60 ? "bg-red-50" : "bg-green-50" },
+          { label: "Queue Waiting (Today)",  value: patientsWaiting, icon: Users,       color: "text-blue-700",   bg: "bg-blue-50",   href: "/hospital/queue?status=waiting" },
+          { label: "Lab Pending",    value: labPending,      icon: FlaskConical, color: "text-orange-700", bg: "bg-orange-50", href: "/hospital/lab" },
+          { label: "Rx Pending",     value: rxPending,       icon: Activity,     color: "text-purple-700", bg: "bg-purple-50", href: "/hospital/pharmacy" },
+          { label: "Avg Wait (min)", value: `${avgWait}m`,   icon: Activity,     color: avgWait > 60 ? "text-red-700" : "text-green-700", bg: avgWait > 60 ? "bg-red-50" : "bg-green-50", href: "/hospital/queue?status=waiting" },
         ].map(k => (
-          <Card key={k.label} className={cn("border-border/60", k.bg)}>
+          <Card
+            key={k.label}
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(k.href)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(k.href); } }}
+            className={cn("border-border/60 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5", k.bg)}
+          >
             <CardContent className="pt-4 pb-3">
               <div className="flex justify-between items-start">
                 <div>
@@ -142,19 +159,35 @@ export default function AdminDashboard() {
 
       {/* Row 2 — Claims + Quality Strip */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <Card className="bg-yellow-50 border-yellow-200">
+        <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 bg-yellow-50 border-yellow-200"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/hmo")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/hmo"); } }}>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Pending HMO Claims</p>
             <p className="text-2xl font-bold text-yellow-700 mt-0.5">{pendingClaims.length}</p>
           </CardContent>
         </Card>
-        <Card className={cn("border-border/60", incidentStats.open > 0 ? "bg-red-50" : "bg-green-50")}>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/quality")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/quality"); } }}
+          className={cn("cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5", "border-border/60", incidentStats.open > 0 ? "bg-red-50" : "bg-green-50")}
+        >
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Open Incidents</p>
             <p className={cn("text-2xl font-bold mt-0.5", incidentStats.open > 0 ? "text-red-700" : "text-green-700")}>{incidentStats.open}</p>
           </CardContent>
         </Card>
-        <Card className={cn("border-border/60", hefamaaScore >= 80 ? "bg-green-50" : "bg-orange-50")}>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/quality")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/quality"); } }}
+          className={cn("cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5", "border-border/60", hefamaaScore >= 80 ? "bg-green-50" : "bg-orange-50")}
+        >
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">HEFAMAA Score</p>
             <p className={cn("text-2xl font-bold mt-0.5", hefamaaScore >= 80 ? "text-green-700" : "text-orange-700")}>{hefamaaScore}%</p>
@@ -235,7 +268,7 @@ export default function AdminDashboard() {
                 ).map(([dept, count]) => (
                   <div key={dept} className="flex justify-between text-xs">
                     <span className="text-muted-foreground">{dept}</span>
-                    <strong>{count}</strong>
+                    <strong>{String(count)}</strong>
                   </div>
                 ))}
                 <div className="border-t border-border/60 pt-1.5 flex justify-between text-sm font-semibold">
@@ -276,7 +309,7 @@ export default function AdminDashboard() {
               <AlertTriangle className={cn("h-4 w-4", criticalAlerts.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               System Alerts
               {criticalAlerts.length > 0 && (
-                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{criticalAlerts.length}</span>
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">{criticalAlerts.length}</span>
               )}
             </CardTitle>
           </CardHeader>
@@ -288,7 +321,7 @@ export default function AdminDashboard() {
                 {criticalAlerts.slice(0, 5).map((a: any, i: number) => (
                   <div key={i} className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
                     <p className="text-xs font-medium text-red-800">{a.title ?? a.type ?? "Alert"}</p>
-                    <p className="text-[12px] text-red-600 mt-0.5">{a.message ?? a.detail ?? ""}</p>
+                    <p className="text-xs text-red-600 mt-0.5">{a.message ?? a.detail ?? ""}</p>
                   </div>
                 ))}
               </div>
@@ -326,7 +359,7 @@ export default function AdminDashboard() {
                         {c.submitted_at ? new Date(c.submitted_at).toLocaleDateString("en-NG") : "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[12px] capitalize bg-yellow-50 text-yellow-700 border-yellow-300">{c.status}</Badge>
+                        <Badge variant="outline" className="text-xs capitalize bg-yellow-50 text-yellow-700 border-yellow-300">{c.status}</Badge>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -349,6 +382,10 @@ export default function AdminDashboard() {
           </Button>
         </CardContent>
       </Card>
+      {/* Read-only Hope data with no home of its own — the archive and the
+          old availability blocks. Bottom of the page because it is a lookup of
+          last resort, not daily work. */}
+
     </motion.div>
   );
 }

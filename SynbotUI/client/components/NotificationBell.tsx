@@ -145,7 +145,7 @@ export function NotificationBell() {
         <Button variant="ghost" size="sm" className="relative h-8 w-8 p-0">
           <Bell className="h-4 w-4" />
           {unread > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[12px] font-bold text-destructive-foreground leading-none">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-destructive-foreground leading-none">
               {unread > 9 ? "9+" : unread}
             </span>
           )}
@@ -185,7 +185,7 @@ export function NotificationBell() {
                   <div className="flex-1 min-w-0">
                     <p className={cn("text-sm leading-snug", !n.read && "font-medium")}>{n.message}</p>
                     {n.sub && <p className="text-xs text-muted-foreground mt-0.5 truncate">{n.sub}</p>}
-                    <p className="text-[13px] text-muted-foreground/70 mt-1">{relativeTime(n.ts)}</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">{relativeTime(n.ts)}</p>
                   </div>
                   {!n.read && (
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />

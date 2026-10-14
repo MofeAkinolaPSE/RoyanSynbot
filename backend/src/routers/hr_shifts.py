@@ -181,7 +181,7 @@ def _enrich_with_staff(rows: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @router.post("/shifts", status_code=201)
-async def create_shift(payload: ShiftCreate, user=Depends(verify_jwt)):
+def create_shift(payload: ShiftCreate, user=Depends(verify_jwt)):
     if payload.shift_type not in SHIFT_TYPES:
         raise HTTPException(status_code=422, detail=f"shift_type must be one of {sorted(SHIFT_TYPES)}")
 
@@ -199,7 +199,7 @@ async def create_shift(payload: ShiftCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/shifts")
-async def list_shifts(
+def list_shifts(
     staff_id: Optional[str]    = Query(None),
     department: Optional[str]  = Query(None),
     shift_date: Optional[str]  = Query(None),
@@ -225,7 +225,7 @@ async def list_shifts(
 
 
 @router.patch("/shifts/{shift_id}")
-async def update_shift(shift_id: str, payload: ShiftUpdate, user=Depends(verify_jwt)):
+def update_shift(shift_id: str, payload: ShiftUpdate, user=Depends(verify_jwt)):
     _get_shift(shift_id)
     updates = payload.model_dump(exclude_none=True)
     if not updates:
@@ -238,7 +238,7 @@ async def update_shift(shift_id: str, payload: ShiftUpdate, user=Depends(verify_
 
 
 @router.delete("/shifts/{shift_id}")
-async def delete_shift(shift_id: str, user=Depends(verify_jwt)):
+def delete_shift(shift_id: str, user=Depends(verify_jwt)):
     shift = _get_shift(shift_id)
     # No "cancelled" status exists on this table (CHECK only allows scheduled/
     # completed/missed/swapped) — a real delete is what this endpoint's verb
@@ -255,7 +255,7 @@ async def delete_shift(shift_id: str, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/leave", status_code=201)
-async def submit_leave(payload: LeaveRequest, user=Depends(verify_jwt)):
+def submit_leave(payload: LeaveRequest, user=Depends(verify_jwt)):
     if payload.leave_type not in LEAVE_TYPES:
         raise HTTPException(status_code=422, detail=f"leave_type must be one of {sorted(LEAVE_TYPES)}")
 
@@ -275,7 +275,7 @@ async def submit_leave(payload: LeaveRequest, user=Depends(verify_jwt)):
 
 
 @router.get("/leave")
-async def list_leave(
+def list_leave(
     staff_id: Optional[str]    = Query(None),
     status: Optional[str]      = Query(None),
     leave_type: Optional[str]  = Query(None),
@@ -292,12 +292,12 @@ async def list_leave(
 
 
 @router.get("/leave/{leave_id}")
-async def get_leave(leave_id: str, user=Depends(verify_jwt)):
+def get_leave(leave_id: str, user=Depends(verify_jwt)):
     return {"request": _get_leave(leave_id)}
 
 
 @router.patch("/leave/{leave_id}/status")
-async def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, user=Depends(verify_jwt)):
+def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, user=Depends(verify_jwt)):
     leave = _get_leave(leave_id)
     if leave["status"] not in ("pending",):
         raise HTTPException(status_code=409, detail=f"Cannot update a leave request in '{leave['status']}' status")
@@ -312,6 +312,19 @@ async def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, user=De
     db.table(TABLE_LEAVE_REQUESTS).update(updates).eq("id", leave_id).execute()
     audit_event(f"leave_{payload.status}", {"staff_id": leave["staff_id"], "days": leave.get("days_count")},
                 actor_id=user.get("sub"), subject_type="leave_request", subject_id=str(leave_id))
+    # the decision lands in the staff member's Staff Workspace inbox
+    try:
+        from src.fin.db import q1, tx
+        from src.services.staff_workspace import notify, refresh_rules
+        refresh_rules("hr.leave")
+        with tx() as conn:
+            s = q1(conn, "SELECT user_id::text AS user_id FROM royan_staff WHERE id=%s::uuid", (leave["staff_id"],))
+            if s and s["user_id"] and payload.status in ("approved", "rejected"):
+                notify(conn, [s["user_id"]], "leave", "action" if payload.status == "rejected" else "info",
+                       f"Your {leave['leave_type']} leave ({leave['start_date']} to {leave['end_date']}) was {payload.status}",
+                       None, "page", "/workspace?tab=progress", user.get("sub"))
+    except Exception:
+        logger.warning("Leave decision notification failed for %s", leave_id, exc_info=True)
     return {"ok": True, "leave_id": leave_id, "status": payload.status}
 
 
@@ -320,7 +333,7 @@ async def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, user=De
 # ---------------------------------------------------------------------------
 
 @router.post("/payroll", status_code=201)
-async def create_payroll(payload: PayrollRecord, user=Depends(require_role("admin", "hr", "management"))):
+def create_payroll(payload: PayrollRecord, user=Depends(require_role("admin", "hr", "management"))):
     if payload.status not in PAYROLL_STATUS:
         raise HTTPException(status_code=422, detail=f"status must be one of {sorted(PAYROLL_STATUS)}")
 
@@ -348,7 +361,7 @@ async def create_payroll(payload: PayrollRecord, user=Depends(require_role("admi
 
 
 @router.get("/payroll")
-async def list_payroll(
+def list_payroll(
     staff_id: Optional[str]   = Query(None),
     status: Optional[str]     = Query(None),
     limit: int                = Query(50, ge=1, le=200),
@@ -363,7 +376,7 @@ async def list_payroll(
 
 
 @router.get("/payroll/{staff_id}/summary")
-async def payroll_summary(staff_id: str, user=Depends(require_role("admin", "hr", "management"))):
+def payroll_summary(staff_id: str, user=Depends(require_role("admin", "hr", "management"))):
     result = db.table(TABLE_PAYROLL_RECORDS).select(
         "period_month,period_year,gross_salary,net_salary,status"
     ).eq("staff_id", staff_id).order("period_year", desc=True).order("period_month", desc=True).limit(12).execute()
@@ -378,7 +391,7 @@ async def payroll_summary(staff_id: str, user=Depends(require_role("admin", "hr"
 # ---------------------------------------------------------------------------
 
 @router.get("/stats")
-async def hr_stats(user=Depends(verify_jwt)):
+def hr_stats(user=Depends(verify_jwt)):
     today = datetime.now(timezone.utc).date().isoformat()
 
     shifts_today = db.table(TABLE_STAFF_SHIFTS).select("shift_type,status").eq("shift_date", today).execute()

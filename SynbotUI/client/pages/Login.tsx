@@ -132,7 +132,7 @@ const Login = () => {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.25 }}
-            className="text-[13px] font-bold uppercase tracking-[0.22em]"
+            className="text-xs font-bold uppercase tracking-[0.22em]"
             style={{ color: "#E4C583" }}
           >
             Welcome to Royan Hospital
@@ -184,7 +184,7 @@ const Login = () => {
         </div>
 
         {/* Bottom credit */}
-        <p className="text-[13px] text-white/25">© 2026 Royan Hospital · All rights reserved</p>
+        <p className="text-xs text-white/25">© 2026 Royan Hospital · All rights reserved</p>
       </motion.div>
 
       {/* ── RIGHT LOGIN PANEL ────────────────────────────────────────────────── */}
@@ -243,7 +243,7 @@ const Login = () => {
               style={{ background: "linear-gradient(90deg, rgba(201,162,75,0.16) 0%, rgba(25,87,163,0.14) 100%)", border: "1px solid rgba(201,162,75,0.22)" }}
             >
               <div className="h-2 w-2 rounded-full" style={{ background: "#C9A24B", boxShadow: "0 0 6px rgba(201,162,75,0.8)" }} />
-              <span className="text-[13px] font-semibold uppercase tracking-widest" style={{ color: "#E4C583" }}>
+              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#E4C583" }}>
                 Secure Access Portal
               </span>
             </div>
@@ -255,7 +255,7 @@ const Login = () => {
 
             <form className="space-y-4" onSubmit={onSubmit}>
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold uppercase tracking-wide text-white/50">
+                <label className="text-xs font-semibold uppercase tracking-wide text-white/50">
                   Email
                 </label>
                 <Input
@@ -269,7 +269,7 @@ const Login = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold uppercase tracking-wide text-white/50">
+                <label className="text-xs font-semibold uppercase tracking-wide text-white/50">
                   Password
                 </label>
                 <div className="relative">
@@ -323,7 +323,7 @@ const Login = () => {
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-[12px] leading-relaxed text-white/20">
+            <p className="mt-6 text-center text-xs leading-relaxed text-white/20">
               Authorized personnel only · This system is monitored and all access is logged
             </p>
 
@@ -332,7 +332,7 @@ const Login = () => {
             </p>
           </div>
 
-          <p className="mt-5 text-center text-[13px] text-white/20">
+          <p className="mt-5 text-center text-xs text-white/20">
             Royan Hospital © 2026
           </p>
         </motion.div>

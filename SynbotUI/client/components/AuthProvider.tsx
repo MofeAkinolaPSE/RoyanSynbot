@@ -1,4 +1,5 @@
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { usePresenceHeartbeat } from "@/hooks/use-presence-heartbeat";
 
@@ -31,6 +32,7 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
   const [isAuthenticated, setIsAuthenticated] = useState(authClient.isAuthenticated());
   const [roles, setRoles] = useState<string[]>(authClient.getRoles());
 
+  const queryClient = useQueryClient();
   usePresenceHeartbeat(isAuthenticated);
 
   useEffect(() => {
@@ -78,6 +80,7 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
       isLoading,
       login: async (email: string, password: string) => {
         await authClient.login(email, password);
+        queryClient.clear();   // never show what a previous login fetched in this browser
         setIsAuthenticated(true);
         const roleList = authClient.getRoles();
         setRoles(roleList);
@@ -88,6 +91,7 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
       },
       logout: async () => {
         await authClient.logout();
+        queryClient.clear();
         localStorage.removeItem("synbot_config");
         setIsAuthenticated(false);
         setRoles([]);
@@ -107,7 +111,7 @@ const AuthProvider = ({ children }: PropsWithChildren) => {
       },
       roles,
     }),
-    [isAuthenticated, isLoading, roles],
+    [isAuthenticated, isLoading, roles, queryClient],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

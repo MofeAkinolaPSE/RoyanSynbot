@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -18,14 +18,18 @@ import {
 } from "@/components/ui/table";
 import {
   User, ReceiptText, CreditCard, Building, Plus, ExternalLink, Loader2,
-  ShieldOff, Ban, Printer,
+  ShieldOff, Ban, Printer, Percent, Undo2, Unlock, FileText, Wallet
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/AuthProvider";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { cn } from "@/lib/utils";
+import { CorrectionPen } from "@/components/billing/CorrectionPen";
+import { askConfirm, askText } from "@/lib/ask";
 import {
   fmtDate, elapsed, naira, BillBadge, ClaimBadge, DetailRow,
-  PAYMENT_METHODS, CLAIM_STATUSES, OPEN_BILL_STATUSES,
+  PAYMENT_METHODS, PAYMENT_METHOD_LABELS, CLAIM_STATUSES, OPEN_BILL_STATUSES,
 } from "@/components/billing/billing-shared";
 
 interface BillingWorkspacePanelProps {
@@ -41,21 +45,23 @@ interface BillingWorkspacePanelProps {
   } & Record<string, any>;
   onClose: () => void;
   initialTab?: string;
+  /** Open straight on "receive payment", the amount pre-filled with what is outstanding. */
+  receive?: boolean;
 }
 
-const emptyPayment = { amount: "", payment_method: "cash", reference: "" };
+const emptyPayment = { amount: "", payment_method: "pos", reference: "" };
 const emptyClaim = { insurer_name: "", claim_amount: "", notes: "" };
 const emptyClaimUpdate = { status: "approved", authorisation_code: "", approved_amount: "", notes: "" };
 
-export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }: BillingWorkspacePanelProps) {
+export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab, receive }: BillingWorkspacePanelProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { roles } = useAuth();
   const isAdmin = roles.includes("admin");
   const qc = useQueryClient();
-  const [tab, setTab] = useState(initialTab ?? "detail");
+  const [tab, setTab] = useState(initialTab ?? (receive ? "payments" : "detail"));
 
-  const [paymentFormOpen, setPaymentFormOpen] = useState(false);
+  const [paymentFormOpen, setPaymentFormOpen] = useState(!!receive);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
   const [claimFormOpen, setClaimFormOpen] = useState(false);
   const [claimForm, setClaimForm] = useState({ ...emptyClaim });
@@ -80,6 +86,28 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
     void qc.invalidateQueries({ queryKey: ["hospital-billing-stats"] });
   };
 
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+
+  const discountMut = useMutation({
+    mutationFn: () =>
+      api.hospital.billing.requestDiscount(
+        bill.id, Number(discountAmount), discountReason.trim() || undefined,
+      ),
+    onSuccess: () => {
+      setDiscountAmount("");
+      setDiscountReason("");
+      void qc.invalidateQueries({ queryKey: ["bill", bill.id] });
+      void qc.invalidateQueries({ queryKey: ["hospital-bills"] });
+      toast({
+        title: "Discount sent for approval",
+        description: "The bill cannot be settled until an admin decides.",
+      });
+    },
+    onError: (e: any) =>
+      toast({ title: "Could not apply discount", description: e?.message, variant: "destructive" }),
+  });
+
   const paymentMut = useMutation({
     mutationFn: () => api.hospital.billing.recordPayment(billId, {
       amount: Number(paymentForm.amount),
@@ -87,7 +115,8 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
       reference: paymentForm.reference || undefined,
     }),
     onSuccess: (res: any) => {
-      toast({ title: "Payment recorded", description: `Bill status: ${res.bill_status}` });
+      toast({ title: `Receipt ${res.payment?.receipt_number ?? ""} issued`, description: `Bill is now ${res.bill_status}. Posted to the books.` });
+      if (res.payment_id ?? res.payment?.id) window.open(`#/hospital/billing/${billId}/invoice?receipt=${res.payment_id ?? res.payment?.id}`, "_blank");
       setPaymentForm({ ...emptyPayment });
       setPaymentFormOpen(false);
       invalidateAll();
@@ -138,12 +167,60 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  // Corrections at the cashier: a receipt keyed wrongly is voided (with a reason) and the right one recorded; a bill
+  // raised wrongly is voided once its receipts are voided, and the orders can then be billed again. Roy Books follows.
+  const booksNote = (res: any) => res?.books?.message ? ` Roy Books: ${res.books.message}` : "";
+  const voidPaymentMut = useMutation({
+    mutationFn: (v: { id: number; reason: string }) => api.hospital.billing.voidPayment(v.id, v.reason),
+    onSuccess: (res: any) => {
+      toast({ title: "Receipt voided", description: `Bill is now ${res.bill_status}. Record the correct receipt below.${booksNote(res)}` });
+      setPaymentFormOpen(true);
+      invalidateAll();
+    },
+    onError: (e: any) => toast({ title: "Could not void the receipt", description: e.message, variant: "destructive" }),
+  });
+  const voidBillMut = useMutation({
+    mutationFn: (reason: string) => api.hospital.billing.voidBill(billId, reason),
+    onSuccess: (res: any) => {
+      toast({ title: "Bill voided", description: `Its orders can be billed again (Send to cashier).${booksNote(res)}` });
+      invalidateAll();
+    },
+    onError: (e: any) => toast({ title: "Could not void the bill", description: e.message, variant: "destructive" }),
+  });
+  const releaseMut = useMutation({
+    mutationFn: (reason: string) => api.hospital.billing.releaseBill(billId, reason),
+    onSuccess: () => { toast({ title: "Services released", description: "Lab, scan and pharmacy can now serve this bill; the balance stays on the patient's account." }); invalidateAll(); },
+    onError: (e: any) => toast({ title: "Could not release", description: e.message, variant: "destructive" }),
+  });
+  const askVoidPayment = async (p: any) => {
+    const reason = await askText(`Void receipt ${p.receipt_number ?? "#" + p.id} for ${naira(p.amount)}?\nGive the reason (wrong amount, wrong method, wrong patient...). You can record the correct receipt straight after.`);
+    if (reason && reason.trim().length >= 3) voidPaymentMut.mutate({ id: p.id, reason: reason.trim() });
+  };
+  const askVoidBill = async () => {
+    const reason = await askText(`Void bill ${bill.bill_number ?? "#" + bill.id}?\nThe invoice is reversed in Roy Books and its orders can be billed again. Give the reason.`);
+    if (reason && reason.trim().length >= 3) voidBillMut.mutate(reason.trim());
+  };
+  const askRelease = async () => {
+    const reason = await askText("Release services on a part-paid bill?\nThe patient may go to lab / scan / pharmacy now; the balance stays on their account. Give the reason.", "Part payment accepted");
+    if (reason && reason.trim().length >= 3) releaseMut.mutate(reason.trim());
+  };
+  const standingPayments = payments.filter((p: any) => (p.status ?? "posted") !== "void");
+  const isHmo = Number(bill.hmo_covered ?? 0) > 0 || !!bill.hmo_id;
+
   const status = bill.status;
   const isOpen = OPEN_BILL_STATUSES.includes(status as any);
+  const outstanding = Number(bill.outstanding ?? 0);
+  // The cashier confirms rather than types: the amount is filled with what is outstanding (change it for a part payment).
+  const openReceive = () => { setPaymentForm({ ...emptyPayment, amount: outstanding > 0 ? String(outstanding) : "" }); setPaymentFormOpen(true); setTab("payments"); };
+  useEffect(() => {
+    if (paymentFormOpen && !paymentForm.amount && data?.bill && outstanding > 0) setPaymentForm((f) => ({ ...f, amount: String(outstanding) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentFormOpen, data?.bill?.id, outstanding]);
+  const entered = Number(paymentForm.amount || 0);
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         {isLoading && !data ? (
           <LoadingSkeleton />
         ) : (
@@ -159,9 +236,35 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
                     <span className="text-xs text-muted-foreground">{bill.patient_name ?? `Patient ID ${bill.patient_id}`}</span>
                     {bill.patient_mrn && <Badge variant="outline" className="text-xs font-mono">{bill.patient_mrn}</Badge>}
                     <BillBadge status={status} />
+                    {bill.entity === "SCANCARE" && <Badge variant="outline" className="text-xs">Scancare</Badge>}
+                    {bill.stage && <Badge variant="outline" className="text-xs capitalize">{bill.stage}</Badge>}
+                    {bill.released_at && <Badge variant="outline" className="text-xs text-blue-600">Released</Badge>}
                   </div>
-                  <p className="text-[13px] text-muted-foreground mt-1">Billed {elapsed(bill.billed_at)} ago</p>
+                  <p className="text-xs text-muted-foreground mt-1">Billed {elapsed(bill.billed_at)} ago</p>
+                  {status === "void" && bill.void_reason && <p className="text-xs text-muted-foreground mt-1">Voided: {bill.void_reason}</p>}
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-3">
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                  onClick={() => window.open(`#/hospital/billing/${bill.id}/invoice`, "_blank")}>
+                  <Printer className="h-3 w-3" /> Invoice
+                </Button>
+                {isHmo && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                    onClick={() => window.open(`#/hospital/billing/${bill.id}/invoice?claims=1`, "_blank")}>
+                    <FileText className="h-3 w-3" /> Claims form
+                  </Button>
+                )}
+                {status === "partial" && !bill.released_at && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" disabled={releaseMut.isPending} onClick={askRelease}>
+                    <Unlock className="h-3 w-3" /> Release services
+                  </Button>
+                )}
+                {status !== "void" && standingPayments.length === 0 && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs text-red-600" disabled={voidBillMut.isPending} onClick={askVoidBill}>
+                    <Ban className="h-3 w-3" /> Void bill
+                  </Button>
+                )}
               </div>
             </SheetHeader>
 
@@ -170,6 +273,8 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
                 <TabsTrigger value="detail">Detail</TabsTrigger>
                 <TabsTrigger value="payments">Payments</TabsTrigger>
                 <TabsTrigger value="claims">Claims</TabsTrigger>
+                <TabsTrigger value="account">Patient account</TabsTrigger>
+                <TabsTrigger value="corrections">Corrections</TabsTrigger>
               </TabsList>
 
               <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -190,12 +295,95 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
                     <DetailRow label="Procedure"    value={bill.procedure_charges ? naira(bill.procedure_charges) : undefined} />
                     <DetailRow label="Miscellaneous" value={bill.miscellaneous ? naira(bill.miscellaneous) : undefined} />
                     <DetailRow label="Subtotal"     value={naira(bill.subtotal ?? bill.total_amount)} accent="font-semibold" />
-                    <DetailRow label="Discount"     value={bill.discount ? naira(bill.discount) : undefined} />
+                    <DetailRow
+                      label="Discount"
+                      value={bill.discount ? naira(bill.discount) : undefined}
+                      accent={
+                        bill.discount_status === "pending" ? "text-amber-600"
+                        : bill.discount_status === "approved" ? "text-green-600"
+                        : undefined
+                      }
+                    />
+                    {bill.discount_status === "pending" && (
+                      <p className="py-1 text-xs text-amber-600">
+                        Waiting for admin approval. Payment is blocked until this is decided.
+                      </p>
+                    )}
+                    {bill.discount_status === "rejected" && (
+                      <p className="py-1 text-xs text-muted-foreground">
+                        A discount was rejected and cleared from this bill.
+                      </p>
+                    )}
                     <DetailRow label="HMO Covered"  value={bill.hmo_covered ? naira(bill.hmo_covered) : undefined} accent="text-green-500" />
                     <DetailRow label="Patient Balance" value={naira(bill.patient_balance ?? bill.patient_due)} accent="font-semibold" />
                     <DetailRow label="Amount Paid"  value={naira(bill.amount_paid)} accent="text-green-500" />
                     <DetailRow label="Outstanding"  value={naira(bill.outstanding)} accent={(bill.outstanding ?? 0) > 0 ? "text-red-500 font-semibold" : "text-green-500"} />
                   </section>
+
+                  {/* Cashier applies a discount; an admin decides. The amount is
+                      not deducted until approved, so what the patient owes never
+                      silently changes on one person's say-so. */}
+                  {bill.status !== "paid" && bill.discount_status !== "pending" && (
+                    <>
+                      <Separator />
+                      <section>
+                        <SectionLabel icon={<Percent className="h-3.5 w-3.5" />} label="Apply discount" />
+                        <div className="space-y-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Discount</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {[5, 10, 15, 20, 25, 50].map((pct) => (
+                                <Button key={pct} type="button" size="sm" variant="outline" className="h-7 px-2 text-xs"
+                                  onClick={() => setDiscountAmount((Math.round(Number(bill.subtotal ?? 0) * pct) / 100).toFixed(2))}>
+                                  {pct}%
+                                </Button>
+                              ))}
+                            </div>
+                            <Input
+                              type="number" min="0" step="100"
+                              placeholder="or type an amount (₦)"
+                              value={discountAmount}
+                              onChange={(e) => setDiscountAmount(e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                            {Number(discountAmount) > 0 && Number(discountAmount) <= Number(bill.subtotal ?? 0) && (
+                              <p className="text-xs text-muted-foreground">
+                                {Math.round((Number(discountAmount) / Number(bill.subtotal || 1)) * 1000) / 10}% off ·
+                                patient will owe {naira(Math.max(Number(bill.subtotal ?? 0) - Number(bill.hmo_covered ?? 0) - Number(discountAmount) - Number(bill.amount_paid ?? 0), 0))}
+                              </p>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Reason</Label>
+                            <Input
+                              placeholder="Why is this being discounted?"
+                              value={discountReason}
+                              onChange={(e) => setDiscountReason(e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <Button
+                            size="sm" className="w-full gap-1.5"
+                            disabled={
+                              discountMut.isPending ||
+                              !(Number(discountAmount) > 0) ||
+                              Number(discountAmount) > Number(bill.subtotal ?? 0)
+                            }
+                            onClick={() => discountMut.mutate()}
+                          >
+                            {discountMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            Send for approval
+                          </Button>
+                          {Number(discountAmount) > Number(bill.subtotal ?? 0) && (
+                            <p className="text-xs text-red-600">
+                              A discount cannot exceed the subtotal.
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    </>
+                  )}
+
                   {items.length > 0 && (
                     <>
                       <Separator />
@@ -233,58 +421,105 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
                             <TableHead className="text-xs">Date</TableHead>
                             <TableHead className="text-xs">Amount</TableHead>
                             <TableHead className="text-xs">Method</TableHead>
+                            <TableHead className="text-xs">Receipt No.</TableHead>
                             <TableHead className="text-xs">Reference</TableHead>
                             <TableHead className="text-xs">By</TableHead>
+                            <TableHead className="w-[140px]" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {payments.map((p: any) => (
-                            <TableRow key={p.id}>
-                              <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">{fmtDate(p.received_at)}</TableCell>
-                              <TableCell className="text-xs font-semibold text-green-500">{naira(p.amount)}</TableCell>
-                              <TableCell className="text-xs uppercase">{p.payment_method}</TableCell>
+                          {payments.map((p: any) => {
+                            const voided = (p.status ?? "posted") === "void";
+                            return (
+                            <TableRow key={p.id} className={voided ? "opacity-60" : undefined}>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDate(p.received_at)}</TableCell>
+                              <TableCell className={cn("text-xs font-semibold", voided ? "line-through text-muted-foreground" : "text-green-500")}>
+                                {naira(p.amount)}
+                                {voided && <span className="block font-normal no-underline">Void: {p.void_reason}</span>}
+                              </TableCell>
+                              <TableCell className="text-xs">{PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method}</TableCell>
+                              {/* The hospital's number, not the payer's — see
+                                  the receipt_number column comment. */}
+                              <TableCell className="font-mono text-xs">{p.receipt_number ?? "—"}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">{p.reference ?? "—"}</TableCell>
-                              <TableCell className="text-[13px] text-muted-foreground">{p.received_by ?? "—"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{p.received_by ?? "—"}</TableCell>
+                              <TableCell className="w-[140px] whitespace-nowrap">
+                                {!voided && (
+                                  <Button
+                                    size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs"
+                                    onClick={() => window.open(`#/hospital/billing/${bill.id}/invoice?receipt=${p.id}`, "_blank")}
+                                  >
+                                    <Printer className="h-3 w-3" /> Receipt
+                                  </Button>
+                                )}
+                                {!voided && !p.external_source && !["waiver", "hmo"].includes(p.payment_method) && (
+                                  <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs text-red-600"
+                                    disabled={voidPaymentMut.isPending} onClick={() => askVoidPayment(p)}>
+                                    <Undo2 className="h-3 w-3" /> Void
+                                  </Button>
+                                )}
+                              </TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
                   )}
 
+                  <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                    <span>Paid <span className="font-semibold text-green-600">{naira(bill.amount_paid)}</span> of {naira(bill.patient_due ?? bill.patient_balance)}</span>
+                    <span className={outstanding > 0 ? "font-semibold text-red-600" : "font-semibold text-green-600"}>
+                      {outstanding > 0 ? `${naira(outstanding)} owing` : "Paid in full"}
+                    </span>
+                  </div>
                   {isOpen && (!paymentFormOpen ? (
-                    <Button size="sm" variant="outline" className="w-full gap-1.5" onClick={() => setPaymentFormOpen(true)}>
-                      <Plus className="h-3.5 w-3.5" /> Record Payment
+                    <Button size="sm" className="w-full gap-1.5" onClick={openReceive}>
+                      <Plus className="h-3.5 w-3.5" /> Receive payment
                     </Button>
                   ) : (
                     <section className="space-y-2 border-t pt-3">
                       <div className="space-y-1">
-                        <Label>Amount (₦) *</Label>
+                        <Label>Amount received (₦)</Label>
                         <Input type="number" min="0" value={paymentForm.amount}
                           onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))} placeholder="e.g. 5000" />
+                        <p className={cn("text-xs", entered > outstanding ? "text-red-600" : "text-muted-foreground")}>
+                          {entered <= 0 ? `Outstanding ${naira(outstanding)}`
+                            : entered > outstanding ? `More than the ${naira(outstanding)} outstanding`
+                            : entered < outstanding ? `Part payment: ${naira(outstanding - entered)} will remain on the patient's account`
+                            : "Pays the bill in full"}
+                        </p>
                       </div>
                       <div className="space-y-1">
                         <Label>Payment Method</Label>
                         <Select value={paymentForm.payment_method} onValueChange={v => setPaymentForm(f => ({ ...f, payment_method: v }))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m} className="uppercase">{m}</SelectItem>)}
+                            {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <Label>Reference / Receipt #</Label>
+                        <Label>{paymentForm.payment_method === "pos" ? "POS slip / terminal reference" : "Reference"}</Label>
                         <Input value={paymentForm.reference} onChange={e => setPaymentForm(f => ({ ...f, reference: e.target.value }))}
-                          placeholder="Transaction reference (optional)" />
+                          placeholder="Optional - the receipt number is issued automatically" />
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="flex-1" onClick={() => { setPaymentFormOpen(false); setPaymentForm({ ...emptyPayment }); }}>Cancel</Button>
-                        <Button size="sm" className="flex-1 gap-1.5" disabled={!paymentForm.amount || paymentMut.isPending} onClick={() => paymentMut.mutate()}>
-                          {paymentMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Record Payment
+                        <Button size="sm" className="flex-1 gap-1.5" disabled={!(entered > 0) || entered > outstanding + 0.001 || paymentMut.isPending} onClick={() => paymentMut.mutate()}>
+                          {paymentMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Confirm {entered > 0 ? naira(entered) : ""} received
                         </Button>
                       </div>
                     </section>
                   ))}
+                </TabsContent>
+
+                <TabsContent value="account" className="mt-0">
+                  {tab === "account" && bill.patient_id && <PatientAccount patientId={bill.patient_id} currentBillId={bill.id} />}
+                </TabsContent>
+
+                <TabsContent value="corrections" className="mt-0">
+                  <CorrectionPen billId={bill.id} isAdmin={isAdmin} />
                 </TabsContent>
 
                 {/* ── Claims ── */}
@@ -305,9 +540,9 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
                               <p className="text-xs text-muted-foreground">Claim: {naira(c.claim_amount)}{c.approved_amount != null && <> · Approved: {naira(c.approved_amount)}</>}</p>
                               {c.notes && <p className="text-xs text-muted-foreground">{c.notes}</p>}
                               <div className="flex items-center justify-between">
-                                <p className="text-[13px] text-muted-foreground">{fmtDate(c.submitted_at)}</p>
+                                <p className="text-xs text-muted-foreground">{fmtDate(c.submitted_at)}</p>
                                 {!terminal && (
-                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px]"
+                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
                                     onClick={() => { setEditingClaimId(c.id); setClaimUpdateForm({ ...emptyClaimUpdate }); }}>
                                     Update Status
                                   </Button>
@@ -392,14 +627,14 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
               {isOpen && isAdmin && (
                 <Button size="sm" variant="outline" className="gap-1.5 text-purple-500 border-purple-500/30 hover:bg-purple-500/10"
                   disabled={waiveMut.isPending}
-                  onClick={() => { if (window.confirm("Waive the remaining outstanding balance on this bill? This is logged and cannot be undone.")) waiveMut.mutate(); }}>
+                  onClick={async () => { if (await askConfirm("Waive the remaining outstanding balance on this bill? This is logged and cannot be undone.")) waiveMut.mutate(); }}>
                   <ShieldOff className="h-3.5 w-3.5" /> Waive
                 </Button>
               )}
               {isOpen && isAdmin && (
                 <Button size="sm" variant="outline" className="gap-1.5 text-red-500 border-red-500/30 hover:bg-red-500/10"
                   disabled={writeOffMut.isPending}
-                  onClick={() => { if (window.confirm("Write off this bill as uncollectable? This is logged and cannot be undone.")) writeOffMut.mutate(); }}>
+                  onClick={async () => { if (await askConfirm("Write off this bill as uncollectable? This is logged and cannot be undone.")) writeOffMut.mutate(); }}>
                   <Ban className="h-3.5 w-3.5" /> Write Off
                 </Button>
               )}
@@ -425,15 +660,6 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab }
   );
 }
 
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
-  );
-}
-
 function LoadingSkeleton() {
   return (
     <div className="p-5 space-y-4">
@@ -444,6 +670,58 @@ function LoadingSkeleton() {
       <Skeleton className="h-16 w-full" />
       <Skeleton className="h-20 w-full" />
       <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
+
+/** The patient's account across visits: bills (debit) and receipts (credit) with a running balance, per company. */
+export function PatientAccount({ patientId, currentBillId }: { patientId: number; currentBillId?: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["patient-account", patientId],
+    queryFn: () => api.hospital.billing.patientAccount(patientId),
+  });
+  if (isLoading) return <Skeleton className="h-24 w-full" />;
+  const lines: any[] = data?.lines ?? [];
+  const balances: Record<string, number> = data?.balances ?? {};
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-3">
+        {Object.entries(balances).map(([co, bal]) => (
+          <div key={co} className="rounded-md border px-3 py-2">
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" />{co === "SCANCARE" ? "Scancare" : "Royan"} balance</p>
+            <p className={cn("text-sm font-semibold", bal > 0 ? "text-red-600" : "text-green-600")}>{naira(bal)}</p>
+          </div>
+        ))}
+      </div>
+      {lines.length === 0 ? <p className="text-xs text-muted-foreground">Nothing on this patient's account yet.</p> : (
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Date</TableHead>
+                <TableHead className="text-xs">Ref</TableHead>
+                <TableHead className="text-xs">Company</TableHead>
+                <TableHead className="text-xs text-right">Debit</TableHead>
+                <TableHead className="text-xs text-right">Credit</TableHead>
+                <TableHead className="text-xs text-right">Balance</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.map((l: any) => (
+                <TableRow key={l.kind + l.id} className={cn(l.void && "opacity-50 line-through", l.bill_id === currentBillId && "bg-primary/5")}>
+                  <TableCell className="text-xs whitespace-nowrap">{fmtDate(l.at)}</TableCell>
+                  <TableCell className="text-xs font-mono">{l.ref}{l.kind === "receipt" && l.method ? ` · ${String(l.method).toUpperCase()}` : ""}</TableCell>
+                  <TableCell className="text-xs">{l.company === "SCANCARE" ? "Scancare" : "Royan"}</TableCell>
+                  <TableCell className="text-xs text-right">{l.debit ? naira(l.debit) : ""}</TableCell>
+                  <TableCell className="text-xs text-right">{l.credit ? naira(l.credit) : ""}</TableCell>
+                  <TableCell className="text-xs text-right font-medium">{naira(l.balance)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

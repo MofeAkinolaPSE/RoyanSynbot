@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { UnitCostsPanel } from "@/components/books/UnitCostsPanel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,8 @@ import { cn } from "@/lib/utils";
 import { DrugInventoryCard, type DrugCard } from "@/components/pharmacy/DrugInventoryCard";
 import { InventoryDrugPanel } from "@/components/pharmacy/InventoryDrugPanel";
 import { elapsed } from "@/components/pharmacy/pharmacy-shared";
+import { ExpiredStockTab } from "@/components/pharmacy/ExpiredStockTab";
+import { InventoryReportTab } from "@/components/pharmacy/InventoryReportTab";
 
 const INVENTORY_WRITE_ROLES = ["pharmacist", "admin"];
 
@@ -312,6 +315,9 @@ export default function Inventory() {
           <TabsTrigger value="stock">Stock</TabsTrigger>
           <TabsTrigger value="trending">Trending</TabsTrigger>
           <TabsTrigger value="replenishment">Replenishment</TabsTrigger>
+          <TabsTrigger value="expired">Expired Stock</TabsTrigger>
+          <TabsTrigger value="costs">Unit costs</TabsTrigger>
+          <TabsTrigger value="report">Report</TabsTrigger>
         </TabsList>
 
         {/* ── Stock Tab ─────────────────────────────────────────────────── */}
@@ -451,19 +457,20 @@ export default function Inventory() {
                         <TableCell>
                           <div className="flex gap-1">
                             {r.status === "recommended" && (
-                              <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px]"
+                              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
                                 onClick={() => updateReplenishStatusMut.mutate({ id: r.id, status: "approved" })}>Approve</Button>
                             )}
                             {r.status === "approved" && (
-                              <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px]"
+                              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
                                 onClick={() => updateReplenishStatusMut.mutate({ id: r.id, status: "ordered" })}>Mark Ordered</Button>
                             )}
                             {r.status === "ordered" && (
-                              <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px]"
-                                onClick={() => updateReplenishStatusMut.mutate({ id: r.id, status: "received" })}>Mark Received</Button>
+                              <span className="px-2 text-xs text-muted-foreground" title="Closes by itself when the stock is received here or delivered through Roy Books">
+                                closes on receipt
+                              </span>
                             )}
                             {!["received", "cancelled"].includes(r.status) && (
-                              <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px] text-red-500"
+                              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-red-500"
                                 onClick={() => updateReplenishStatusMut.mutate({ id: r.id, status: "cancelled" })}>Cancel</Button>
                             )}
                           </div>
@@ -475,6 +482,17 @@ export default function Inventory() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="expired" className="mt-4">
+          <ExpiredStockTab />
+        </TabsContent>
+
+        {/* the same unit costs Finance sees in Roy Books > Stock: pharmacy and finance work from one list */}
+        <TabsContent value="costs" className="mt-4"><UnitCostsPanel /></TabsContent>
+
+        <TabsContent value="report" className="mt-4">
+          <InventoryReportTab />
         </TabsContent>
       </Tabs>
 

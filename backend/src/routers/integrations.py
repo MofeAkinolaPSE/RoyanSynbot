@@ -181,7 +181,7 @@ async def get_pacs_study(accession: str, user=Depends(verify_jwt)):
 
 
 @router.get("/pacs/studies")
-async def list_pacs_studies(
+def list_pacs_studies(
     patient_id:         Optional[int] = Query(None),
     radiology_order_id: Optional[int] = Query(None),
     status:             Optional[str] = Query(None),
@@ -203,7 +203,7 @@ async def list_pacs_studies(
 # ---------------------------------------------------------------------------
 
 @router.post("/kiosk/checkin", status_code=201)
-async def kiosk_checkin(payload: KioskCheckin):
+def kiosk_checkin(payload: KioskCheckin):
     """
     QR kiosk self-service patient check-in.
     Accepts QR code, MRN, or phone number to identify the patient.
@@ -272,7 +272,7 @@ async def kiosk_checkin(payload: KioskCheckin):
 
 
 @router.get("/kiosk/queue-status")
-async def kiosk_queue_status():
+def kiosk_queue_status():
     """
     Live queue status for kiosk display board.
     No JWT required — public display endpoint.
@@ -313,7 +313,7 @@ async def kiosk_queue_status():
 
 
 @router.get("/kiosk/checkins")
-async def list_kiosk_checkins(
+def list_kiosk_checkins(
     checkin_date: Optional[str] = Query(None, description="ISO date, defaults to today"),
     limit:        int           = Query(100, ge=1, le=500),
     user=Depends(verify_jwt),
@@ -327,7 +327,7 @@ async def list_kiosk_checkins(
 
 
 @router.get("/queue/display")
-async def queue_display(department: Optional[str] = Query(None)):
+def queue_display(department: Optional[str] = Query(None)):
     """
     Public display board data — no JWT required.
     Returns called, now-serving, and next-up waiting encounters with queue numbers.
@@ -338,17 +338,18 @@ async def queue_display(department: Optional[str] = Query(None)):
         conn = db.pool.getconn()
         try:
             cur = conn.cursor()
-            dept_filter = f"AND department = '{department}'" if department else ""
-            cur.execute(f"""
+            # department is bound as a parameter: this endpoint is public (the waiting-room screen), and the
+            # value used to be pasted into the SQL, which let anyone run their own query.
+            cur.execute("""
                 SELECT status, queue_number, consulting_room, called_at, consultation_at
                 FROM public.royan_encounters
                 WHERE external_source IS NULL
                   AND created_at::date = %s
                   AND status IN ('called', 'consulting', 'patient_registered', 'triaged', 'nurse_assessment')
-                  {dept_filter}
+                  AND (%s::text IS NULL OR department = %s)
                 ORDER BY COALESCE(called_at, consultation_at, created_at) ASC
                 LIMIT 60
-            """, (today,))
+            """, (today, department, department))
             rows = cur.fetchall()
         finally:
             db.pool.putconn(conn)

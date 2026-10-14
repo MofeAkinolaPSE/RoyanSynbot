@@ -1,4 +1,4 @@
-import { NAV_ITEMS, type NavItem } from "@/lib/nav-items";
+import { NAV_ITEMS, type NavChild, type NavItem } from "@/lib/nav-items";
 
 // Single home for "does this role see this item" — was previously copy-pasted
 // as private closures in Sidebar.tsx AND tour-config.ts, and reimplemented a
@@ -19,16 +19,17 @@ interface FlatNavEntry {
 }
 
 // Walks NAV_ITEMS once, emitting one entry per item with an href and one per
-// child (children inherit the PARENT's roles — NavChild has no roles field
-// of its own, e.g. Finance's "Analytics"/"Reports"/... all inherit Finance's
-// [admin, finance]).
+// child. A child inherits the PARENT's roles unless it declares its own —
+// needed where grouping puts pages with different access under one heading
+// (Pharmacy QC belongs to quality_assurance, its siblings do not).
 export function flattenNavItems(): FlatNavEntry[] {
   const entries: FlatNavEntry[] = [];
   for (const item of NAV_ITEMS as NavItem[]) {
     if (item.href) entries.push({ href: item.href, roles: item.roles, label: item.label, icon: item.icon });
     if (item.children) {
       for (const child of item.children) {
-        entries.push({ href: child.href, roles: item.roles, label: child.label, icon: item.icon });
+        // A child may narrow or widen the parent's roles for its own page.
+        entries.push({ href: child.href, roles: child.roles ?? item.roles, label: child.label, icon: item.icon });
       }
     }
   }
@@ -75,4 +76,26 @@ export function resolveRouteRoles(pathname: string): string[] | undefined {
     if (pathname === prefix || pathname.startsWith(prefix + "/")) return roles;
   }
   return undefined;
+}
+
+/** Menu placement only (access is canViewByRoles): showFor / hideFor keep, say, a doctor's menu to their
+ * own clinical home instead of every page they are allowed to open. */
+export function shownInMenu(userRoles: string[], entry: { showFor?: string[]; hideFor?: string[] }): boolean {
+  if (entry.showFor && !userRoles.some((r) => entry.showFor!.includes(r))) return false;
+  if (entry.hideFor && userRoles.some((r) => entry.hideFor!.includes(r))) return false;
+  return true;
+}
+
+/** The children of a folder this person sees in the menu. */
+export function menuChildren(userRoles: string[], item: NavItem): NavChild[] {
+  return (item.children ?? []).filter((c) => canViewByRoles(userRoles, c.roles ?? item.roles) && shownInMenu(userRoles, c));
+}
+
+// What a set of roles will see in the sidebar: each visible entry with its visible children.
+// Same rule as Sidebar.tsx, so User Access's preview cannot drift from the real menu.
+export function visibleNav(userRoles: string[]): { label: string; children: string[] }[] {
+  return (NAV_ITEMS as NavItem[])
+    .map((item) => ({ item, kids: menuChildren(userRoles, item) }))
+    .filter(({ item, kids }) => (item.children ? kids.length > 0 : canViewByRoles(userRoles, item.roles)))
+    .map(({ item, kids }) => ({ label: item.label, children: kids.map((c) => c.label) }));
 }

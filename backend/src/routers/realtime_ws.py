@@ -34,7 +34,10 @@ _ALLOWED_CHANNELS: dict[str, set[str]] = {
 # role list to keep in sync as roles evolve. "presence" needs every staff
 # role to connect (a doctor/nurse/pharmacist is exactly who should show up
 # as "online"), unlike the admin/hr/ops-only channels above.
-_OPEN_CHANNELS: set[str] = {"presence"}
+# "workspace_updates" (Staff Workspace) is the same: every member of staff has a
+# workspace, and its messages only say "refresh" plus the user ids concerned,
+# never task, request or message content.
+_OPEN_CHANNELS: set[str] = {"presence", "workspace_updates"}
 
 
 async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, Any]:
@@ -66,7 +69,7 @@ async def _authorize_channel(websocket: WebSocket, channel: str) -> dict[str, An
 
 
 @router.post("/ws-ticket")
-async def get_ws_ticket(user: dict = Depends(verify_jwt)):
+def get_ws_ticket(user: dict = Depends(verify_jwt)):
     """Exchange the caller's JWT (sent properly, in a header) for a
     short-lived, single-use ticket to open a WebSocket with — keeps the raw
     access token out of proxy/access logs."""
@@ -79,7 +82,7 @@ async def get_ws_ticket(user: dict = Depends(verify_jwt)):
 
 
 @router.get("/presence/summary")
-async def presence_summary(user: dict = Depends(require_role("admin", "management", "hr", "ops"))):
+def presence_summary(user: dict = Depends(require_role("admin", "management", "hr", "ops"))):
     """Live count + roster of who's currently online — same audience as
     staff_updates, since that's who should see a headcount card."""
     return presence.online_summary()

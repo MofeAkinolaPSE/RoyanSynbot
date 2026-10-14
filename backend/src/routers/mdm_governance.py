@@ -185,7 +185,7 @@ def _publish_change(entity_type: str, entity_id: Optional[int],
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/{entity_type}/request", status_code=201)
-async def submit_change_request(
+def submit_change_request(
     entity_type: str,
     payload: ChangeRequestCreate,
     user=Depends(verify_jwt),
@@ -235,7 +235,7 @@ async def submit_change_request(
 
 
 @router.post("/requests/{request_id}/submit")
-async def submit_for_review(request_id: int, user=Depends(verify_jwt)):
+def submit_for_review(request_id: int, user=Depends(verify_jwt)):
     """Move a draft request to pending_review so reviewers can see it."""
     conn = _get_conn()
     try:
@@ -262,7 +262,7 @@ async def submit_for_review(request_id: int, user=Depends(verify_jwt)):
 
 
 @router.get("/requests")
-async def list_change_requests(
+def list_change_requests(
     entity_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="draft|pending_review|approved|rejected|published|withdrawn"),
     limit: int = Query(50, ge=1, le=200),
@@ -292,7 +292,7 @@ async def list_change_requests(
 
 
 @router.get("/requests/{request_id}")
-async def get_change_request(request_id: int, user=Depends(verify_jwt)):
+def get_change_request(request_id: int, user=Depends(verify_jwt)):
     """Get a single MDM change request."""
     conn = _get_conn()
     try:
@@ -304,7 +304,7 @@ async def get_change_request(request_id: int, user=Depends(verify_jwt)):
 
 @router.post("/requests/{request_id}/approve",
              dependencies=[Depends(require_role("admin"))])
-async def approve_change_request(
+def approve_change_request(
     request_id: int,
     payload: ReviewDecision = ReviewDecision(),
     user=Depends(verify_jwt),
@@ -378,7 +378,7 @@ async def approve_change_request(
 
 @router.post("/requests/{request_id}/reject",
              dependencies=[Depends(require_role("admin", "data_steward"))])
-async def reject_change_request(
+def reject_change_request(
     request_id: int,
     payload: ReviewDecision,
     user=Depends(verify_jwt),
@@ -413,7 +413,7 @@ async def reject_change_request(
 
 
 @router.post("/requests/{request_id}/withdraw")
-async def withdraw_change_request(request_id: int, user=Depends(verify_jwt)):
+def withdraw_change_request(request_id: int, user=Depends(verify_jwt)):
     """Withdraw your own draft/pending request."""
     conn = _get_conn()
     requester = user.get("sub") or "system"
@@ -441,7 +441,7 @@ async def withdraw_change_request(request_id: int, user=Depends(verify_jwt)):
 
 @router.post("/{entity_type}/{entity_id}/deprecate",
              dependencies=[Depends(require_role("admin"))])
-async def deprecate_entity(
+def deprecate_entity(
     entity_type: str,
     entity_id: int,
     notes: Optional[str] = Query(None),
@@ -496,7 +496,7 @@ async def deprecate_entity(
 
 
 @router.get("/{entity_type}")
-async def list_mdm_entities(
+def list_mdm_entities(
     entity_type: str,
     include_deprecated: bool = Query(False, description="Include deprecated/inactive records"),
     limit: int = Query(200, ge=1, le=1000),

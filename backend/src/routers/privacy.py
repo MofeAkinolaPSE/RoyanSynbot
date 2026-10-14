@@ -88,7 +88,7 @@ class ErasureRequest(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/consent/{patient_id}", status_code=201)
-async def grant_consent(
+def grant_consent(
     patient_id: int,
     payload: ConsentGrantRequest,
     request_obj=None,
@@ -148,7 +148,7 @@ async def grant_consent(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/consent/{patient_id}")
-async def list_consents(patient_id: int, user=Depends(verify_jwt)):
+def list_consents(patient_id: int, user=Depends(verify_jwt)):
     """List all active (non-withdrawn) consents for a patient."""
     conn = _get_conn()
     try:
@@ -198,7 +198,7 @@ async def list_consents(patient_id: int, user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/consent/check/{patient_id}/{purpose}")
-async def check_consent_endpoint(
+def check_consent_endpoint(
     patient_id: int,
     purpose: str,
     user=Depends(verify_jwt),
@@ -256,7 +256,7 @@ async def check_consent_endpoint(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.delete("/consent/{patient_id}/{consent_type}", status_code=200)
-async def withdraw_consent(
+def withdraw_consent(
     patient_id: int,
     consent_type: str,
     user=Depends(verify_jwt),
@@ -296,7 +296,7 @@ async def withdraw_consent(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/dsar", status_code=201)
-async def submit_dsar(payload: DSARRequest, user=Depends(verify_jwt)):
+def submit_dsar(payload: DSARRequest, user=Depends(verify_jwt)):
     """Submit a Data Subject Access Request. Logged for 30-day processing SLA."""
     valid_types = {"access", "rectification", "erasure", "portability", "restriction"}
     if payload.request_type not in valid_types:
@@ -362,7 +362,7 @@ ANONYMISABLE_FIELDS = {"phone", "email", "address", "next_of_kin_name", "next_of
 
 
 @router.post("/erasure/{patient_id}")
-async def request_erasure(
+def request_erasure(
     patient_id: int,
     payload: ErasureRequest,
     user=Depends(require_role("admin", "dpo")),
@@ -438,7 +438,7 @@ async def request_erasure(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/phi-audit/{patient_id}")
-async def phi_audit_trail(
+def phi_audit_trail(
     patient_id: int,
     limit: int = Query(50, ge=1, le=200),
     user=Depends(require_role("admin", "dpo", "audit")),
@@ -490,7 +490,7 @@ async def phi_audit_trail(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/compliance-summary")
-async def compliance_summary(user=Depends(require_role("admin", "dpo"))):
+def compliance_summary(user=Depends(require_role("admin", "dpo"))):
     """High-level NDPA compliance metrics for the DPO dashboard."""
     conn = _get_conn()
     try:

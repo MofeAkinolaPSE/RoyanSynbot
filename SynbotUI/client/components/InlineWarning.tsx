@@ -11,7 +11,7 @@ export function InlineWarning({ message, severity = "warning", className }: Inli
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[13px] font-medium",
+        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
         severity === "critical"
           ? "bg-destructive/10 text-destructive border border-destructive/20"
           : "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/20",

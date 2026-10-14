@@ -292,7 +292,7 @@ export default function BabyVaccinationRecord() {
                       <TableCell className="text-sm">{h.date_given || "—"}</TableCell>
                       <TableCell className="text-sm">
                         {h.vaccine_name}
-                        {isOther && <Badge variant="outline" className="ml-2 text-[12px]">Other</Badge>}
+                        {isOther && <Badge variant="outline" className="ml-2 text-xs">Other</Badge>}
                       </TableCell>
                       <TableCell className="text-sm">{h.dose_number || "—"}</TableCell>
                       <TableCell className="text-sm">{h.batch_number || "—"}</TableCell>

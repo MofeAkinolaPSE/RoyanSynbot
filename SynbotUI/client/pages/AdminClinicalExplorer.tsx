@@ -21,6 +21,7 @@ import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { LegacyDataExplorer } from "@/components/admin/LegacyDataExplorer";
 
 // Sections of the Patient Context Engine payload that carry a Hope
 // external_source/external_id pair worth tracing back to source.
@@ -180,7 +181,7 @@ function SearchTab({ onSelectMrn }: { onSelectMrn: (mrn: string) => void }) {
                   <TableCell className="text-xs text-muted-foreground">{p.date_of_birth ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.phone ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.hmo_provider ?? "—"}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[12px] capitalize">{p.current_status ?? "—"}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs capitalize">{p.current_status ?? "—"}</Badge></TableCell>
                   <TableCell>
                     <Button
                       size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1"
@@ -365,7 +366,7 @@ function DataQualityTab() {
                     <TableCell className="text-xs font-mono">{c.referenced_table}</TableCell>
                     <TableCell className="text-xs tabular-nums">{c.linked_rows ?? "—"} / {c.total_rows ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[12px]", coverageBadgeClass(c.coverage_pct))}>
+                      <Badge variant="outline" className={cn("text-xs", coverageBadgeClass(c.coverage_pct))}>
                         {c.coverage_pct !== null ? `${c.coverage_pct}%` : "n/a"}
                       </Badge>
                     </TableCell>
@@ -398,7 +399,7 @@ function DataQualityTab() {
                   <TableRow key={v.table}>
                     <TableCell className="text-xs font-mono">{v.table}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[12px]", v.patient_encounter_mismatches ? "text-red-700 bg-red-50 border-red-300" : "text-emerald-700 bg-emerald-50 border-emerald-300")}>
+                      <Badge variant="outline" className={cn("text-xs", v.patient_encounter_mismatches ? "text-red-700 bg-red-50 border-red-300" : "text-emerald-700 bg-emerald-50 border-emerald-300")}>
                         {v.patient_encounter_mismatches ?? 0}
                       </Badge>
                     </TableCell>
@@ -437,12 +438,16 @@ export default function AdminClinicalExplorer() {
           <TabsTrigger value="search">Search</TabsTrigger>
           <TabsTrigger value="tree">Relationship Tree</TabsTrigger>
           <TabsTrigger value="quality">Data Quality</TabsTrigger>
+          <TabsTrigger value="archive">Hope Archive</TabsTrigger>
         </TabsList>
         <TabsContent value="search" className="mt-4">
           <SearchTab onSelectMrn={goToTree} />
         </TabsContent>
         <TabsContent value="tree" className="mt-4">
           <RelationshipTreeTab mrn={treeMrn} onMrnChange={setTreeMrn} />
+        </TabsContent>
+        <TabsContent value="archive" className="mt-4">
+          <LegacyDataExplorer />
         </TabsContent>
         <TabsContent value="quality" className="mt-4">
           <DataQualityTab />

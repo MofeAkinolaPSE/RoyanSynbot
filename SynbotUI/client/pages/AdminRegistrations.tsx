@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 const CANONICAL_ROLES = [
   "admin", "management", "doctor", "nurse", "pharmacist", "lab", "radiology",
   "receptionist", "physiotherapist", "finance", "hr", "ops", "quality_assurance",
+  "hmo", "cashier", "store", "auditor",
 ];
 
 // ── Pending Registrations tab ──────────────────────────────────────────────────
@@ -37,6 +39,16 @@ function PendingRegistrationsTab() {
   const [reason, setReason] = useState("");
   const [attestation, setAttestation] = useState("");
   const [saving, setSaving] = useState(false);
+  // Which HR record this person is: an existing one (link the login to it) or "new".
+  const [hrChoice, setHrChoice] = useState<string>("");
+  const matchesQ = useQuery({
+    queryKey: ["staff-registrations", "hr-matches", reviewing?.id],
+    queryFn: () => api.registrations.hrMatches(reviewing!.id),
+    enabled: !!reviewing && decision === "approve",
+  });
+  const matches: any[] = matchesQ.data?.data ?? [];
+  const emailMatch = matches.find((m) => m.why === "same email");
+  const chosen = emailMatch ? emailMatch.id : hrChoice;
 
   const { data, refetch } = useQuery({
     queryKey: ["staff-registrations", "pending"],
@@ -49,6 +61,7 @@ function PendingRegistrationsTab() {
     setDecision(null);
     setReason("");
     setAttestation("");
+    setHrChoice("");
   };
 
   async function submitDecision() {
@@ -56,7 +69,13 @@ function PendingRegistrationsTab() {
     setSaving(true);
     try {
       if (decision === "approve") {
-        await api.registrations.approve(reviewing.id, { approval_reason: reason, attestation_text: attestation });
+        const out = await api.registrations.approve(reviewing.id, {
+          approval_reason: reason, attestation_text: attestation,
+          link_staff_id: chosen && chosen !== "new" ? chosen : undefined, create_new: chosen === "new",
+        });
+        if (out.mode === "linked") {
+          toast({ title: "Linked to their HR record", description: out.filled?.length ? `Filled from the registration: ${out.filled.join(", ")}` : "HR already held their details" });
+        }
       } else {
         await api.registrations.reject(reviewing.id, { reason });
       }
@@ -96,7 +115,7 @@ function PendingRegistrationsTab() {
                 <TableRow key={r.id}>
                   <TableCell className="text-sm font-medium">{r.full_name}</TableCell>
                   <TableCell className="text-sm">{r.email}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[12px] capitalize">{r.role}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs capitalize">{r.role}</Badge></TableCell>
                   <TableCell className="text-sm">{r.department ?? "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
@@ -136,6 +155,28 @@ function PendingRegistrationsTab() {
             )}
             {decision === "approve" ? (
               <>
+                <div className="space-y-1.5 rounded-md border p-3">
+                  <div className="text-xs font-medium">Their HR record</div>
+                  {matchesQ.isLoading ? <p className="text-xs text-muted-foreground">Looking for them in HR...</p>
+                    : emailMatch ? (
+                      <p className="text-xs">Already in HR with this email: <b>{emailMatch.full_name}</b> ({emailMatch.department || "no unit"}{emailMatch.designation ? `, ${emailMatch.designation}` : ""}).
+                        The login will be attached to that record - no new record is created.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {matches.map((m) => (
+                          <label key={m.id} className="flex cursor-pointer items-start gap-2 text-xs">
+                            <input type="radio" name="hr" className="mt-0.5" checked={hrChoice === m.id} disabled={m.has_login} onChange={() => setHrChoice(m.id)} />
+                            <span><b>{m.full_name}</b> · {m.department || "no unit"}{m.designation ? `, ${m.designation}` : ""} · {m.staff_number}
+                              <span className="text-muted-foreground"> ({m.why}{m.has_login ? ", already has a login" : ""})</span></span>
+                          </label>
+                        ))}
+                        <label className="flex cursor-pointer items-center gap-2 text-xs">
+                          <input type="radio" name="hr" checked={hrChoice === "new"} onChange={() => setHrChoice("new")} />
+                          <span>{matches.length ? "None of these - they are new to HR" : "Not in HR yet - create their HR record from this registration"}</span>
+                        </label>
+                      </div>
+                    )}
+                </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Approval reason</label>
                   <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this registration being approved?" />
@@ -156,7 +197,7 @@ function PendingRegistrationsTab() {
             <Button variant="ghost" onClick={closeDialog}>Cancel</Button>
             <Button
               onClick={submitDecision}
-              disabled={saving || !reason.trim() || (decision === "approve" && !attestation.trim())}
+              disabled={saving || !reason.trim() || (decision === "approve" && (!attestation.trim() || !chosen || matchesQ.isLoading))}
               variant={decision === "reject" ? "destructive" : "default"}
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -169,102 +210,6 @@ function PendingRegistrationsTab() {
   );
 }
 
-// ── Role Assignment tab (moved from AdminDashboard) ───────────────────────────
-function UserRoleRow({ user, onSaved }: { user: any; onSaved: () => void }) {
-  const { toast } = useToast();
-  const [selectedRole, setSelectedRole] = useState<string>((user.roles ?? [])[0] ?? "");
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!selectedRole) return;
-    setSaving(true);
-    try {
-      await api.users.setRoles(user.id, [selectedRole]);
-      toast({ title: "Role updated", description: `${user.email} → ${selectedRole}` });
-      onSaved();
-    } catch (e: any) {
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const currentRoles: string[] = user.roles ?? [];
-
-  return (
-    <TableRow>
-      <TableCell className="text-sm font-medium">{user.email}</TableCell>
-      <TableCell>
-        <div className="flex flex-wrap gap-1">
-          {currentRoles.map((r: string) => (
-            <Badge key={r} variant="outline" className="text-[12px] capitalize">{r}</Badge>
-          ))}
-          {currentRoles.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline" className={cn("text-[12px]", user.is_active ? "text-green-700 bg-green-50 border-green-300" : "text-slate-500")}>
-          {user.is_active ? "Active" : "Inactive"}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Select value={selectedRole} onValueChange={setSelectedRole}>
-            <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Assign role…" /></SelectTrigger>
-            <SelectContent>
-              {CANONICAL_ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize text-xs">{r}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" disabled={!selectedRole || saving} onClick={save}>
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function RoleAssignmentsTab() {
-  const qc = useQueryClient();
-  const { data: usersData, refetch } = useQuery({
-    queryKey: ["admin-users-roles"],
-    queryFn: () => api.users.list(200),
-    staleTime: 120_000,
-  });
-  const users: any[] = Array.isArray(usersData) ? usersData : [];
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          Role Assignments
-          <span className="ml-auto text-xs text-muted-foreground font-normal">{users.length} users</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {["Email", "Current Roles", "Status", "Assign Role"].map((h) => (
-                  <TableHead key={h} className="text-xs">{h}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">No users found</TableCell></TableRow>
-              ) : users.map((u: any) => (
-                <UserRoleRow key={u.id} user={u} onSaved={() => { void refetch(); void qc.invalidateQueries({ queryKey: ["admin-users-roles"] }); }} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function AdminRegistrations() {
   return (
     <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
@@ -272,18 +217,11 @@ export default function AdminRegistrations() {
         <ShieldCheck className="h-5 w-5 text-blue-500" />
         <h1 className="text-lg font-semibold">Staff Registrations</h1>
       </div>
-      <Tabs defaultValue="pending">
-        <TabsList>
-          <TabsTrigger value="pending">Pending Registrations</TabsTrigger>
-          <TabsTrigger value="roles">Role Assignments</TabsTrigger>
-        </TabsList>
-        <TabsContent value="pending" className="mt-4">
-          <PendingRegistrationsTab />
-        </TabsContent>
-        <TabsContent value="roles" className="mt-4">
-          <RoleAssignmentsTab />
-        </TabsContent>
-      </Tabs>
+      <PendingRegistrationsTab />
+      {/* Roles are changed in one place - User Access - where every role can be combined and a reason is recorded. */}
+      <p className="text-xs text-muted-foreground">
+        To change what an existing person can open, use <Link to="/admin/users" className="text-primary hover:underline">User Access</Link>.
+      </p>
     </motion.div>
   );
 }

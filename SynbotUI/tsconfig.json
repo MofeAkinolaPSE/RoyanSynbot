@@ -5,7 +5,6 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -26,8 +25,15 @@
     "noFallthroughCasesInSwitch": false,
     "strictNullChecks": false,
 
-    /* Path mapping */
-    "baseUrl": ".",
+    /* Path mapping.
+       No "baseUrl" on purpose. It is deprecated in TS 7, and silencing that
+       warning requires "ignoreDeprecations": "6.0" — which the CLI's TS 5.9
+       rejects outright, aborting tsc before it checks anything and exiting 0.
+       That is why this file kept flipping between "5.0" and "6.0": the IDE and
+       the CLI were each demanding the value the other refused. These paths are
+       already relative, so TS resolves them against this file's directory and
+       neither option is needed. Vite resolves its own aliases in
+       vite.config.ts, so the build is unaffected. */
     "paths": {
       "@/*": ["./client/*"],
       "@shared/*": ["./shared/*"]

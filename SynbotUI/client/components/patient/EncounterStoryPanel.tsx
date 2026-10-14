@@ -4,15 +4,26 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { Loader2, DoorOpen, ClipboardCheck, HeartPulse, Stethoscope, FileText,
   FlaskConical, ScanLine, Pill, ReceiptText, Banknote, LogOut, AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { encounterStatusColor } from "@/lib/encounter-status";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface EncounterStoryPanelProps {
   encounterId: number;
   patientName?: string;
   onClose: () => void;
+  /**
+   * Open the record a timeline row refers to.
+   *
+   * The story panel deliberately does not open these itself: it is a Sheet, and
+   * so is every workspace panel. Stacking two right-hand Sheets means two
+   * competing focus traps. Instead the chart owns the panels and decides — it
+   * closes the story, opens the record, and restores the story afterwards.
+   */
+  onOpenRecord?: (kind: StoryRecordKind, record: any) => void;
 }
 
 function fmtDateTime(ts?: string | null): string {
@@ -30,7 +41,17 @@ type StoryEvent = {
   title: string;
   meta?: string;
   detail?: React.ReactNode;
+  /**
+   * What this moment refers to, so the row can be opened.
+   *
+   * buildStory used to drop `o.id` / `n.id` / `b.id` while flattening, which
+   * left the timeline readable but inert — there was nothing to open even if a
+   * click handler existed.
+   */
+  open?: { kind: StoryRecordKind; record: any };
 };
+
+export type StoryRecordKind = "lab" | "radiology" | "note" | "vitals" | "bill" | "prescription";
 
 // ── Building the story: every domain contributes its own moments (an order
 // placed, a result returned, a drug dispensed) rather than one flat "visit
@@ -70,6 +91,7 @@ function buildStory(data: any): StoryEvent[] {
       at: v.recorded_at ?? v.created_at, icon: HeartPulse, iconClass: "text-sky-500",
       title: "Vitals recorded",
       meta: v.recorded_by ? `By ${v.recorded_by}` : undefined,
+      open: { kind: "vitals", record: v },
       detail: parts.length > 0 ? <p className="text-xs">{parts.join(" · ")}</p> : undefined,
     });
   }
@@ -84,7 +106,7 @@ function buildStory(data: any): StoryEvent[] {
         <div className="space-y-1">
           {codes.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {codes.map((c: string) => <Badge key={c} variant="outline" className="text-[11px] font-mono">{c}</Badge>)}
+              {codes.map((c: string) => <Badge key={c} variant="outline" className="text-xs font-mono">{c}</Badge>)}
             </div>
           )}
           {enc.diagnosis_notes && <p>{enc.diagnosis_notes}</p>}
@@ -105,6 +127,7 @@ function buildStory(data: any): StoryEvent[] {
       title: n.note_title || (n.note_type ? `${n.note_type.replace(/_/g, " ")} note` : "Clinical note"),
       meta: n.author_name ? `By ${n.author_name}` : undefined,
       detail: (soap || n.content) ? <p className="whitespace-pre-wrap">{soap || n.content}</p> : undefined,
+      open: { kind: "note", record: n },
     });
   }
 
@@ -115,6 +138,7 @@ function buildStory(data: any): StoryEvent[] {
       at: o.ordered_at, icon: FlaskConical, iconClass: "text-purple-500",
       title: `Lab ordered: ${o.test_name}`,
       meta: [o.urgency, o.status?.replace(/_/g, " ")].filter(Boolean).join(" · "),
+      open: { kind: "lab", record: o },
     });
     const res = resultsByOrder.get(o.id);
     if (res) {
@@ -122,6 +146,7 @@ function buildStory(data: any): StoryEvent[] {
         at: res.resulted_at, icon: FlaskConical, iconClass: res.is_critical ? "text-red-500" : "text-green-500",
         title: `Lab result: ${o.test_name}`,
         meta: res.interpretation ? res.interpretation.replace(/_/g, " ") : undefined,
+        open: { kind: "lab", record: o },
         detail: (
           <div className="space-y-1">
             {res.is_critical && (
@@ -141,12 +166,14 @@ function buildStory(data: any): StoryEvent[] {
       title: `Radiology ordered: ${o.modality?.toUpperCase() ?? "Imaging"}${o.body_part ? ` — ${o.body_part}` : ""}`,
       meta: [o.urgency, o.status?.replace(/_/g, " ")].filter(Boolean).join(" · "),
       detail: o.clinical_indication ? <p>{o.clinical_indication}</p> : undefined,
+      open: { kind: "radiology", record: o },
     });
     if (o.reported_at) {
       events.push({
         at: o.reported_at, icon: ScanLine, iconClass: "text-green-500",
         title: `Radiology report: ${o.modality?.toUpperCase() ?? "Imaging"}`,
         meta: o.radiologist_id ? `By ${o.radiologist_id}` : undefined,
+        open: { kind: "radiology", record: o },
         detail: (o.impression || o.findings) ? (
           <div className="space-y-1">
             {o.impression && <p><span className="text-muted-foreground">Impression: </span>{o.impression}</p>}
@@ -191,6 +218,7 @@ function buildStory(data: any): StoryEvent[] {
       at: b.billed_at, icon: ReceiptText, iconClass: "text-gold",
       title: `Bill generated: ${b.bill_number ?? `#${b.id}`}`,
       meta: `₦${Number(b.subtotal ?? 0).toLocaleString()} · ${b.status?.replace(/_/g, " ")}`,
+      open: { kind: "bill", record: b },
     });
     for (const p of paymentsByBill.get(b.id) ?? []) {
       events.push({
@@ -215,7 +243,7 @@ function buildStory(data: any): StoryEvent[] {
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }
 
-export function EncounterStoryPanel({ encounterId, patientName, onClose }: EncounterStoryPanelProps) {
+export function EncounterStoryPanel({ encounterId, patientName, onClose, onOpenRecord }: EncounterStoryPanelProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["encounter-story", encounterId],
     queryFn: () => api.hospital.queue.get(String(encounterId)),
@@ -226,7 +254,7 @@ export function EncounterStoryPanel({ encounterId, patientName, onClose }: Encou
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[640px] sm:w-[760px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.wide, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -261,17 +289,34 @@ export function EncounterStoryPanel({ encounterId, patientName, onClose }: Encou
             <ol className="relative border-l border-border ml-2.5 space-y-5">
               {story.map((ev, i) => {
                 const Icon = ev.icon;
+                const canOpen = !!ev.open && !!onOpenRecord;
+                const body = (
+                  <>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <p className="text-sm font-medium">{ev.title}</p>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{fmtDateTime(ev.at)}</span>
+                    </div>
+                    {ev.meta && <p className="text-xs text-muted-foreground mt-0.5">{ev.meta}</p>}
+                    {ev.detail && <div className="text-xs text-foreground/90 mt-1 rounded-md bg-muted/40 px-2.5 py-1.5">{ev.detail}</div>}
+                  </>
+                );
                 return (
                   <li key={i} className="ml-5">
                     <span className="absolute -left-[11px] flex h-6 w-6 items-center justify-center rounded-full border bg-background">
                       <Icon className={cn("h-3.5 w-3.5", ev.iconClass)} />
                     </span>
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                      <p className="text-sm font-medium">{ev.title}</p>
-                      <span className="text-[12px] text-muted-foreground whitespace-nowrap">{fmtDateTime(ev.at)}</span>
-                    </div>
-                    {ev.meta && <p className="text-xs text-muted-foreground mt-0.5">{ev.meta}</p>}
-                    {ev.detail && <div className="text-xs text-foreground/90 mt-1 rounded-md bg-muted/40 px-2.5 py-1.5">{ev.detail}</div>}
+                    {canOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenRecord!(ev.open!.kind, ev.open!.record)}
+                        className="group block w-full rounded-md -mx-2 px-2 py-1 text-left transition-colors hover:bg-muted/50"
+                      >
+                        {body}
+                        <span className="mt-1 inline-flex items-center gap-1 text-xs text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                          Open record <ChevronRight className="h-3 w-3" />
+                        </span>
+                      </button>
+                    ) : body}
                   </li>
                 );
               })}

@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/components/AuthProvider";
+
+export const ALERT_ROLES = ["admin", "management", "finance", "ops"];
 import { cn } from "@/lib/utils";
 
 interface AlertBannerProps {
@@ -11,9 +14,11 @@ interface AlertBannerProps {
 export function AlertBanner({ className }: AlertBannerProps) {
   const [dismissed, setDismissed] = useState<Set<string | number>>(new Set());
 
+  const { roles } = useAuth();
   const { data } = useQuery({
     queryKey: ["clinical-alert-banner"],
     queryFn: () => api.dashboard.alerts(),
+    enabled: roles.some((r) => ALERT_ROLES.includes(r)),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

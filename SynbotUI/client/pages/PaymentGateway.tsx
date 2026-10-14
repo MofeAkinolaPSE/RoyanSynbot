@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motionTransitions } from "@/lib/motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -37,13 +38,6 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertBanner } from "@/components/AlertBanner";
 import { api } from "@/lib/api-client";
 
-const motionTransitions = {
-  fadeInUp: {
-    initial: { opacity: 0, y: 18 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.35, ease: "easeOut" },
-  },
-};
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   initiated: { label: "Initiated",  className: "bg-blue-50   text-blue-700   border-blue-200" },
@@ -77,7 +71,7 @@ function KpiCard({ label, value, sub, icon: Icon, color = "blue" }: {
         <div>
           <div className="text-2xl font-bold">{value}</div>
           <div className="text-xs text-muted-foreground">{label}</div>
-          {sub && <div className="text-[13px] text-muted-foreground/70">{sub}</div>}
+          {sub && <div className="text-xs text-muted-foreground/70">{sub}</div>}
         </div>
       </CardContent>
     </Card>
@@ -248,7 +242,7 @@ export default function PaymentGateway() {
                     <tr key={t.id} className="border-b hover:bg-muted/20">
                       <td className="px-4 py-2.5 font-mono text-xs">{t.reference}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={`text-[12px] ${GATEWAY_BADGE[t.gateway] ?? ""}`}>
+                        <Badge variant="outline" className={`text-xs ${GATEWAY_BADGE[t.gateway] ?? ""}`}>
                           {t.gateway}
                         </Badge>
                       </td>
@@ -256,7 +250,7 @@ export default function PaymentGateway() {
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.email}</td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{t.patient_id ?? "—"}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={`text-[12px] ${st.className}`}>{st.label}</Badge>
+                        <Badge variant="outline" className={`text-xs ${st.className}`}>{st.label}</Badge>
                       </td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">
                         {t.initiated_at ? new Date(t.initiated_at).toLocaleDateString() : "—"}

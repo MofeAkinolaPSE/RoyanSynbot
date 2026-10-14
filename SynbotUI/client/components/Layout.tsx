@@ -2,12 +2,14 @@ import Sidebar from "./Sidebar";
 import FloatingChat from "./FloatingChat";
 import ProfileSetup from "./ProfileSetup";
 import { NotificationBell } from "./NotificationBell";
-import { Outlet, useLocation } from "react-router-dom";
+import { ClockPill } from "./staff/ws-kit";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { getSynbotConfig } from "@/lib/wp-config";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/BackButton";
 import { useState, useEffect } from "react";
-import { Menu } from "lucide-react";
+import { Inbox, Menu } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api-client";
 import { useTour } from "@/components/tour/TourProvider";
@@ -18,6 +20,15 @@ const Layout = () => {
   const { role, apiBaseUrl, wpUserId } = getSynbotConfig();
   const { isAuthenticated, roles } = useAuth();
   const { startTourIfNeeded } = useTour();
+  // Staff Workspace inbox (requests, assignments, mentions, HR decisions) - the clinical
+  // NotificationBell next to it stays the live feed of queue and lab events.
+  const { data: inboxData } = useQuery({
+    queryKey: ["ws", "inbox", "all"],
+    queryFn: () => api.workspace.inbox("all"),
+    refetchInterval: 60_000,
+    enabled: isAuthenticated,
+  });
+  const unread: number = inboxData?.counts?.unread ?? 0;
   const [showSetup, setShowSetup] = useState(false);
   const [staffData, setStaffData] = useState<any>(null);
 
@@ -68,8 +79,15 @@ const Layout = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1 sm:block">
-              API: {hasApiBase ? apiBaseUrl : <span className="text-destructive">missing</span>}
+              {/* production calls the API on the same server the app loads from (nginx routes it), so no base URL is set */}
+              API: {hasApiBase ? apiBaseUrl : "this server"}
             </div>
+            <ClockPill />
+            <Link to="/workspace?tab=inbox" title="My inbox" aria-label={`My inbox, ${unread} unread`}
+              className="relative flex h-7 w-7 items-center justify-center rounded-md border border-border/40 bg-muted/30 hover:bg-muted/60">
+              <Inbox className="h-3.5 w-3.5" />
+              {unread > 0 && <span className="absolute -right-1.5 -top-1.5 min-w-[16px] rounded-full bg-primary px-1 text-center text-xs font-semibold leading-4 text-primary-foreground">{unread > 99 ? "99+" : unread}</span>}
+            </Link>
             <NotificationBell />
           </div>
         </div>

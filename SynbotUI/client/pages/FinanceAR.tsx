@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { DrillProvider } from "@/components/books/lineage";
+import { DrillLink } from "@/components/books/kit";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -66,8 +69,16 @@ function BucketBadge({ bucket }: { bucket: string }) {
 // FinanceAR page
 // ---------------------------------------------------------------------------
 export default function FinanceAR() {
+  // every figure on Credit Control opens its record (patient / payer account, statement, invoices)
+  return <DrillProvider><CreditControl /></DrillProvider>;
+}
+
+function CreditControl() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [tab, setTab] = useState("aging");
+  const [showAlerts, setShowAlerts] = useState(true);
+  const [allAlerts, setAllAlerts] = useState(false);
 
   // --- state ---
   const [search, setSearch] = useState("");
@@ -238,6 +249,8 @@ export default function FinanceAR() {
   const summary = aging.summary ?? {};
   const customers: any[] = aging.customers ?? [];
   const triggeredAlerts: any[] = aging.triggered_alerts ?? [];
+  // the Roy Books account and Hope payer behind each debtor code, for the actions on each alert
+  const debtorByCode: Record<string, any> = Object.fromEntries(customers.map((c: any) => [c.customer_id, c]));
 
   const alerts = (alertsQ.data as any) ?? {};
   const rules: any[] = alerts.rules ?? [];
@@ -265,7 +278,7 @@ export default function FinanceAR() {
   const filteredCustomers = customers.filter(
     (c) =>
       !search ||
-      (c.customer_id ?? "").toLowerCase().includes(search.toLowerCase())
+      `${c.customer_id ?? ""} ${c.name ?? ""}`.toLowerCase().includes(search.toLowerCase())
   );
 
   const summaryBuckets = [
@@ -283,49 +296,63 @@ export default function FinanceAR() {
       {/* Header */}
       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AR & Alerts</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Credit Control & Alerts</h1>
           <p className="text-sm text-muted-foreground">
-            Accounts receivable aging, threshold alerts, invoice matching, P&L, cash flow &amp; payroll
+            What HMOs and corporate payers owe (aged), threshold alerts, invoice matching, P&amp;L, cash flow &amp; credit risk — from Roy Books
           </p>
         </div>
         {triggeredAlerts.length > 0 && (
-          <Badge variant="destructive" className="self-start md:self-auto">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            {triggeredAlerts.length} active alert{triggeredAlerts.length > 1 ? "s" : ""}
-          </Badge>
+          <button className="self-start md:self-auto" onClick={() => { setShowAlerts(true); setAllAlerts(true); document.getElementById("cc-alerts")?.scrollIntoView({ behavior: "smooth" }); }}>
+            <Badge variant="destructive">
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              {triggeredAlerts.length} active alert{triggeredAlerts.length > 1 ? "s" : ""} – open
+            </Badge>
+          </button>
         )}
       </div>
 
-      {/* Active alert banner */}
-      {triggeredAlerts.length > 0 && (
-        <Card className="border-destructive/40 bg-destructive/5">
+      {/* Active alert banner - a worklist: each debtor opens its statement, a receipt, its account or its HMO bill */}
+      {triggeredAlerts.length > 0 && showAlerts && (
+        <Card id="cc-alerts" className="border-destructive/40 bg-destructive/5">
           <CardHeader className="py-3">
             <CardTitle className="text-sm text-destructive flex items-center gap-2">
               <Bell className="w-4 h-4" /> Triggered Alert Rules
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
-            {triggeredAlerts.map((a, i) => (
-              <div key={i} className="text-sm flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
-                <span>
-                  <strong>{a.customer_id}</strong>: outstanding{" "}
-                  <strong>{fmt(a.outstanding_balance)}</strong> — {a.days_overdue} days overdue
-                  {a.rule_description && ` (${a.rule_description})`}
-                </span>
-              </div>
-            ))}
+            {(allAlerts ? triggeredAlerts : triggeredAlerts.slice(0, 8)).map((a, i) => {
+              const d = debtorByCode[a.customer_id] ?? {};
+              return (
+                <div key={i} className="flex flex-wrap items-start gap-2 text-sm">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <span className="min-w-[260px] flex-1">
+                    <strong>{d.name ?? a.customer_id}</strong>: outstanding <strong>{fmt(a.outstanding_balance)}</strong> — {a.days_overdue} days overdue
+                    {a.rule_description && ` (${a.rule_description})`}
+                  </span>
+                  <span className="flex flex-wrap gap-2 text-xs">
+                    {d.ace_customer_id && <Link className="text-primary hover:underline" to={`/finance/books/sales?tab=statement&customer=${d.ace_customer_id}`}>Statement</Link>}
+                    {d.ace_customer_id && <Link className="text-primary hover:underline" to={`/finance/books/sales?tab=receipts&new=receipt&customer=${d.ace_customer_id}`}>Record receipt</Link>}
+                    {d.ace_customer_id && <DrillLink to={{ type: "customer", id: String(d.ace_customer_id), label: d.name }}>Account</DrillLink>}
+                    {d.payer_id && <Link className="text-primary hover:underline" to={`/finance/books/reports?r=hmo-monthly-bill&payer=${d.payer_id}&from=2016-01-01`}>HMO bill</Link>}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="flex gap-2 pt-1">
+              {triggeredAlerts.length > 8 && <Button size="sm" variant="outline" onClick={() => setAllAlerts(!allAlerts)}>{allAlerts ? "Show fewer" : `Show all ${triggeredAlerts.length}`}</Button>}
+              <Button size="sm" variant="outline" onClick={() => setTab("alerts")}>Alert rules</Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      <Tabs defaultValue="aging">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="aging">AR Aging</TabsTrigger>
           <TabsTrigger value="alerts">
             Alert Rules
             {events.length > 0 && (
-              <Badge variant="destructive" className="ml-1 h-4 text-xs px-1">
+              <Badge variant="destructive" className="ml-1 h-5 text-xs px-1">
                 {events.length}
               </Badge>
             )}
@@ -409,7 +436,8 @@ export default function FinanceAR() {
                               <ChevronRight className="w-4 h-4 text-muted-foreground" />
                             )}
                           </TableCell>
-                          <TableCell className="font-medium">{c.customer_id}</TableCell>
+                          <TableCell className="font-medium">{c.name ?? c.customer_id}
+                            {c.name && <div className="text-xs font-normal text-muted-foreground">{c.customer_id}</div>}</TableCell>
                           <TableCell className="text-right font-mono">
                             {fmt(c.total_balance)}
                           </TableCell>
@@ -457,7 +485,8 @@ export default function FinanceAR() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            As of {aging.as_of ?? "—"}. Data sourced from Sage AR snapshot.
+            As of {aging.as_of ?? "—"}. {aging.source ?? "Roy Books"}. A payer owing in several age bands appears once per band.
+            Open the HMO claims ageing in Roy Books → Report Center for the full breakdown and each payer's bill.
           </p>
         </TabsContent>
 
@@ -1154,7 +1183,8 @@ export default function FinanceAR() {
                         };
                         return (
                           <TableRow key={c.customer_id}>
-                            <TableCell className="font-mono text-xs">{c.customer_id}</TableCell>
+                            <TableCell className="text-xs">{c.name ?? c.customer_id}
+                              {c.name && <div className="font-mono text-muted-foreground">{c.customer_id}</div>}</TableCell>
                             <TableCell className="text-right font-mono">
                               {fmt(c.outstanding_balance)}
                             </TableCell>

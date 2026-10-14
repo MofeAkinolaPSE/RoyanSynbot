@@ -64,7 +64,7 @@ def _age_band(dob: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 
 @router.get("/disease-burden")
-async def disease_burden(
+def disease_burden(
     start_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(None),
     limit:      int           = Query(20, ge=1, le=100),
@@ -107,7 +107,7 @@ async def disease_burden(
 # ---------------------------------------------------------------------------
 
 @router.get("/hmis")
-async def hmis_summary(
+def hmis_summary(
     month: Optional[str] = Query(None, description="YYYY-MM"),
     user=Depends(verify_jwt),
 ):
@@ -171,7 +171,7 @@ async def hmis_summary(
 # ---------------------------------------------------------------------------
 
 @router.get("/nhia-export")
-async def nhia_export(
+def nhia_export(
     start_date: Optional[str] = Query(None),
     end_date:   Optional[str] = Query(None),
     hmo_id:     Optional[int] = Query(None),
@@ -226,7 +226,7 @@ async def nhia_export(
 # ---------------------------------------------------------------------------
 
 @router.get("/financial-summary")
-async def financial_summary(
+def financial_summary(
     start_date: Optional[str] = Query(None),
     end_date:   Optional[str] = Query(None),
     user=Depends(verify_jwt),
@@ -292,7 +292,7 @@ async def financial_summary(
 # ---------------------------------------------------------------------------
 
 @router.get("/patient-demographics")
-async def patient_demographics(user=Depends(verify_jwt)):
+def patient_demographics(user=Depends(verify_jwt)):
     """Age band + gender distribution of registered patients."""
     patients = db.table(TABLE_PATIENTS).select(
         "date_of_birth,gender"
@@ -317,7 +317,7 @@ async def patient_demographics(user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.get("/bed-occupancy")
-async def bed_occupancy(user=Depends(verify_jwt)):
+def bed_occupancy(user=Depends(verify_jwt)):
     """Per-ward bed utilisation snapshot."""
     wards = db.table(TABLE_WARDS).select("id,name,ward_type").execute().data or []
     beds  = db.table(TABLE_BEDS).select("ward_id,status").execute().data  or []

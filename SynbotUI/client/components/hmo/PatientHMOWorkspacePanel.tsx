@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -14,12 +15,13 @@ import {
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Users, ShieldCheck, FileText, Loader2, Plus, Pencil, Check, X, ExternalLink,
+  Users, ShieldCheck, FileText, Loader2, Plus, Pencil, Check, X, ExternalLink, Receipt, Stethoscope
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { SectionLabel, HMO } from "@/components/hmo/hmo-shared";
+import { SectionLabel, DetailRow, HMO } from "@/components/hmo/hmo-shared";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface PatientRow {
   patient_id: number;
@@ -39,12 +41,15 @@ const CLAIM_STATUS_COLORS: Record<string, string> = {
   disputed:        "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30",
 };
 
+const naira = (v: any) => (v == null ? "—" : `₦${Number(v).toLocaleString("en-NG")}`);
+
 export function PatientHMOWorkspacePanel({ patient, hmos, onClose, onViewProvider }: {
   patient: PatientRow;
   hmos: HMO[];
   onClose: () => void;
   onViewProvider: (hmoId: number) => void;
 }) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -64,6 +69,28 @@ export function PatientHMOWorkspacePanel({ patient, hmos, onClose, onViewProvide
     queryFn: () => api.hospital.coverage.listClaims({ patient_id: patient.patient_id }),
   });
   const claims: any[] = claimsData?.claims ?? [];
+
+  // Account history including pre-go-live bills. royan_insurance_claims only
+  // holds claims raised in this system, so a patient with ten years of history
+  // here looked like a brand-new account.
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ["patient-billing-history", patient.patient_id],
+    queryFn: () => api.hospital.clinical.listBillingHistory(patient.patient_id),
+  });
+  const summaries: any[] = historyData?.summaries ?? [];
+  const transactions: any[] = historyData?.transactions ?? [];
+  const historyBilled = summaries.reduce((n, b: any) => n + Number(b.total_amount ?? b.net_amount ?? 0), 0);
+  const historyOutstanding = summaries.reduce((n, b: any) => n + Number(b.amount_pending ?? 0), 0);
+
+  // The visit history, which is what "show the entire history of that patient's
+  // encounter" actually asked for. Uses the patient-scoped endpoint rather than
+  // the queue: the queue excludes migrated rows by design, so a patient with
+  // ten years here returned zero visits.
+  const { data: encData, isLoading: encLoading } = useQuery({
+    queryKey: ["patient-encounters", patient.patient_id],
+    queryFn: () => api.hospital.clinical.listPatientEncounters(patient.patient_id),
+  });
+  const encounters: any[] = encData?.encounters ?? [];
 
   const invalidatePolicies = () => {
     void qc.invalidateQueries({ queryKey: ["patient-insurance", patient.patient_id] });
@@ -113,7 +140,7 @@ export function PatientHMOWorkspacePanel({ patient, hmos, onClose, onViewProvide
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -199,6 +226,94 @@ export function PatientHMOWorkspacePanel({ patient, hmos, onClose, onViewProvide
                   </div>
                 ))}
               </div>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* ── Account history ─────────────────────────────────────────────── */}
+          <section>
+            <SectionLabel icon={<Stethoscope className="h-3.5 w-3.5" />} label="Visit history" />
+            {encLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : encounters.length === 0 ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">
+                No visits recorded for this patient.
+              </p>
+            ) : (
+              <>
+                <DetailRow
+                  label="Total visits"
+                  value={`${encData?.count ?? 0}${
+                    encData?.migrated ? ` (${encData.migrated} before go-live)` : ""
+                  }`}
+                />
+                <ul className="mt-1 space-y-1">
+                  {encounters.slice(0, 8).map((e: any) => (
+                    <li
+                      key={e.id}
+                      className="flex items-start justify-between gap-2 border-b border-border/30 py-1 last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">
+                          {e.department || e.encounter_type || "Visit"}
+                          {e.is_migrated && (
+                            <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                              · pre go-live
+                            </span>
+                          )}
+                        </p>
+                        {e.chief_complaint && (
+                          <p className="truncate text-xs text-muted-foreground">{e.chief_complaint}</p>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-xs text-muted-foreground">
+                          {e.created_at ? new Date(e.created_at).toLocaleDateString() : "—"}
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {String(e.status ?? "").replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {encounters.length > 8 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Showing 8 of {encounters.length}.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          <Separator />
+
+          <section>
+            <SectionLabel icon={<Receipt className="h-3.5 w-3.5" />} label="Account history" />
+            {historyLoading ? (
+              <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+            ) : summaries.length === 0 && transactions.length === 0 ? (
+              <p className="py-2 text-xs text-muted-foreground">No billing history on file</p>
+            ) : (
+              <>
+                <DetailRow label="Bills on record" value={summaries.length} />
+                <DetailRow label="Transactions" value={transactions.length} />
+                <DetailRow label="Total billed" value={naira(historyBilled)} />
+                <DetailRow
+                  label="Outstanding"
+                  value={naira(historyOutstanding)}
+                  accent={historyOutstanding > 0 ? "text-amber-600 font-semibold" : undefined}
+                />
+                <Button
+                  variant="ghost" size="sm" className="mt-1 gap-1.5 px-0"
+                  onClick={() => { navigate(`/hospital/billing?patient_id=${patient.patient_id}`); onClose(); }}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open full account
+                </Button>
+              </>
             )}
           </section>
 

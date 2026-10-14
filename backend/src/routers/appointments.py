@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.constants import APPOINTMENT_STATUS_ALLOWED, HOSPITAL_DEPARTMENTS, TABLE_APPOINTMENT_SLOTS, TABLE_APPOINTMENTS, TABLE_PATIENTS
+from src.constants import APPOINTMENT_STATUS_ALLOWED, HOSPITAL_DEPARTMENTS, TABLE_APPOINTMENT_SLOTS, TABLE_APPOINTMENTS, TABLE_PATIENTS, TABLE_STAFF
 from src.db import audit_event, db
 from src.middleware import require_role, verify_jwt
 from src.routers.queue_clinical import open_encounter_for_patient
@@ -20,7 +20,54 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
 
+# Who sees which appointments. Appointments belong to the doctor on their slot (slot.doctor_id ->
+# royan_staff.id). A doctor sees only their own; the desk, nurses, operations and management book
+# and run the whole diary, so they see everyone's unless they ask for their own (mine=true).
+# The hospital-wide view is the Hospital Calendar.
+DIARY_ROLES = {"admin", "management", "receptionist", "ops", "nurse"}
+_NOBODY = "00000000-0000-0000-0000-000000000000"
+
+
+def _my_staff_id(user: dict) -> Optional[str]:
+    sub = user.get("sub")
+    if not sub:
+        return None
+    try:
+        r = db.table(TABLE_STAFF).select("id").eq("user_id", sub).limit(1).execute().data
+    except Exception:
+        return None
+    return str(r[0]["id"]) if r else None
+
+
+def _doctor_scope(user: dict, mine: bool = False) -> Optional[str]:
+    """The doctor (royan_staff.id) whose appointments this caller is limited to, or None for everyone.
+    A doctor with no HR record is limited to nobody rather than shown the whole hospital."""
+    roles = {str(r).lower() for r in (user.get("roles") or [])}
+    personal = mine or ("doctor" in roles and not roles & DIARY_ROLES)
+    if not personal:
+        return None
+    return _my_staff_id(user) or _NOBODY
+
+
+def _resolve_doctor(doctor_id: Optional[str], doctor_name: Optional[str]) -> tuple:
+    """(doctor_id, doctor_name) for a new slot: by HR record if given, else the one doctor with that name."""
+    if doctor_id:
+        r = db.table(TABLE_STAFF).select("id,full_name,role").eq("id", doctor_id).limit(1).execute().data
+        if not r or r[0].get("role") != "doctor":
+            raise HTTPException(status_code=422, detail="Choose a doctor from the list")
+        return str(r[0]["id"]), r[0]["full_name"]
+    if doctor_name:
+        from src.services.staff_onboarding import _name_score
+        docs = db.table(TABLE_STAFF).select("id,full_name").eq("role", "doctor").is_("quarantined_at", None).execute().data or []
+        best = [d for d in docs if _name_score(doctor_name, d["full_name"]) >= 0.95]
+        if len(best) == 1:
+            return str(best[0]["id"]), best[0]["full_name"]
+        return None, doctor_name
+    return None, None
+
+
 class SlotCreate(BaseModel):
+    doctor_id: Optional[str] = None
     doctor_name: Optional[str] = Field(None, max_length=200)
     provider_name: Optional[str] = Field(None, max_length=200)
     department: str = Field("OPD", max_length=100)
@@ -180,16 +227,17 @@ def _enrich(appointments: list[dict], slots: list[dict] | None = None) -> list[d
 
 
 @router.post("/slots", status_code=201)
-async def create_slot(payload: SlotCreate, user=Depends(verify_jwt)):
-    doctor = payload.doctor_name or payload.provider_name
+def create_slot(payload: SlotCreate, user=Depends(verify_jwt)):
+    doctor_id, doctor = _resolve_doctor(payload.doctor_id, payload.doctor_name or payload.provider_name)
     if not doctor:
-        raise HTTPException(status_code=422, detail="doctor_name is required")
+        raise HTTPException(status_code=422, detail="Choose the doctor for this slot")
     slot_date = payload.slot_date or payload.date
     slot_time = payload.slot_time or payload.start_time
     if not slot_date or not slot_time:
         raise HTTPException(status_code=422, detail="slot_date and slot_time are required")
     data = {
         "doctor_name": doctor,
+        "doctor_id": doctor_id,     # the slot - and every appointment booked into it - belongs to this doctor
         "department": _department(payload.department),
         "slot_date": slot_date,
         "slot_time": slot_time[:5],
@@ -206,17 +254,22 @@ async def create_slot(payload: SlotCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/slots")
-async def list_slots(
+def list_slots(
     slot_date: Optional[str] = Query(None),
     date: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
     doctor_name: Optional[str] = Query(None),
     provider_name: Optional[str] = Query(None),
     available_only: bool = Query(True),
+    doctor_id: Optional[str] = Query(None),
+    mine: bool = Query(False),
     limit: int = Query(100, ge=1, le=500),
     user=Depends(verify_jwt),
 ):
     query = db.table(TABLE_APPOINTMENT_SLOTS).select("*").order("slot_date").order("slot_time").limit(limit)
+    scope = _doctor_scope(user, mine)
+    if scope or doctor_id:
+        query = query.eq("doctor_id", scope or doctor_id)
     if slot_date or date:
         query = query.eq("slot_date", slot_date or date)
     if department:
@@ -243,7 +296,7 @@ async def list_slots(
 
 
 @router.delete("/slots/{slot_id}")
-async def delete_slot(slot_id: int, user=Depends(require_role("admin"))):
+def delete_slot(slot_id: int, user=Depends(require_role("admin"))):
     booked = db.table(TABLE_APPOINTMENTS).select("id").eq("slot_id", slot_id).neq("status", "cancelled").execute()
     if booked.data:
         raise HTTPException(status_code=409, detail="Cannot delete slot with active bookings")
@@ -291,23 +344,25 @@ def _calendar_appointments_core(
 
 
 @router.get("/calendar")
-async def calendar_appointments(
+def calendar_appointments(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     doctor_name: Optional[str] = Query(None),
     doctor_id: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
+    mine: bool = Query(False),
     limit: int = Query(500, ge=1, le=1000),
     user=Depends(verify_jwt),
 ):
-    return _calendar_appointments_core(
-        date_from=date_from, date_to=date_to, doctor_name=doctor_name,
-        doctor_id=doctor_id, department=department, limit=limit,
-    )
+    scope = _doctor_scope(user, mine)
+    return {**_calendar_appointments_core(
+        date_from=date_from, date_to=date_to, doctor_name=None if scope else doctor_name,
+        doctor_id=scope or doctor_id, department=department, limit=limit,
+    ), "scope": "mine" if scope else "all"}
 
 
 @router.get("/doctors")
-async def list_doctors(user=Depends(verify_jwt)):
+def list_doctors(user=Depends(verify_jwt)):
     # limit() was previously applied *before* dedup at 500 rows — with
     # 200k+ historical slot rows and numeric-junk doctor_name values from
     # the legacy Hope import sorting ahead of real names alphabetically,
@@ -329,7 +384,7 @@ async def list_doctors(user=Depends(verify_jwt)):
 
 
 @router.get("/next-slot")
-async def next_available_slot(
+def next_available_slot(
     doctor_name: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
     user=Depends(verify_jwt),
@@ -369,26 +424,32 @@ async def book_appointment(payload: AppointmentBook, user=Depends(verify_jwt)):
         db.table(TABLE_APPOINTMENT_SLOTS).update({"is_available": False}).eq("id", payload.slot_id).execute()
     appointment = (result.data or [data])[0]
     audit_event("appointment_booked", {"patient_id": patient_id, "slot_id": payload.slot_id}, actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment.get("id") or ""))
-    asyncio.create_task(realtime_hub.broadcast("appointment_updates", {
+    realtime_hub.publish("appointment_updates", {
         "event": "appointment_booked",
         "appointment_id": appointment.get("id"),
         "slot_date": slot.get("slot_date"),
-    }))
+    })
     return {"ok": True, "appointment": _enrich([appointment], [slot])[0]}
 
 
 @router.get("")
-async def list_appointments(
+def list_appointments(
     patient_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     slot_date: Optional[str] = Query(None),
     date: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None, description="End of the date range — defaults to `date`/`slot_date` (single day) when omitted"),
+    mine: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
-    if slot_date or date:
-        return _calendar_appointments_core(date_from=slot_date or date, date_to=date_to or slot_date or date, limit=limit)
+    # a patient's own appointments (their chart) are not narrowed to one doctor
+    scope = None if patient_id else _doctor_scope(user, mine)
+    if slot_date or date or scope:
+        start = slot_date or date or Date.today().isoformat()
+        out = _calendar_appointments_core(date_from=start, date_to=date_to or (slot_date or date) or None,
+                                          doctor_id=scope, limit=max(limit, 200) if scope else limit)
+        return {**out, "scope": "mine" if scope else "all"}
     query = db.table(TABLE_APPOINTMENTS).select("*").order("booked_at", desc=True).limit(limit)
     if patient_id:
         query = query.eq("patient_id", patient_id)
@@ -403,7 +464,7 @@ async def list_appointments(
 
 
 @router.get("/{appointment_id}")
-async def get_appointment(appointment_id: int, user=Depends(verify_jwt)):
+def get_appointment(appointment_id: int, user=Depends(verify_jwt)):
     return {"appointment": _enrich([_get_appointment(appointment_id)])[0]}
 
 
@@ -438,11 +499,11 @@ async def mark_arrived(appointment_id: int, user=Depends(verify_jwt)):
         {"encounter_id": encounter_id, "already_active": already_active},
         actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment_id),
     )
-    asyncio.create_task(realtime_hub.broadcast("appointment_updates", {
+    realtime_hub.publish("appointment_updates", {
         "event": "appointment_arrived",
         "appointment_id": appointment_id,
         "encounter_id": encounter_id,
-    }))
+    })
     return {
         "ok": True,
         "appointment_id": appointment_id,
@@ -460,7 +521,7 @@ async def complete_appointment(appointment_id: int, user=Depends(verify_jwt)):
         raise HTTPException(status_code=409, detail=f"Cannot complete appointment from status '{appt['status']}'")
     db.table(TABLE_APPOINTMENTS).update({"status": "completed"}).eq("id", appointment_id).execute()
     audit_event("appointment_completed", {}, actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment_id))
-    asyncio.create_task(realtime_hub.broadcast("appointment_updates", {"event": "appointment_completed", "appointment_id": appointment_id}))
+    realtime_hub.publish("appointment_updates", {"event": "appointment_completed", "appointment_id": appointment_id})
     return {"ok": True, "appointment_id": appointment_id, "status": "completed"}
 
 
@@ -479,7 +540,7 @@ async def cancel_appointment(appointment_id: int, payload: AppointmentCancel, us
     booked_count = _slot_booked_counts([appt["slot_id"]]).get(appt["slot_id"], 0)
     db.table(TABLE_APPOINTMENT_SLOTS).update({"is_available": booked_count < max_patients}).eq("id", appt["slot_id"]).execute()
     audit_event("appointment_cancelled", {"reason": reason}, actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment_id))
-    asyncio.create_task(realtime_hub.broadcast("appointment_updates", {"event": "appointment_cancelled", "appointment_id": appointment_id}))
+    realtime_hub.publish("appointment_updates", {"event": "appointment_cancelled", "appointment_id": appointment_id})
     return {"ok": True, "appointment_id": appointment_id, "status": "cancelled"}
 
 
@@ -494,12 +555,12 @@ async def mark_no_show(appointment_id: int, user=Depends(verify_jwt)):
     booked_count = _slot_booked_counts([appt["slot_id"]]).get(appt["slot_id"], 0)
     db.table(TABLE_APPOINTMENT_SLOTS).update({"is_available": booked_count < max_patients}).eq("id", appt["slot_id"]).execute()
     audit_event("appointment_no_show", {}, actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment_id))
-    asyncio.create_task(realtime_hub.broadcast("appointment_updates", {"event": "appointment_no_show", "appointment_id": appointment_id}))
+    realtime_hub.publish("appointment_updates", {"event": "appointment_no_show", "appointment_id": appointment_id})
     return {"ok": True, "appointment_id": appointment_id, "status": "no_show"}
 
 
 @router.post("/{appointment_id}/remind")
-async def send_appointment_reminder(appointment_id: int, user=Depends(verify_jwt)):
+def send_appointment_reminder(appointment_id: int, user=Depends(verify_jwt)):
     appt = _get_appointment(appointment_id)
     db.table(TABLE_APPOINTMENTS).update({"reminder_sent": True}).eq("id", appointment_id).execute()
     audit_event("appointment_reminder_marked", {}, actor_id=user.get("sub"), subject_type="appointment", subject_id=str(appointment_id))

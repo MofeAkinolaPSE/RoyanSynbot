@@ -24,6 +24,10 @@ const ROLE_LABELS: Record<string, string> = {
   hr: "HR",
   ops: "Operations",
   quality_assurance: "Quality Assurance",
+  hmo: "HMO Officer",
+  cashier: "Billing & Cashier",
+  store: "Stores",
+  auditor: "Auditor",
 };
 
 const Register = () => {

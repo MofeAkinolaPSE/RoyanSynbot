@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+// Re-exported so existing call sites keep their import path.
+export { DetailRow } from "@/components/shared/panel-shared";
 
 export function fmtDate(ts?: string) {
   if (!ts) return "—";
@@ -33,7 +35,7 @@ export const MAR_STATUS_COLORS: Record<string, string> = {
 
 export function MarStatusBadge({ status }: { status?: string }) {
   const s = status ?? "administered";
-  return <Badge variant="outline" className={cn("text-[12px] capitalize", MAR_STATUS_COLORS[s] ?? MAR_STATUS_COLORS.administered)}>{s}</Badge>;
+  return <Badge variant="outline" className={cn("text-xs capitalize", MAR_STATUS_COLORS[s] ?? MAR_STATUS_COLORS.administered)}>{s}</Badge>;
 }
 
 // ─── Care plan status / priority ───────────────────────────────────────────
@@ -70,14 +72,3 @@ export function FluidTypeBadge({ type }: { type?: string }) {
 }
 
 // ─── Detail row: label + value ─────────────────────────────────────────────
-export function DetailRow({ label, value, mono = false, accent }: {
-  label: string; value?: string | null; mono?: boolean; accent?: string;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex items-start justify-between gap-3 py-1 border-b border-border/30 last:border-0">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className={cn("text-xs text-right font-medium", mono && "font-mono", accent)}>{value}</span>
-    </div>
-  );
-}

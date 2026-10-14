@@ -77,47 +77,31 @@ def get_inventory_dashboard(limit: int = 50, client: DBClient = db) -> Dict[str,
 @ttl_cache(ttl_seconds=60, ignore_kwargs=("client",), tags=("staff", "workforce_dashboard", "executive", "hr_summary"))
 def get_workforce_dashboard(client: DBClient = db) -> Dict[str, Any]:
     """
-    Workforce Pulse:
-    - Hours logged this week
-    - Active staff count
-    - Departmental breakdown
-    """
-    # Simple aggregations from Phase 2 tables
-    today = datetime.now().date()
-    week_start = today - timedelta(days=today.weekday())
-    
-    sheets = get_timesheets(start_date=week_start, limit=500, client=client)
-    
-    dept_hours = {}
-    total_hours = 0
-    active_staff = set()
-    
-    for s in sheets:
-        h = float(s.get("hours_worked", 0))
-        d = s.get("department", "Unknown")
-        dept_hours[d] = dept_hours.get(d, 0) + h
-        total_hours += h
-        active_staff.add(s.get("staff_id"))
-    
-    active_count = len(active_staff)
-    
-    # Fallback: If no timesheets logged, count active registered staff from royan_staff.
-    if active_count == 0:
-        try:
-            staff_resp = client.table("royan_staff").select("id,department").eq("is_active", True).is_("quarantined_at", "null").limit(1000).execute()
-            all_staff = staff_resp.data or []
-            active_count = len(all_staff)
-            for s in all_staff:
-                d = s.get("department") or "Unassigned"
-                dept_hours[d] = dept_hours.get(d, 0) + 1
-        except Exception as e:
-            logger.warning(f"Workforce staff fallback failed: {e}")
+    Workforce Pulse, read from the HR hub (services/hr_hub.py): hours this week
+    (saved timesheets + clocks still running), people with hours, hours by team.
 
+    This used to read a `department` column royan_timesheets did not have (every
+    row fell under "Unknown"), and when there were no hours it put headcounts into
+    the same breakdown as hours. department_breakdown is hours only now; headcount
+    is its own field.
+    """
+    try:
+        from src.services import hr_hub
+        h = hr_hub.overview()
+    except Exception as e:
+        logger.warning(f"Workforce overview failed: {e}")
+        return {"period": "current_week", "total_hours": 0, "active_staff_count": 0, "headcount": 0,
+                "department_breakdown": {}, "error": "Workforce figures are unavailable"}
     return {
         "period": "current_week",
-        "total_hours": total_hours,
-        "active_staff_count": active_count,
-        "department_breakdown": dept_hours # now contains headcount if hours are empty
+        "total_hours": h["hours_total"],
+        "hours_saved": h["hours_saved"],
+        "hours_running": h["hours_live"],
+        "active_staff_count": h["people_with_hours"],
+        "headcount": h["headcount"],
+        "on_clock": len(h["on_clock"]),
+        "pending_timesheets": h["pending_approval"]["entries"],
+        "department_breakdown": {d["department"]: d["hours"] for d in h["by_department"]},
     }
 
 # --- Alert Logic ---
@@ -143,21 +127,12 @@ def create_alert(
     invalidate_cache_tags("alerts", "executive", "risk_signals", "recommendations", "anomalies")
 
     # Best-effort realtime notification (non-blocking)
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(
-            realtime_hub.broadcast(
-                "alerts_updates",
-                {
-                    "event": "alert_created",
-                    "severity": severity,
-                    "category": category,
-                    "title": title,
-                },
-            )
-        )
-    except RuntimeError:
-        pass
+    realtime_hub.publish("alerts_updates", {
+        "event": "alert_created",
+        "severity": severity,
+        "category": category,
+        "title": title,
+    })
 
 @ttl_cache(ttl_seconds=30, ignore_kwargs=("client",), tags=("alerts", "executive"))
 def get_active_alerts(client: DBClient = db) -> List[Dict[str, Any]]:
@@ -197,9 +172,16 @@ def generate_executive_briefing(client: DBClient = db) -> Dict[str, Any]:
     alerts    = get_active_alerts(client=client)
 
     # Normalize finance dict
+    #
+    # The fallbacks here used to read a Naira SUM as an invoice COUNT: kpis()
+    # returned flat keys only, so `_ar` was always {} and `finance["ar_overdue"]`
+    # — money — landed in ar_overdue_count and was printed as "1733498383
+    # overdue unpaid invoices." A count and an amount are now kept apart, and
+    # neither falls back to the other.
     _ar = finance.get("ar") or {}
     _ap = finance.get("ap") or {}
-    ar_overdue_count: int  = int(_ar.get("overdue_count") or finance.get("ar_overdue") or 0)
+    ar_overdue_count: int   = int(_ar.get("overdue_count") or 0)
+    ar_overdue_amount: float = float(_ar.get("overdue_amount") or finance.get("ar_overdue") or 0.0)
     ar_total_balance: float = float(_ar.get("total_balance") or finance.get("ar_total") or 0.0)
     ap_total_balance: float = float(_ap.get("total_balance") or finance.get("ap_total") or 0.0)
 
@@ -216,15 +198,22 @@ def generate_executive_briefing(client: DBClient = db) -> Dict[str, Any]:
     if avg_wait > 45:
         critical_risks.append(f"Average wait time is {avg_wait:.0f} min — exceeds 45-min target.")
     if ar_overdue_count > 5:
-        critical_risks.append("High volume of overdue AR invoices.")
+        critical_risks.append(
+            f"{ar_overdue_count} overdue unpaid invoices "
+            f"(₦{ar_overdue_amount:,.0f} outstanding)."
+        )
     if out_of_stock_count > 0:
         critical_risks.append(f"{out_of_stock_count} critical SKUs out of stock.")
 
-    # Focus area: patient-flow first, then finance
+    # Focus area: patient-flow first, then finance.
+    #
+    # "Receivables", not "Collections". On a hospital screen "collection" reads
+    # as specimen collection; this is unpaid invoices and was being misread by
+    # clinical staff.
     if patients_waiting > 10 or avg_wait > 30:
         focus_area = "Patient Flow"
     elif ar_overdue_count > 10:
-        focus_area = "Collections"
+        focus_area = "Receivables"
     else:
         focus_area = "Operations"
 
@@ -296,12 +285,12 @@ def executive_summary(client: DBClient = db) -> Dict[str, Any]:
         ar_trend_label = trend_label(ar_change, positive_is_good=False)
         if ar_trend_label == "Declining" and ar_change > 0.1:
             findings.append("AR balance is rising, increasing cashflow pressure.")
-            focus.append("Collections")
+            focus.append("Receivables")
             risk_count += 1
-    ar_overdue_count = finance.get("ar", {}).get("overdue_count", 0)
+    ar_overdue_count = (finance.get("ar") or {}).get("overdue_count", 0)
     if ar_overdue_count > EXEC_SUMMARY_AR_OVERDUE_THRESHOLD:
         findings.append(f"{ar_overdue_count} overdue AR invoice(s) require attention.")
-        focus.append("Collections")
+        focus.append("Receivables")
         risk_count += 1
 
     # Liquidity blind spot: surface when GL cash data is unavailable

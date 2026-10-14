@@ -132,7 +132,7 @@ def _str(v: Any) -> Optional[str]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/patients/{mrn}/summary", response_model=PatientSummary)
-async def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
+def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
     """Full patient summary: demographics + clinical snapshot across all domains."""
     pat = _fetch_patient(mrn)
     patient_id = pat["id"]
@@ -235,7 +235,7 @@ async def get_patient_summary(mrn: str, user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/patients/{mrn}/timeline", response_model=EncounterTimeline)
-async def get_patient_timeline(
+def get_patient_timeline(
     mrn: str,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -316,7 +316,7 @@ async def get_patient_timeline(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/patients/{mrn}/medications", response_model=MedicationHistory)
-async def get_medication_history(
+def get_medication_history(
     mrn: str,
     status: Optional[str] = Query(None, description="Filter by status: active, completed, cancelled"),
     limit: int = Query(100, ge=1, le=500),
@@ -364,7 +364,7 @@ async def get_medication_history(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/patients/{mrn}/labs", response_model=LaboratoryHistory)
-async def get_lab_history(
+def get_lab_history(
     mrn: str,
     status: Optional[str] = Query(None, description="pending|collected|resulted|verified"),
     limit: int = Query(100, ge=1, le=500),
@@ -446,7 +446,7 @@ async def get_lab_history(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/patients/{mrn}/billing", response_model=BillingSummary)
-async def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
+def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
     """Billing summary: total billed, paid, outstanding, and HMO coverage."""
     pat = _fetch_patient(mrn)
     patient_id = pat["id"]
@@ -529,7 +529,7 @@ async def get_billing_summary(mrn: str, user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/encounters/{encounter_id}/complete", response_model=EncounterComplete)
-async def get_encounter_complete(encounter_id: int, user=Depends(verify_jwt)):
+def get_encounter_complete(encounter_id: int, user=Depends(verify_jwt)):
     """Full encounter record: encounter + patient + labs + prescriptions + vitals + notes + billing."""
     enc = _fetch_encounter(encounter_id)
     pat = _fetch_patient_by_id(enc["patient_id"])
@@ -588,7 +588,7 @@ def _fetch_patient_by_id(patient_id: int) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/queue/overview", response_model=QueueOverview)
-async def get_queue_overview(
+def get_queue_overview(
     department: Optional[str] = Query(None, description="Filter to a specific department"),
     user=Depends(verify_jwt),
 ):
@@ -666,7 +666,7 @@ async def get_queue_overview(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/encounters/{encounter_id}/start-consultation")
-async def start_consultation(
+def start_consultation(
     encounter_id: int,
     payload: StartConsultationRequest,
     user=Depends(verify_jwt),
@@ -708,7 +708,7 @@ async def start_consultation(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/encounters/{encounter_id}/order-lab", status_code=201)
-async def order_lab(
+def order_lab(
     encounter_id: int,
     payload: OrderLabRequest,
     user=Depends(verify_jwt),
@@ -752,7 +752,7 @@ async def order_lab(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/encounters/{encounter_id}/prescribe", status_code=201)
-async def prescribe(
+def prescribe(
     encounter_id: int,
     payload: PrescribeRequest,
     user=Depends(verify_jwt),
@@ -799,7 +799,7 @@ async def prescribe(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/encounters/{encounter_id}/discharge")
-async def discharge_patient(
+def discharge_patient(
     encounter_id: int,
     payload: DischargeRequest,
     user=Depends(verify_jwt),
@@ -934,7 +934,7 @@ def _actor(user: Dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/capabilities/register-patient", status_code=201)
-async def capability_register_patient(
+def capability_register_patient(
     request: Request,
     payload: RegisterPatientRequest,
     user=Depends(verify_jwt),
@@ -967,7 +967,7 @@ async def capability_register_patient(
 
 
 @router.post("/capabilities/start-encounter", status_code=201)
-async def capability_start_encounter(
+def capability_start_encounter(
     request: Request,
     payload: StartEncounterRequest,
     user=Depends(verify_jwt),
@@ -1013,7 +1013,7 @@ async def capability_start_encounter(
 
 
 @router.post("/capabilities/complete-consultation/{encounter_id}")
-async def capability_complete_consultation(
+def capability_complete_consultation(
     request: Request,
     encounter_id: int,
     payload: CompleteConsultationRequest,
@@ -1051,7 +1051,7 @@ async def capability_complete_consultation(
 
 
 @router.post("/capabilities/discharge/{encounter_id}")
-async def capability_discharge(
+def capability_discharge(
     request: Request,
     encounter_id: int,
     payload: DischargeRequest,
@@ -1092,7 +1092,7 @@ async def capability_discharge(
 
 
 @router.post("/capabilities/record-vitals/{encounter_id}", status_code=201)
-async def capability_record_vitals(
+def capability_record_vitals(
     request: Request,
     encounter_id: int,
     payload: RecordVitalsRequest,
@@ -1129,7 +1129,7 @@ async def capability_record_vitals(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/workspaces/doctor/{encounter_id}", response_model=DoctorWorkspace)
-async def workspace_doctor(
+def workspace_doctor(
     request: Request,
     encounter_id: int,
     user=Depends(verify_jwt),
@@ -1149,7 +1149,7 @@ async def workspace_doctor(
 
 
 @router.get("/workspaces/nurse/{encounter_id}", response_model=NurseWorkspace)
-async def workspace_nurse(
+def workspace_nurse(
     request: Request,
     encounter_id: int,
     user=Depends(verify_jwt),
@@ -1169,7 +1169,7 @@ async def workspace_nurse(
 
 
 @router.get("/workspaces/billing/{encounter_id}", response_model=BillingWorkspace)
-async def workspace_billing(
+def workspace_billing(
     request: Request,
     encounter_id: int,
     user=Depends(verify_jwt),
@@ -1189,7 +1189,7 @@ async def workspace_billing(
 
 
 @router.get("/workspaces/patient/{patient_id}", response_model=PatientPortalView)
-async def workspace_patient_portal(
+def workspace_patient_portal(
     request: Request,
     patient_id: int,
     user=Depends(verify_jwt),

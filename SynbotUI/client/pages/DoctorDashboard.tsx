@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { WorkspaceView } from "@/pages/StaffWorkspace";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
@@ -23,7 +24,7 @@ import { authClient } from "@/lib/auth-client";
 import { AlertBanner } from "@/components/AlertBanner";
 import { InlineWarning } from "@/components/InlineWarning";
 import { cn } from "@/lib/utils";
-import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
+import { ENCOUNTER_STATUS_COLORS, encounterStatusLabel } from "@/lib/encounter-status";
 
 function getJwtEmail(): string | null {
   const token = authClient.getAccessToken();
@@ -52,7 +53,12 @@ const LAB_STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
+/** My Dashboard: the doctor's patients first, then their whole workspace (day, tasks, inbox, messages). */
 export default function DoctorDashboard() {
+  return <WorkspaceView title="My Dashboard" lead={[{ key: "patients", label: "My patients", icon: Stethoscope, render: () => <DoctorPatients /> }]} />;
+}
+
+function DoctorPatients() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const today = toISO(new Date());
@@ -185,13 +191,18 @@ export default function DoctorDashboard() {
   const teleSessions: any[] = Array.isArray(teleData?.sessions) ? teleData.sessions : [];
   const consultNotes: any[] = Array.isArray(consultData?.notes) ? consultData.notes : [];
 
+  // Every one of these has its own section further down THIS page, so the tile
+  // scrolls to it rather than navigating away to a different screen.
   const kpis = [
-    { label: "Today's Appointments", value: todayApts.length, icon: CalendarCheck, color: "text-blue-600" },
-    { label: "Active Encounters", value: activeEncounters.length, icon: Stethoscope, color: "text-green-600" },
-    { label: "Lab Results to Review", value: resultedLabs.length, icon: FlaskConical, color: resultedLabs.length > 0 ? "text-red-600" : "text-slate-600" },
-    { label: "Image Results to Review", value: reportedRadiology.length, icon: ScanLine, color: reportedRadiology.length > 0 ? "text-red-600" : "text-slate-600" },
-    { label: "Completed Today", value: todayApts.filter((a: any) => a.status === "completed").length, icon: Clock, color: "text-slate-600" },
+    { label: "Today's Appointments", value: todayApts.length, icon: CalendarCheck, color: "text-blue-600", anchor: "sec-appointments" },
+    { label: "Active Encounters", value: activeEncounters.length, icon: Stethoscope, color: "text-green-600", anchor: "sec-encounters" },
+    { label: "Lab Results to Review", value: resultedLabs.length, icon: FlaskConical, color: resultedLabs.length > 0 ? "text-red-600" : "text-slate-600", anchor: "sec-labs" },
+    { label: "Image Results to Review", value: reportedRadiology.length, icon: ScanLine, color: reportedRadiology.length > 0 ? "text-red-600" : "text-slate-600", anchor: "sec-imaging" },
+    { label: "Completed Today", value: todayApts.filter((a: any) => a.status === "completed").length, icon: Clock, color: "text-slate-600", anchor: "sec-appointments" },
   ];
+
+  const scrollTo = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <motion.div
@@ -200,7 +211,8 @@ export default function DoctorDashboard() {
       transition={motionTransitions.standard}
       className="pw-page-surface space-y-6"
     >
-      <div>
+      {/* the workspace header above names the doctor and the day; this keeps only the specialty line */}
+      <div className="hidden">
         <h1 className="text-2xl font-bold">My Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {doctorId ? `Signed in as ${doctorId}` : "Doctor view"} — {new Date().toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
@@ -218,8 +230,15 @@ export default function DoctorDashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        {kpis.map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className="shadow-elevation-1">
+        {kpis.map(({ label, value, icon: Icon, color, anchor }) => (
+          <Card
+            key={label}
+            role="button"
+            tabIndex={0}
+            onClick={() => scrollTo(anchor)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); scrollTo(anchor); } }}
+            className="shadow-elevation-1 cursor-pointer transition-all hover:shadow-elevation-lg hover:-translate-y-0.5"
+          >
             <CardContent className="p-4 flex items-center gap-3">
               <div className={cn("rounded-lg bg-muted p-2", color)}>
                 <Icon className="h-5 w-5" />
@@ -241,7 +260,7 @@ export default function DoctorDashboard() {
               <Stethoscope className={readyForDoctor.length > 0 ? "h-4 w-4 text-blue-500" : "h-4 w-4 text-muted-foreground"} />
               Ready for Consultation
               {readyForDoctor.length > 0 && (
-                <span className="rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 text-[12px] font-semibold px-2 py-0.5">
+                <span className="rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 text-xs font-semibold px-2 py-0.5">
                   {readyForDoctor.length}
                 </span>
               )}
@@ -281,7 +300,7 @@ export default function DoctorDashboard() {
                             <span className="text-sm font-medium">
                               {enc.patient_name ?? <span className="text-muted-foreground italic text-xs">Unknown</span>}
                             </span>
-                            {enc.mrn && <span className="font-mono text-[12px] text-muted-foreground">{enc.mrn}</span>}
+                            {enc.mrn && <span className="font-mono text-xs text-muted-foreground">{enc.mrn}</span>}
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[160px] truncate">
@@ -321,7 +340,7 @@ export default function DoctorDashboard() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Today's Appointments */}
-        <Card className="shadow-elevation-1">
+        <Card id="sec-appointments" className="shadow-elevation-1">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <CalendarCheck className="h-4 w-4 text-blue-500" />
@@ -364,7 +383,7 @@ export default function DoctorDashboard() {
                       <TableCell>
                         <Badge
                           className={cn(
-                            "text-[12px] capitalize",
+                            "text-xs capitalize",
                             apt.status === "arrived" ? "bg-yellow-100 text-yellow-700" :
                             apt.status === "completed" ? "bg-green-100 text-green-700" :
                             apt.status === "cancelled" ? "bg-slate-100 text-slate-500" :
@@ -390,7 +409,7 @@ export default function DoctorDashboard() {
         </Card>
 
         {/* Active Encounters */}
-        <Card className="shadow-elevation-1">
+        <Card id="sec-encounters" className="shadow-elevation-1">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Stethoscope className="h-4 w-4 text-green-500" />
@@ -432,8 +451,8 @@ export default function DoctorDashboard() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{enc.department ?? "—"}</TableCell>
                       <TableCell>
-                        <Badge className={cn("text-[12px] capitalize", STATUS_COLORS[enc.status] ?? "")}>
-                          {enc.status?.replace(/_/g, " ")}
+                        <Badge className={cn("text-xs capitalize", STATUS_COLORS[enc.status] ?? "")}>
+                          {encounterStatusLabel(enc.status)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -458,13 +477,13 @@ export default function DoctorDashboard() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
 
         {/* Lab Results to Review */}
-        <Card className="shadow-elevation-1">
+        <Card id="sec-labs" className="shadow-elevation-1">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <CheckCircle2 className={cn("h-4 w-4", resultedLabs.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               Lab Results to Review
               {resultedLabs.length > 0 && (
-                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{resultedLabs.length}</span>
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">{resultedLabs.length}</span>
               )}
             </CardTitle>
           </CardHeader>
@@ -478,7 +497,7 @@ export default function DoctorDashboard() {
                     onClick={() => setLabPanelOrder(o)}>
                     <div className="min-w-0">
                       <p className="text-xs font-medium truncate">{o.test_name}</p>
-                      <p className="text-[12px] text-muted-foreground">Patient #{o.patient_id} · {o.result_summary ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">Patient #{o.patient_id} · {o.result_summary ?? "—"}</p>
                     </div>
                     {o.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
@@ -494,13 +513,13 @@ export default function DoctorDashboard() {
         </Card>
 
         {/* Imaging Reports to Review */}
-        <Card className="shadow-elevation-1">
+        <Card id="sec-imaging" className="shadow-elevation-1">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <ScanLine className={cn("h-4 w-4", reportedRadiology.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               Imaging Reports to Review
               {reportedRadiology.length > 0 && (
-                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{reportedRadiology.length}</span>
+                <span className="ml-auto rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">{reportedRadiology.length}</span>
               )}
             </CardTitle>
           </CardHeader>
@@ -514,7 +533,7 @@ export default function DoctorDashboard() {
                     onClick={() => setRadPanelOrder(o)}>
                     <div className="min-w-0">
                       <p className="text-xs font-medium truncate">{o.modality?.toUpperCase()} {o.body_part ? `— ${o.body_part}` : ""}</p>
-                      <p className="text-[12px] text-muted-foreground">Patient #{o.patient_id} · {o.impression ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">Patient #{o.patient_id} · {o.impression ?? "—"}</p>
                     </div>
                     {o.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
@@ -546,7 +565,7 @@ export default function DoctorDashboard() {
                   <li key={s.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
                     <div>
                       <p className="text-xs font-medium">Patient #{s.patient_id}</p>
-                      <p className="text-[12px] text-muted-foreground font-mono">{s.scheduled_time ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{s.scheduled_time ?? "—"}</p>
                     </div>
                     {["scheduled","active"].includes(s.status) && (
                       <Button size="sm" variant="outline" asChild className="h-6 px-2 text-xs gap-1">
@@ -579,7 +598,7 @@ export default function DoctorDashboard() {
                   <li key={n.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors">
                     <div className="min-w-0">
                       <p className="text-xs font-medium capitalize truncate">{n.specialty ?? "Specialist"}</p>
-                      <p className="text-[12px] text-muted-foreground">Patient #{n.patient_id}</p>
+                      <p className="text-xs text-muted-foreground">Patient #{n.patient_id}</p>
                     </div>
                     {n.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary">

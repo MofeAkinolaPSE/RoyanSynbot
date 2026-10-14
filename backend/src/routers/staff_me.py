@@ -20,11 +20,22 @@ class ProfilePatch(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+def _email_for(user: dict) -> Optional[str]:
+    email = (user or {}).get("email")
+    if email or not (user or {}).get("sub"):
+        return email
+    try:
+        r = db.table("royan_users").select("email").eq("id", user["sub"]).limit(1).execute().data
+        return r[0]["email"] if r else None
+    except Exception:
+        return None
+
+
 @router.get("/me")
 def get_me(user: dict = Depends(verify_jwt)):
-    email = (user or {}).get("email")
+    email = _email_for(user)
     if not email:
-        raise HTTPException(status_code=400, detail="JWT has no email claim")
+        raise HTTPException(status_code=400, detail="This sign-in is not linked to an account")
     profile = get_my_profile(email)
     if not profile:
         # Return a minimal shell so the frontend knows to trigger onboarding

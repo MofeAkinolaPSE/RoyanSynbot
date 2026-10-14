@@ -51,7 +51,7 @@ class FeeUpdate(BaseModel):
 
 
 @router.get("")
-async def list_fees(
+def list_fees(
     category: Optional[str] = Query(None),
     active_only: bool = Query(True),
     user=Depends(verify_jwt),
@@ -77,7 +77,7 @@ async def list_fees(
 
 
 @router.post("", status_code=201)
-async def create_fee(payload: FeeCreate, user=Depends(verify_jwt)):
+def create_fee(payload: FeeCreate, user=Depends(verify_jwt)):
     """Create a new fee schedule entry."""
     if payload.category not in FEE_CATEGORIES:
         raise HTTPException(status_code=422, detail=f"category must be one of {sorted(FEE_CATEGORIES)}")
@@ -101,7 +101,7 @@ async def create_fee(payload: FeeCreate, user=Depends(verify_jwt)):
 
 
 @router.patch("/{fee_id}")
-async def update_fee(fee_id: int, payload: FeeUpdate, user=Depends(verify_jwt)):
+def update_fee(fee_id: int, payload: FeeUpdate, user=Depends(verify_jwt)):
     """Update a fee schedule entry."""
     r = db.table(TABLE_FEE_SCHEDULE).select("id").eq("id", fee_id).execute()
     if not r.data:
@@ -130,7 +130,7 @@ async def update_fee(fee_id: int, payload: FeeUpdate, user=Depends(verify_jwt)):
 
 
 @router.delete("/{fee_id}")
-async def delete_fee(fee_id: int, user=Depends(verify_jwt)):
+def delete_fee(fee_id: int, user=Depends(verify_jwt)):
     """Deactivate a fee schedule entry."""
     r = db.table(TABLE_FEE_SCHEDULE).select("id").eq("id", fee_id).execute()
     if not r.data:

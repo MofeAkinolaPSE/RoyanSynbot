@@ -282,7 +282,13 @@ def _compute_immunisation_status(
     annotated: list[dict] = []
     overdue_count = 0
     upcoming_count = 0
-    next_due: Optional[dict] = None
+    # Two separate slots on purpose. These used to share one, guarded by the same
+    # "is this earlier?" test over a list sorted ascending by age — so as soon as
+    # a patient had any overdue dose, the oldest missed one claimed the slot and
+    # nothing could ever displace it. "Next Due" then permanently showed a date
+    # in the past, which is what made the roster unreadable.
+    next_upcoming: Optional[dict] = None
+    oldest_overdue: Optional[dict] = None
 
     for row in schedule_rows:
         name = _norm(row["vaccine_name"])
@@ -306,29 +312,61 @@ def _compute_immunisation_status(
                 out["status"] = "upcoming"
             elif due_date < today:
                 out["status"] = "overdue"
+                out["days_overdue"] = (today - due_date).days
                 overdue_count += 1
-                if next_due is None or due_date < date.fromisoformat(next_due["due_date"]):
-                    next_due = {"vaccine_name": row["vaccine_name"], "due_date": out["due_date"]}
+                if oldest_overdue is None or due_date < date.fromisoformat(oldest_overdue["due_date"]):
+                    oldest_overdue = {
+                        "vaccine_name": row["vaccine_name"],
+                        "due_date": out["due_date"],
+                        "days_overdue": out["days_overdue"],
+                    }
             else:
                 out["status"] = "upcoming"
+                # The 14-day window decides whether this counts as "due soon";
+                # it must NOT decide whether we know the next due date. Gating
+                # both on it meant a patient whose next dose was 3 weeks out
+                # reported no next due date at all.
                 if due_date <= today + timedelta(days=_DUE_SOON_DAYS):
                     upcoming_count += 1
-                    if next_due is None or due_date < date.fromisoformat(next_due["due_date"]):
-                        next_due = {"vaccine_name": row["vaccine_name"], "due_date": out["due_date"]}
+                if next_upcoming is None or due_date < date.fromisoformat(next_upcoming["due_date"]):
+                    next_upcoming = {"vaccine_name": row["vaccine_name"], "due_date": out["due_date"]}
 
         annotated.append(out)
 
-    if overdue_count:
+    # A child with NO records at all is a different fact from a child who
+    # missed doses, and conflating them is what floods this page.
+    #
+    # 1,190 of 1,765 under-5s here have zero immunisation rows, and 1,042 of
+    # them are aged 3-5 — so nearly the whole 38-dose schedule reads as "past
+    # due" for a child whose vaccines were very likely given at a government
+    # clinic and simply never recorded at Royan. Reporting that as thirty
+    # missed doses tells staff to chase families who have done nothing wrong,
+    # and buries the children who genuinely have missed something.
+    has_any_record = bool(given)
+
+    if overdue_count and not has_any_record:
+        overall_status = "no_record"
+    elif overdue_count:
         overall_status = "overdue"
     elif upcoming_count:
         overall_status = "due_soon"
+    elif next_upcoming:
+        # Nothing to action right now, but doses remain. This used to report
+        # "up_to_date", which reads as "fully vaccinated" — a green badge on a
+        # child with thirty doses still ahead of them.
+        overall_status = "on_schedule"
     else:
         overall_status = "up_to_date"
 
     summary = {
+        "has_any_record": has_any_record,
         "overdue_count": overdue_count,
         "upcoming_count": upcoming_count,
-        "next_due": next_due,
+        # next_due now always means a genuinely future date, so a column headed
+        # "Next Due" can never show one in the past. What was missed is reported
+        # separately rather than impersonating the next appointment.
+        "next_due": next_upcoming,
+        "oldest_overdue": oldest_overdue,
         "overall_status": overall_status,
     }
     return annotated, summary
@@ -339,7 +377,7 @@ def _compute_immunisation_status(
 # ---------------------------------------------------------------------------
 
 @router.post("/anc", status_code=201)
-async def register_anc(payload: ANCCreate, user=Depends(verify_jwt)):
+def register_anc(payload: ANCCreate, user=Depends(verify_jwt)):
     """Register a patient for antenatal care."""
     data = payload.model_dump(exclude_none=True)
     data["registered_by"] = user.get("sub") or "system"
@@ -363,7 +401,7 @@ async def register_anc(payload: ANCCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/anc")
-async def list_anc(
+def list_anc(
     patient_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
@@ -393,12 +431,12 @@ async def list_anc(
 
 
 @router.get("/anc/{anc_id}")
-async def get_anc(anc_id: int, user=Depends(verify_jwt)):
+def get_anc(anc_id: int, user=Depends(verify_jwt)):
     return {"record": _get_anc(anc_id)}
 
 
 @router.patch("/anc/{anc_id}")
-async def update_anc(anc_id: int, payload: ANCUpdate, user=Depends(verify_jwt)):
+def update_anc(anc_id: int, payload: ANCUpdate, user=Depends(verify_jwt)):
     """Update an ANC record (risk factors, test results, status)."""
     _get_anc(anc_id)
     updates = payload.model_dump(exclude_none=True)
@@ -414,7 +452,7 @@ async def update_anc(anc_id: int, payload: ANCUpdate, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/anc/{anc_id}/visits", status_code=201)
-async def log_visit(anc_id: int, payload: ANCVisitCreate, user=Depends(verify_jwt)):
+def log_visit(anc_id: int, payload: ANCVisitCreate, user=Depends(verify_jwt)):
     """Log an antenatal visit."""
     anc = _get_anc(anc_id)
     data = payload.model_dump(exclude_none=True)
@@ -436,7 +474,7 @@ async def log_visit(anc_id: int, payload: ANCVisitCreate, user=Depends(verify_jw
 
 
 @router.get("/anc/{anc_id}/visits")
-async def list_visits(anc_id: int, user=Depends(verify_jwt)):
+def list_visits(anc_id: int, user=Depends(verify_jwt)):
     _get_anc(anc_id)
     result = db.table(TABLE_ANC_VISITS).select("*").eq("anc_id", anc_id).order("visit_date", desc=True).execute()
     return {"visits": result.data or [], "count": len(result.data or [])}
@@ -447,7 +485,7 @@ async def list_visits(anc_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/anc/{anc_id}/partograph", status_code=201)
-async def add_partograph_entry(anc_id: int, payload: PartographEntry, user=Depends(verify_jwt)):
+def add_partograph_entry(anc_id: int, payload: PartographEntry, user=Depends(verify_jwt)):
     """Add a partograph data point during active labour."""
     anc = _get_anc(anc_id)
     data = payload.model_dump(exclude_none=True)
@@ -469,7 +507,7 @@ async def add_partograph_entry(anc_id: int, payload: PartographEntry, user=Depen
 
 
 @router.get("/anc/{anc_id}/partograph")
-async def get_partograph(anc_id: int, user=Depends(verify_jwt)):
+def get_partograph(anc_id: int, user=Depends(verify_jwt)):
     _get_anc(anc_id)
     result = db.table(TABLE_PARTOGRAPH).select("*").eq("anc_id", anc_id).order("recorded_at").execute()
     return {"entries": result.data or [], "count": len(result.data or [])}
@@ -480,7 +518,7 @@ async def get_partograph(anc_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/anc/{anc_id}/delivery", status_code=201)
-async def record_delivery(anc_id: int, payload: DeliveryRecord, user=Depends(verify_jwt)):
+def record_delivery(anc_id: int, payload: DeliveryRecord, user=Depends(verify_jwt)):
     """Record delivery outcome for an ANC case."""
     anc = _get_anc(anc_id)
 
@@ -516,7 +554,7 @@ async def record_delivery(anc_id: int, payload: DeliveryRecord, user=Depends(ver
 
 
 @router.get("/anc/{anc_id}/delivery")
-async def get_delivery(anc_id: int, user=Depends(verify_jwt)):
+def get_delivery(anc_id: int, user=Depends(verify_jwt)):
     _get_anc(anc_id)
     result = db.table(TABLE_DELIVERY_RECORDS).select("*").eq("anc_id", anc_id).execute()
     if not result.data:
@@ -529,7 +567,7 @@ async def get_delivery(anc_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/delivery/{delivery_id}/newborn", status_code=201)
-async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, user=Depends(verify_jwt)):
+def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, user=Depends(verify_jwt)):
     """Record newborn assessment for a delivery.
 
     Gives the baby their own royan_patients row (DOB = delivery date, gender
@@ -587,7 +625,7 @@ async def add_newborn_assessment(delivery_id: int, payload: NewbornAssessment, u
 
 
 @router.get("/delivery/{delivery_id}/newborn")
-async def get_newborn_assessments(delivery_id: int, user=Depends(verify_jwt)):
+def get_newborn_assessments(delivery_id: int, user=Depends(verify_jwt)):
     _get_delivery(delivery_id)
     result = db.table(TABLE_NEWBORN_ASSESSMENT).select("*").eq("delivery_id", delivery_id).execute()
     return {"assessments": result.data or [], "count": len(result.data or [])}
@@ -598,7 +636,7 @@ async def get_newborn_assessments(delivery_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.post("/patients/{patient_id}/immunisation", status_code=201)
-async def log_immunisation(
+def log_immunisation(
     patient_id: int,
     payload: ImmunisationRecord | list[ImmunisationRecord],
     user=Depends(verify_jwt),
@@ -637,7 +675,7 @@ async def log_immunisation(
 
 
 @router.get("/patients/{patient_id}/immunisation")
-async def get_immunisation_history(
+def get_immunisation_history(
     patient_id: int,
     limit: int = Query(100, ge=1, le=500),
     user=Depends(verify_jwt),
@@ -659,7 +697,7 @@ async def get_immunisation_history(
 # ---------------------------------------------------------------------------
 
 @router.get("/patients/{patient_id}/babies")
-async def list_babies(patient_id: int, user=Depends(verify_jwt)):
+def list_babies(patient_id: int, user=Depends(verify_jwt)):
     """List a mother's babies — royan_patients rows linked via mother_patient_id
     (set by add_newborn_assessment above). Powers the frontend's "Babies" card
     on a mother's patient profile."""
@@ -674,7 +712,7 @@ async def list_babies(patient_id: int, user=Depends(verify_jwt)):
 
 
 @router.get("/vaccine-schedule")
-async def get_vaccine_schedule(
+def get_vaccine_schedule(
     patient_id: Optional[int] = Query(None, description="Compute due/overdue status against this patient's DOB and history"),
     user=Depends(verify_jwt),
 ):
@@ -717,7 +755,7 @@ class BabyRegister(BaseModel):
 
 
 @router.post("/babies/register", status_code=201)
-async def register_baby(payload: BabyRegister, user=Depends(verify_jwt)):
+def register_baby(payload: BabyRegister, user=Depends(verify_jwt)):
     """Start a new baby directly onto the immunisation program — the
     Immunisation page's "New Baby" entry point. Unlike add_newborn_assessment
     (gated behind a delivery record in this system), this covers any baby
@@ -766,7 +804,7 @@ async def register_baby(payload: BabyRegister, user=Depends(verify_jwt)):
 
 
 @router.get("/babies")
-async def list_all_babies(
+def list_all_babies(
     search: Optional[str] = Query(None, description="Match against first/last name or MRN"),
     status: Optional[str] = Query(None, description="Filter: overdue | due_soon | up_to_date"),
     limit: int = Query(100, ge=1, le=500),
@@ -826,9 +864,11 @@ async def list_all_babies(
             "mother_name": f"{mother['first_name']} {mother['last_name']}" if mother else None,
             "mother_mrn": mother.get("mrn") if mother else None,
             "overall_status": summary["overall_status"],
+            "has_any_record": summary["has_any_record"],
             "overdue_count": summary["overdue_count"],
             "upcoming_count": summary["upcoming_count"],
             "next_due": summary["next_due"],
+            "oldest_overdue": summary["oldest_overdue"],
         })
 
     if status:
@@ -838,7 +878,7 @@ async def list_all_babies(
 
 
 @router.get("/babies/{patient_id}")
-async def get_baby_detail(patient_id: int, user=Depends(verify_jwt)):
+def get_baby_detail(patient_id: int, user=Depends(verify_jwt)):
     """Combined bio header for a baby's Vaccination Record page: the patient
     row (incl. father_name/place_of_birth), their birth stats from the
     newborn assessment, and their mother's identity."""
@@ -871,57 +911,41 @@ async def get_baby_detail(patient_id: int, user=Depends(verify_jwt)):
 # Summary endpoint — useful for dashboard
 # ---------------------------------------------------------------------------
 
+_STATS_CACHE: dict = {}
+_MCH_DEPT = "(obstet|gyn|mch|matern|antenat)"
+
+
 @router.get("/stats")
-async def mch_stats(user=Depends(verify_jwt)):
-    """Summary counts for MCH dashboard."""
-    anc_result = db.table(TABLE_ANC_RECORDS).select("status").execute()
-    rows = anc_result.data or []
-
-    active     = sum(1 for r in rows if r.get("status") == "active")
-    delivered  = sum(1 for r in rows if r.get("status") == "delivered")
-    referred   = sum(1 for r in rows if r.get("status") == "referred")
-    total_anc  = len(rows)
-
-    delivery_result = db.table(TABLE_DELIVERY_RECORDS).select("mode_of_delivery").execute()
-    deliveries = delivery_result.data or []
-    mode_counts: dict = {}
-    for d in deliveries:
-        m = d.get("mode_of_delivery") or "other"
-        mode_counts[m] = mode_counts.get(m, 0) + 1
-
-    immunisation_result = db.table(TABLE_IMMUNISATION).select("vaccine_name").execute()
-    imm_rows = immunisation_result.data or []
-    vaccine_counts: dict = {}
-    for i in imm_rows:
-        v = i.get("vaccine_name") or "other"
-        vaccine_counts[v] = vaccine_counts.get(v, 0) + 1
-
-    # Encounter-based counts from historical Hope migration data
-    enc_total = 0
-    enc_today = 0
-    try:
-        today_iso = datetime.now(timezone.utc).date().isoformat()
-        enc_resp = (
-            db.table("royan_encounters")
-            .select("id", count="exact")
-            .or_("department.ilike.%obstet%,department.ilike.%gyn%,department.ilike.%mch%,department.ilike.%matern%,department.ilike.%antenat%")
-            .execute()
-        )
-        enc_total = enc_resp.count or 0
-        enc_today_resp = (
-            db.table("royan_encounters")
-            .select("id", count="exact")
-            .or_("department.ilike.%obstet%,department.ilike.%gyn%,department.ilike.%mch%,department.ilike.%matern%,department.ilike.%antenat%")
-            .gte("created_at", today_iso + "T00:00:00")
-            .execute()
-        )
-        enc_today = enc_today_resp.count or 0
-    except Exception:
-        pass
-
-    return {
-        "anc": {"total": total_anc or enc_total, "active": active, "delivered": delivered, "referred": referred},
-        "encounters": {"total": enc_total, "today": enc_today},
+def mch_stats(user=Depends(verify_jwt)):
+    """Summary counts for MCH dashboard. Counted in the database (it used to pull every ANC, delivery
+    and immunisation row into Python) and held for a minute, since every MCH page load asks for it."""
+    import time
+    from src.fin.db import q, tx
+    hit = _STATS_CACHE.get("v")
+    if hit and time.monotonic() - hit[0] < 60:
+        return hit[1]
+    today = datetime.now(timezone.utc).date()
+    with tx() as conn:
+        anc = {r["status"]: int(r["n"]) for r in q(conn, f"SELECT status, COUNT(*) AS n FROM {TABLE_ANC_RECORDS} GROUP BY 1")}
+        mode_counts = {(r["m"] or "other"): int(r["n"]) for r in
+                       q(conn, f"SELECT mode_of_delivery AS m, COUNT(*) AS n FROM {TABLE_DELIVERY_RECORDS} GROUP BY 1")}
+        vaccine_counts = {(r["v"] or "other"): int(r["n"]) for r in
+                          q(conn, f"SELECT vaccine_name AS v, COUNT(*) AS n FROM {TABLE_IMMUNISATION} GROUP BY 1")}
+        # Encounter-based counts from historical Hope migration data
+        try:
+            enc = q(conn, """SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE created_at >= %s) AS today
+                             FROM royan_encounters WHERE department ~* %s""", (today, _MCH_DEPT))[0]
+        except Exception:
+            logger.exception("mch stats: encounter counts failed")
+            enc = {"total": 0, "today": 0}
+    total_anc = sum(anc.values())
+    enc_total = int(enc["total"] or 0)
+    out = {
+        "anc": {"total": total_anc or enc_total, "active": anc.get("active", 0),
+                "delivered": anc.get("delivered", 0), "referred": anc.get("referred", 0)},
+        "encounters": {"total": enc_total, "today": int(enc["today"] or 0)},
         "delivery_modes": mode_counts,
         "immunisation_counts": vaccine_counts,
     }
+    _STATS_CACHE["v"] = (time.monotonic(), out)
+    return out

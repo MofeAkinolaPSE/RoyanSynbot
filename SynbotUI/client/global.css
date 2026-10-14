@@ -36,7 +36,7 @@
     --secondary-foreground: 0 0% 100%;
 
     --muted: 30 16% 95%;                 /* #F2F0EC — warm-neutral section BG */
-    --muted-foreground: 0 0% 36%;        /* #5C5C5C — ~6.3:1 on white/muted BG (WCAG AA) */
+    --muted-foreground: 0 0% 22%;        /* #383838 — secondary text near-black so it reads at a glance (was #5C5C5C, too faint for clinicians) */
 
     --accent: 197 84% 48%;               /* #13A7E0 — cyan, matches the reception's accent panel almost exactly */
     --accent-foreground: 0 0% 100%;
@@ -107,7 +107,7 @@
     --secondary-foreground: 0 0% 100%;
 
     --muted: 216 30% 19%;
-    --muted-foreground: 0 0% 62%;
+    --muted-foreground: 0 0% 74%;
 
     --accent: 197 84% 58%;               /* #13A7E0 brightened for dark bg */
     --accent-foreground: 0 0% 100%;
@@ -208,3 +208,25 @@
     box-shadow: var(--shadow-elevation-3);
   }
 }
+
+/* Roy Books: tables fit the page instead of scrolling sideways - tighter cells, headers that wrap, long text that
+   breaks. Amounts and dates keep to one line through their own classes. Applies inside the Roy Books frame and its
+   side panels (data-books). */
+.books-compact table, [data-books] table { font-size: 0.9375rem; }   /* 15px (was 13px): readable zoomed out */
+.books-compact table .text-xs, [data-books] table .text-xs { font-size: 0.9375rem; line-height: 1.3rem; }
+.books-compact th, [data-books] th { height: auto; padding: 0.5rem 0.5rem; white-space: normal; line-height: 1.2; vertical-align: bottom;
+  color: hsl(var(--foreground)); font-weight: 600; }
+.books-compact td, [data-books] td { padding: 0.4rem 0.5rem; overflow-wrap: anywhere; color: hsl(var(--foreground)); }
+.books-compact td.text-right, [data-books] td.text-right { white-space: nowrap; overflow-wrap: normal; }
+
+
+/* Patient chart (PCE): everything stays on one screen, but every word must read at a glance - larger, darker,
+   slightly bolder text (clinicians asked: the grey was too faint and too small). */
+.pce-readable { color: hsl(var(--foreground)); }
+.pce-readable .text-xs { font-size: 0.8125rem; line-height: 1.15rem; }
+.pce-readable .text-sm { font-size: 0.9375rem; line-height: 1.35rem; }
+.pce-readable .text-muted-foreground { color: hsl(var(--foreground) / 0.88); }
+.pce-readable .text-xs, .pce-readable .text-sm { font-weight: 500; }
+.pce-readable .font-medium { font-weight: 600; }
+.pce-readable .font-semibold { font-weight: 700; }
+.pce-readable .uppercase.tracking-wide { letter-spacing: 0.04em; color: hsl(var(--foreground)); }

@@ -191,7 +191,7 @@ def _log_message(
 # ---------------------------------------------------------------------------
 
 @router.post("/send", status_code=201)
-async def send_message(payload: SendMessage, user=Depends(verify_jwt)):
+def send_message(payload: SendMessage, user=Depends(verify_jwt)):
     """Send a single SMS or WhatsApp message."""
     if payload.channel not in NOTIFICATION_CHANNELS_ALLOWED:
         raise HTTPException(status_code=422, detail=f"channel must be one of {NOTIFICATION_CHANNELS_ALLOWED}")
@@ -219,7 +219,7 @@ async def send_message(payload: SendMessage, user=Depends(verify_jwt)):
 
 
 @router.post("/bulk", status_code=201)
-async def bulk_send(payload: BulkSend, user=Depends(verify_jwt)):
+def bulk_send(payload: BulkSend, user=Depends(verify_jwt)):
     """Send the same message to multiple recipients."""
     if payload.channel not in NOTIFICATION_CHANNELS_ALLOWED:
         raise HTTPException(status_code=422, detail=f"channel must be one of {NOTIFICATION_CHANNELS_ALLOWED}")
@@ -256,7 +256,7 @@ async def bulk_send(payload: BulkSend, user=Depends(verify_jwt)):
 
 
 @router.post("/appointment-reminder", status_code=201)
-async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(verify_jwt)):
+def send_appointment_reminders(payload: ReminderTrigger, user=Depends(verify_jwt)):
     """
     Query appointments N days ahead and send SMS reminders.
     Looks up patient phone from royan_patients via appointment.patient_id.
@@ -348,7 +348,7 @@ async def send_appointment_reminders(payload: ReminderTrigger, user=Depends(veri
 # ---------------------------------------------------------------------------
 
 @router.get("/logs")
-async def list_logs(
+def list_logs(
     channel: Optional[str] = Query(None),
     status: Optional[str]  = Query(None),
     patient_id: Optional[int] = Query(None),
@@ -369,7 +369,7 @@ async def list_logs(
 
 
 @router.get("/logs/{log_id}")
-async def get_log(log_id: int, user=Depends(verify_jwt)):
+def get_log(log_id: int, user=Depends(verify_jwt)):
     r = db.table(TABLE_NOTIFICATION_LOGS).select("*").eq("id", log_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Notification log not found")
@@ -381,7 +381,7 @@ async def get_log(log_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.get("/templates")
-async def list_templates(
+def list_templates(
     channel: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     user=Depends(verify_jwt),
@@ -394,7 +394,7 @@ async def list_templates(
 
 
 @router.post("/templates", status_code=201)
-async def create_template(payload: TemplateCreate, user=Depends(verify_jwt)):
+def create_template(payload: TemplateCreate, user=Depends(verify_jwt)):
     data = payload.model_dump(exclude_none=True)
     data["active"]     = True
     data["created_by"] = user.get("sub") or "system"
@@ -409,7 +409,7 @@ async def create_template(payload: TemplateCreate, user=Depends(verify_jwt)):
 
 
 @router.patch("/templates/{template_id}")
-async def update_template(template_id: int, payload: TemplateUpdate, user=Depends(verify_jwt)):
+def update_template(template_id: int, payload: TemplateUpdate, user=Depends(verify_jwt)):
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
@@ -418,7 +418,7 @@ async def update_template(template_id: int, payload: TemplateUpdate, user=Depend
 
 
 @router.delete("/templates/{template_id}")
-async def delete_template(template_id: int, user=Depends(verify_jwt)):
+def delete_template(template_id: int, user=Depends(verify_jwt)):
     db.table(TABLE_SMS_TEMPLATES).update({"active": False}).eq("id", template_id).execute()
     return {"ok": True, "template_id": template_id}
 
@@ -428,7 +428,7 @@ async def delete_template(template_id: int, user=Depends(verify_jwt)):
 # ---------------------------------------------------------------------------
 
 @router.get("/stats")
-async def notification_stats(user=Depends(verify_jwt)):
+def notification_stats(user=Depends(verify_jwt)):
     result = db.table(TABLE_NOTIFICATION_LOGS).select("channel,status,sent_at").execute()
     rows = result.data or []
 

@@ -69,7 +69,9 @@ def _open_tasks(actor_user_id: str) -> List[Dict[str, Any]]:
             db.table("royan_tasks")
             .select("id,title,status,priority,due_date")
             .eq("assigned_to", actor_user_id)
-            .neq("status", "done")
+            # open work only: 'completed'/'cancelled' (Staff Workspace) were slipping through a != 'done' filter
+            .in_("status", ["pending", "in_progress", "waiting", "blocked"])
+            .neq("kind", "note")
             .order("due_date")
             .limit(MAX_ITEMS)
             .execute()

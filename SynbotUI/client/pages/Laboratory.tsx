@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DoneTodayCard, type DoneRow } from "@/components/shared/DoneTodayCard";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -20,6 +21,7 @@ import {
   Loader2, Timer, Activity, Ruler, Plus, Trash2, Search, TestTube,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
@@ -27,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { AlertBanner } from "@/components/AlertBanner";
 import { InlineWarning } from "@/components/InlineWarning";
 import { LabWorkspacePanel } from "@/components/lab/LabWorkspacePanel";
+import { LabCatalogTab } from "@/components/lab/LabCatalogTab";
 import {
   StatusBadge, UrgencyBadge, elapsed, URGENCY_LEFT_BORDER,
 } from "@/components/lab/lab-shared";
@@ -77,7 +80,8 @@ export default function Laboratory() {
 
   const [tab, setTab]                   = useState("orders");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [statusFilter, setStatusFilter]   = useState("all");
+  // "active" = still to do, any day (the default, like Queue & Flow); finished ones move to "Done today"
+  const [statusFilter, setStatusFilter]   = useState("active");
   const [searchTerm, setSearchTerm]       = useState("");
 
   // Workspace panel state
@@ -97,10 +101,18 @@ export default function Laboratory() {
     queryKey: ["lab-orders", urgencyFilter, statusFilter],
     queryFn: () => api.hospital.lab.listOrders({
       ...(urgencyFilter !== "all" && { urgency: urgencyFilter }),
-      ...(statusFilter  !== "all" && { status:  statusFilter  }),
+      ...(statusFilter === "active" ? { view: "active" as const } : statusFilter !== "all" && { status: statusFilter }),
     }),
     refetchInterval: 30_000,
   });
+  const { data: doneData } = useQuery({
+    queryKey: ["lab-orders", "done-today"],
+    queryFn: () => api.hospital.lab.listOrders({ view: "done" }),
+    refetchInterval: 30_000,
+  });
+  const doneRows: DoneRow[] = (doneData?.orders ?? []).map((o: any) => ({
+    id: o.id, patient: o.patient_name ?? `Patient ${o.patient_id}`, mrn: o.patient_mrn, what: o.test_name ?? "Lab test", at: o.updated_at,
+  }));
   const rawOrders: LabOrder[] = Array.isArray(ordersData?.orders)
     ? ordersData.orders
     : Array.isArray(ordersData) ? ordersData : [];
@@ -230,12 +242,20 @@ export default function Laboratory() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Laboratory</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Laboratory</h1>
+            <ShowMeHow only={["lab-verify"]} />
+          </div>
           <p className="text-sm text-muted-foreground">Order queue, results, and turnaround analytics</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
-          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => { window.location.hash = "#/hospital/stores?dept=LAB"; }}>
+            <FlaskConical className="h-3.5 w-3.5" /> Lab stock
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* ── KPI Cards ── */}
@@ -245,9 +265,9 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">Pending</p>
+                <p className="text-xs text-muted-foreground">Pending</p>
                 <p className="text-2xl font-bold">{pending}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">awaiting collection</p>
+                <p className="text-xs text-muted-foreground mt-0.5">awaiting collection</p>
               </div>
               <Clock className="h-4 w-4 text-yellow-400 mt-0.5" />
             </div>
@@ -259,9 +279,9 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">In Collection</p>
+                <p className="text-xs text-muted-foreground">In Collection</p>
                 <p className="text-2xl font-bold">{sampleCollecting}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">sample collected</p>
+                <p className="text-xs text-muted-foreground mt-0.5">sample collected</p>
               </div>
               <TestTube className="h-4 w-4 text-blue-400 mt-0.5" />
             </div>
@@ -273,9 +293,9 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">Processing</p>
+                <p className="text-xs text-muted-foreground">Processing</p>
                 <p className="text-2xl font-bold">{processing}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">in analyzer</p>
+                <p className="text-xs text-muted-foreground mt-0.5">in analyzer</p>
               </div>
               <Activity className="h-4 w-4 text-purple-400 mt-0.5" />
             </div>
@@ -290,11 +310,11 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">Critical</p>
+                <p className="text-xs text-muted-foreground">Critical</p>
                 <p className={cn("text-2xl font-bold", criticalActive > 0 && "text-red-700 dark:text-red-400")}>
                   {criticalActive}
                 </p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">active alerts</p>
+                <p className="text-xs text-muted-foreground mt-0.5">active alerts</p>
               </div>
               <AlertTriangle className={cn(
                 "h-4 w-4 text-red-400 mt-0.5",
@@ -312,9 +332,9 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">STAT Overdue</p>
+                <p className="text-xs text-muted-foreground">STAT Overdue</p>
                 <p className={cn("text-2xl font-bold", statOverdue > 0 && "text-red-700 dark:text-red-400")}>{statOverdue}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">&gt;30 min pending</p>
+                <p className="text-xs text-muted-foreground mt-0.5">&gt;30 min pending</p>
               </div>
               <AlertTriangle className="h-4 w-4 text-orange-400 mt-0.5" />
             </div>
@@ -329,9 +349,9 @@ export default function Laboratory() {
           <CardContent className="pt-4 pb-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[13px] text-muted-foreground">Urgent Overdue</p>
+                <p className="text-xs text-muted-foreground">Urgent Overdue</p>
                 <p className={cn("text-2xl font-bold", urgentOverdue > 0 && "text-orange-700 dark:text-orange-400")}>{urgentOverdue}</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">&gt;2 h pending</p>
+                <p className="text-xs text-muted-foreground mt-0.5">&gt;2 h pending</p>
               </div>
               <Timer className="h-4 w-4 text-orange-400 mt-0.5" />
             </div>
@@ -342,8 +362,9 @@ export default function Laboratory() {
       {/* ── Tabs ────────────────────────────────────────────────────────────── */}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="orders">Order Queue</TabsTrigger>
-          <TabsTrigger value="turnaround">Turnaround & Critical</TabsTrigger>
+          <TabsTrigger value="orders" data-tour-id="lab-worklist">Order Queue</TabsTrigger>
+          <TabsTrigger value="turnaround" data-tour-id="lab-result-entry">Turnaround &amp; Critical</TabsTrigger>
+          <TabsTrigger value="catalog">Test Catalogue</TabsTrigger>
           <TabsTrigger value="references">Reference Ranges</TabsTrigger>
         </TabsList>
 
@@ -355,6 +376,7 @@ export default function Laboratory() {
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 className="pl-8 h-9 text-sm"
+                data-tour-id="lab-order-status"
                 placeholder="Search patient, test, order #…"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -376,6 +398,7 @@ export default function Laboratory() {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="active">To do (open orders)</SelectItem>
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="ordered">Ordered</SelectItem>
                 <SelectItem value="sample_collected">Sample Collected</SelectItem>
@@ -384,9 +407,9 @@ export default function Laboratory() {
                 <SelectItem value="sent_out">Sent Out</SelectItem>
               </SelectContent>
             </Select>
-            {(searchTerm || urgencyFilter !== "all" || statusFilter !== "all") && (
+            {(searchTerm || urgencyFilter !== "all" || statusFilter !== "active") && (
               <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground"
-                onClick={() => { setSearchTerm(""); setUrgencyFilter("all"); setStatusFilter("all"); }}>
+                onClick={() => { setSearchTerm(""); setUrgencyFilter("all"); setStatusFilter("active"); }}>
                 Clear filters
               </Button>
             )}
@@ -447,7 +470,7 @@ export default function Laboratory() {
                               {order.patient_name ?? <span className="text-muted-foreground italic text-xs">ID {order.patient_id}</span>}
                             </span>
                             {order.patient_mrn && (
-                              <span className="font-mono text-[12px] text-muted-foreground">{order.patient_mrn}</span>
+                              <span className="font-mono text-xs text-muted-foreground">{order.patient_mrn}</span>
                             )}
                           </div>
                         </TableCell>
@@ -455,7 +478,7 @@ export default function Laboratory() {
                         {/* Payer */}
                         <TableCell className="text-xs">
                           {order.patient_hmo ? (
-                            <Badge variant="outline" className="text-[12px] whitespace-nowrap">{order.patient_hmo}</Badge>
+                            <Badge variant="outline" className="text-xs whitespace-nowrap">{order.patient_hmo}</Badge>
                           ) : (
                             <span className="text-muted-foreground">Private</span>
                           )}
@@ -470,7 +493,7 @@ export default function Laboratory() {
                               {order.urgency === "stat" && !order.is_critical && <InlineWarning message="STAT" severity="warning" className="ml-2" />}
                             </span>
                             {order.loinc_code && (
-                              <span className="font-mono text-[12px] text-muted-foreground">LOINC: {order.loinc_code}</span>
+                              <span className="font-mono text-xs text-muted-foreground">LOINC: {order.loinc_code}</span>
                             )}
                           </div>
                         </TableCell>
@@ -488,7 +511,7 @@ export default function Laboratory() {
                           <div className="flex flex-col gap-1">
                             <StatusBadge status={order.status} />
                             {order.status === "sent_out" && order.external_lab && (
-                              <span className="text-[12px] text-cyan-700 dark:text-cyan-400">{order.external_lab}</span>
+                              <span className="text-xs text-cyan-700 dark:text-cyan-400">{order.external_lab}</span>
                             )}
                           </div>
                         </TableCell>
@@ -509,6 +532,8 @@ export default function Laboratory() {
               )}
             </CardContent>
           </Card>
+          <DoneTodayCard title="Resulted today" whatLabel="Test" rows={doneRows}
+            onOpen={(id) => { const o = (doneData?.orders ?? []).find((x: any) => x.id === id); if (o) openPanel(o); }} />
         </TabsContent>
 
         {/* ── Turnaround & Critical tab ───────────────────────────────────── */}
@@ -587,7 +612,7 @@ export default function Laboratory() {
                         <TableCell className="font-mono text-xs">#{r.lab_order_id ?? r.id}</TableCell>
                         <TableCell className="text-sm">
                           {r.test_name ?? "—"}
-                          {r.patient_mrn && <span className="block text-[12px] text-muted-foreground font-mono">{r.patient_mrn}</span>}
+                          {r.patient_mrn && <span className="block text-xs text-muted-foreground font-mono">{r.patient_mrn}</span>}
                         </TableCell>
                         <TableCell className="text-sm font-semibold text-red-700 dark:text-red-400">
                           {r.result_summary ?? [r.result_data?.value, r.result_data?.unit].filter(Boolean).join(" ") ?? "Critical"}
@@ -602,6 +627,10 @@ export default function Laboratory() {
         </TabsContent>
 
         {/* ── Reference Ranges tab ────────────────────────────────────────── */}
+        <TabsContent value="catalog" className="space-y-4 mt-4">
+          <LabCatalogTab />
+        </TabsContent>
+
         <TabsContent value="references" className="space-y-4 mt-4">
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" className="gap-2" onClick={() => setTemplatesOpen(true)}>

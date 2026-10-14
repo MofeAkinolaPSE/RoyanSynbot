@@ -1,0 +1,317 @@
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+So you have your meds and then the cover sheets. Meds, is it my upload? You see there is a nursing nursing platform, you have to see doctor's platform. Yes, we have a nurse dashboard.
+
+Because in the doctor's dashboard, the meds, for example, I'm prescribing them, no, that's already on them. Which one? Where we came from now. So meds, this is active prescription.
+
+That's my prescription. It is the active one, this is the past one. As in, there's a difference.
+
+So dispensed, pending. So you can see, so if you want to add the new lab, what I prescribe is still here. So I think you like to work on the cover sheet where you can see everything at once.
+
+Right, so this is because I'm showing you that work panel. That's quick access. This one where if you just click on the action, the workspace, sorry.
+
+So you can see a brief, so it's like an abbreviation, so that big one that I showed you where you can interact with the patients. But I'll work on this so it has that same workflow here as well. So you can also select others, lab, radiology, and even book a surgery down here as well.
+
+And then you can prescribe drugs, which I've already done. And after that, we can add, or you can request admission, if you so deem it worthy. And you can also open that full chart from here.
+
+Right, we'll go back like this. So, and then we can request. And if there's no problem, we'll end the consultation.
+
+Okay, so we had to add a note. So that's one of the restrictions. I'll just leave it.
+
+So it has been routed to lab orders. So if you go to lab, you'll see Mufia on the queue. And you can see, so the lab attendant now will run through their own test.
+
+So they collect the specimen. What specimen type did they collect? So let's just run it. So I'll say UN.
+
+After our value, we collect the specimen. And then once that result is done, they can either reject or accept. But, so they received it.
+
+Once the result is done, they specify the result value. 13.2. And then save the result, for example. And verify.
+
+And once you verify, the result comes out. Now, the person's result has changed to result value. We also prescribe drugs.
+
+So we'll go to pharmacy. I'll just see Mufia immediately. I'll also interact with the patient.
+
+So we prescribe, what drug was it? Take the book by name. I'm going to go out. I'm going to go out three times a day, four times a day.
+
+No, you're automated. So you just click twice, four, five. Yeah.
+
+Five days. Okay. Okay.
+
+How frequent is it? What is the age? Five hundred and eleven. Frequency. So it's duration.
+
+Roots. Or quantity. Prescribe that.
+
+Okay. So it's not that I'm writing it all off. You are not writing any of this, you just write the drug and you look at the other options and then you leave it as it is.
+
+So let's say one, so that's dispense. Yeah, so we're done now. Yeah, so I've used, or they can generate their own template, so this is... Yeah, add their own result template, so you can add the result template to the market.
+
+So, then pharmacy has inventory, where they can look at all their drugs. You can see the drugs, the details, registered coverage, the batch and expiring dates, and the trend, if there's enough information. How about the allergies? So that will come in your PC, so for patients, any patient that has an allergy, you should see it in their PC.
+
+In their page? Yes, their page. Yeah, so you can see the allergies naturally will pop up here if they have an allergy. You see it somewhere here.
+
+But most of these patients don't, these are the most recent patients, so they don't have any allergies. So we have pharmacy, where you can interact with your drugs. You have a lot, so anytime, so let's look at critical.
+
+Anytime you have any drugs that are running low, batch, they will pop up, so you don't have to look in for them. And you have your warning, but there's nothing there. Let's say the drugs are currently available.
+
+They have a nurse station, where they can see who's on the queue. And then you have radiology, where they can run tests. So anytime they run their tests, whatever test it is... Do you remove the template? Yeah, it's all in the template.
+
+And we have surgical theatre. But all this will come to play once we talk to the various departments, so we really understand how to design it. But otherwise, it's just an appointment-based schedule.
+
+Once you make an appointment for a surgery... Sorry, so if you go to your patient and make an appointment for a surgery... What's going on? Unknown department. So there's no surgical cases. But naturally, once the person is ready to start for a surgery, you show up here.
+
+And you have the gynaecology. Oh, so I can also fill the surgery, because usually we ask for the diary for me to put patients for surgery. Yes, so naturally you just show up here.
+
+So they can check it down and know that this is what is on the diary for surgery. Yes, that's exactly what it is. We have the same for specialist clinics.
+
+I'm still trying to work my way around how they want to use their page. Then we have the gynaecology and immunisation. By the time I'm done with this, all the mothers that are currently on past records should be here.
+
+And then you have the immunisation, where they show up the babies. Immunisation, which one was it? No, you say immunisation, which one is that? So they have to see the baby. Immunisation page.
+
+Okay, register a new baby. If there's a mother that has babies already, you would see that up on here. With the entire immunisation schedule, their plan, everything.
+
+What do you mean by that? Because... The baby is a mother. Okay, so... So this is the schedule already for the baby. Based on the information I've given you, this should be your schedule for the baby.
+
+So if we give you a vaccine, what would we do? So you record it. You want to record it here. Vaccine name, dosage number, vaccine number.
+
+As many as you want, you can delete it. But we'll clean it up so it's not as if all this one shows up. What is this? So it's just showing the list of vaccines that should be given to a kid.
+
+At a specific age? That was born today. So this is a list of all of them for the next... 10 years. Yeah, 10 years.
+
+So then there's a dosage log to show you what the baby has already been given. So once the baby has been given and you track it, it will change from upcoming to taken. I'm not sure if the baby should now have... Mofe should have a baby under it.
+
+It's not here. It's not here. Yeah, it's not here.
+
+I haven't gotten it back. We'll get it all out. Yeah, but I'm sure the baby shouldn't have popped up.
+
+It did pop up. Yeah. We're just waiting for Mofe after that stage.
+
+Yeah, so this is the baby. We can also now register her. It's not back here.
+
+Because there could be so many, Mofe. Yeah. The current one we're using now has the date on that.
+
+Once you open the page, you'll just know. Yeah, the fetch of his name and period. So all those things.
+
+The more work we can do, the more fine-tuned it will be, just so that it serves the goal. Any risk factors, referral notes. And then you register her.
+
+This is the work station. So this is how we should have done it. Then you record the delivery for that newborn, Mofe.
+
+So actually, you now see that Mofe belongs to this woman. You can also register that. It does the delivery notes.
+
+Direction of labour, medication. Mother, S.V., the assistant. And the speech therapy.
+
+And then you connect. Then you record it. So newborn assessment.
+
+Length. Height. Okay, so we have all that.
+
+So we have moved from point A to point B. Yes, sir. Let me see. Okay, I think point A to C. Where are we going? We're going to C, sir.
+
+We are going to C. You see that? Yes, sir. I see. So which point is that one? That's where we are now.
+
+Oh, you want to deploy now? We have already deployed. What do you mean by you have deployed? Is it on my system? This is an updated version. Huh? It is.
+
+I see. I see. I see.
+
+I see. I see. I see.
+
+I see. I see. I see.
+
+I see. I see. I see.
+
+I see. I see. I see.
+
+I see. So this is training, no? Yes, sir. The plan is training A. Huh? Yeah.
+
+What training is that? Training is plan C, sir. It's plan C? Yeah, so that we can start seeing all those little... There are no little updates. What do you mean by little? No, I mean like the updates you have told me now, I'm going to make them.
+
+But I'm just saying we're still making updates to them. So before you get to the user training we'll be ready. Not that we're not having to start changing.
+
+So when do you want us to start using users? Because you can't train them halfway. By the end of this month. I'm feeling a bizarre trap.
+
+By the end of this month we should start training. By the end of this month you'll be this ready. That's all it is.
+
+That's when you'll be okay. Later on, when you come back, you'll have nothing to do. All the major parts are supposed to be ready before.
+
+I can't say I won't. All those things have not been done. They have been prepared for.
+
+What you're saying is that they're here. Yeah. But stage 10 merely.
+
+Eh? Stage B1, I'm sorry. Stage B2. You need to repair or answer a question now.
+
+You've seen my home. I just showed you my home for the doctors. Okay.
+
+And there are gaps when you actually like to work on them. I think so. And so, my nurses are sure. 
+
+For example, inpatient nurse. They need to understand notes. They need to deliver them.
+
+Yeah. HMO. HMO desk.
+
+HMO desk. They also do their own. Yeah.
+
+Accounts will do their own. Yeah. I've done that.
+
+Let me see. I'm sorry, sir. We've done all that already.
+
+That's how we got to this point. I know you have. You just see that we haven't spoken to you.
+
+And we have to do that. So, the next step now is to get it in your system. You know, Andre was talking to me yesterday.
+
+So, you understand. Yes, sir. Mm-hmm.
+
+Well, they got to a stage. The confrontation on the capital. It's a very terrible situation.
+
+I've been involved in it now for about almost one year. The boy is in 400 level medical school. I'm sure you understand.
+
+Mm-hmm. From everything we all saw. The boy was here.
+
+We cannot digest. Everything that we saw. The boy is pregnant.
+
+300. 300. 300.
+
+300. 300. 300.
+
+300. 300. 300.
+
+300. 300. It's the end of the fourth year.
+
+Usually, before you can transit after 200, you need a job. You must get 4.2. So, almost half of our... So this boy got 4.7, one of the top most best, if you cross the door, if you cross the door, but if you cross the door, how did that big boy say that, oh, I failed, oh, crash, that exam. Three subjects, it's rare, very rare.
+
+Apprenticeship. I've never had such difficulty in my life. We discuss all this, but luckily the medicals come up with an opportunity of receipt.
+
+That is three months after you fail the exam, you attempt it again. If you clear all the subjects, you go to the next class. If you don't clear all the subjects, you repeat the class one year.
+
+So out of the three subjects, he passed two. He failed the AACOM, so he had to repeat. So we are now going to repeat with your juniors.
+
+He said that was no problem. So he said, look, I don't fail, Meiji. Me, exam, repeat, repeat, but now with juniors, the same thing that she had passed, yeah.
+
+Oh, I failed, Meiji. But she failed, you see. Report to me, and I will give advice to withdraw.
+
+Oh, no, no more answer, no. So what they knew, I'm going to think that, I'm going to make a loan, I'm going to programme me, and they had to shut down the last one, too. That didn't mean anything.
+
+I don't feel trained now, I'm going to, because I'm going to do it for me. You understand that kind of thing? I'm trained. You are the one that's, you're trained.
+
+You are the one that said you want to read medicine. I didn't want you to read medicine. So the result, I said, daddy, right? I bought it for Momoto to make trouble.
+
+I don't know if he's going to be able to get it. We still got time, I'm going to pay him. I'm kidding, he's going to address me, everything you're thinking.
+
+He's the only one, because he went to take care of his mother. He's the only one to take care of his mother. I'm going to pay him.
+
+But they're going to make him pay a lot, because I have a lot of money, I'm not going to pay. I'm going to pay him on his own. I was talking to a commercial pedic officer.
+
+In the office he gave me coffee. Oh, I don't want that. I want to be a doctor, not a doctor.
+
+I was talking to him. He said I am better off as a doctor. But I was talking with my students.
+
+I'm calling them and I want to make them a PhD. I'm studying engineering. So when he told me that, he said he's taking me for granted.
+
+We had that discussion. The boy was happier. My wife said, maybe the boy's on drugs.
+
+Because on engineering, you never see. So back to the engineering, everybody agreed. So my wife said, my father is a lawyer, he can't afford to pay for the engineering.
+
+He said, I don't know how to do it, I'm not going to do it. I'm going to do it. And my friends said, you're crazy.
+
+You can't afford it. So I said, I think they sat down. My wife said, I don't know how to do it.
+
+Because my wife doesn't know how to do research. But I can't afford to pay for the engineering. And I'm a structural engineer myself, so I know everything about engineering.
+
+I know where the future is. Civil engineering, mechanical, so if you do electronics and chemical engineering, it means that you have future, you can say chemical. Also, physics, chemistry, electrical electronics, I've been looking to the future.
+
+If you say you are doing biomedical engineering, it's in the future. You have spent some years in medical school, which is how I'm going to be a person here. So I'm going to be a person here.
+
+Maybe I'm going to be a physicist, maybe I'm going to be a lawyer, so I'm going to be an engineer. I'm not going to be a doctor. I don't know.
+
+I'm going to be a mechanical engineer. I've been over my dead body. Okay? I'm going to be a mechanical engineer.
+
+Oh, they say mechanical. You're actually a chemical engineer. I think you should be.
+
+I'm older than you. I'm an engineer. I've been an engineer, come to get, and I know what engineering profession is.
+
+I know the chemical. I think you should say that. I don't care what you say, what you say, anything, electrical, electronic, anything.
+
+I don't want to know why. I'm going to go for my answer. I don't want to judge at all.
+
+I'm not going to judge. I'm not going to judge from three. Okay.
+
+Electromagnetic induction. Difficulty, by the way. Electronics.
+
+Meanwhile, A1, the balance is this. No, they confess, so it's like, move forward. It's here.
+
+I couldn't control myself. Move forward. It's here.
+
+All take me for granted. From three. Electromagnetic induction, which is just a part of.
+
+No, as of now, in to reading it, you should want me after all this, we are starting, so it, oh, anything that has, what? Okay, I'm not here to blame. I'm not trying to force you. I'm not trying to be 20.
+
+The boy is now 20. I'm not trying to force you. So, I don't report.
+
+I'm not trying to get down on you. I'm not trying to assault you. I'm not trying.
+
+I'm not going to be, I'm not going to let you be. The man, I'm so sorry for you man They overreact. You have one year.
+
+Whether electronic artificial, mechanical artificial, chemical artificial, it's the same physics, chemistry, math, one year in math. So you have time to discuss. When you join, you don't feel for me.
+
+I've got to arrive at the artificial. That's the difference, I don't know how to do it. I don't know how to change the mind.
+
+I don't know how to do it. I don't know how to do it. But in the process, I have to do something.
+
+I have to make it serious. I have to get my dad's opinion. How am I going to join? I don't want to be a leader.
+
+I don't want to be a problem. Of course. I don't want to be a problem.
+
+I want to be successful. You know, I want to be a leader. You know, life.
+
+Life. Life is a story, it is a story. I'm counselling.
+
+I'm counselling my son. The only person I'm not counselling is my mother, because I'm telling them, except for my mother, because I'm a... I have some... I'm sure that I'm with the children, I'm navigating with my children. Ah! My mother is like this.
+
+Everybody comes to learn. Everybody learns by the way they happen. They learn one more thing.
+
+They learn by knowing. They help out more. So Mofe, Mofe and Sonsin, you play.
+
+I have seen this one. You keep telling me they've done all that. I don't know that before I looked at it now.
+
+I am not satisfied with what I saw. And you have told me it's not difficult to do it. But then, you also have to do the same. 
+
+You have done this, just as you have done this, you have done accounts. And so, you should also discuss with them in case they see anything, and you take it on board. You will now sit down with Metron, nothing stable, nothing is just, nothing can come on here.
+
+So, whatever you have done, you have to break it down to everyday use, that's process mapping. So, this is exactly what we do when we are using our hand to write, that's why you should move there, so it can be easier. You are thinking for them, but you shouldn't. 
+
+What you should do is incorporate their thinking, but while they are improving, but you don't say this is what you have done. Okay. He wants to work with me, he works.
+
+I understand. So, that's it, that's it, there's nothing to cover. Subjective.
+
+It's intentional. Very intentional. Very intentional. 
+
+So, everyday you see me go to the last week, even this morning, they have to put me that order. If they don't, it is not right. So, if they sit down, it's not like that, it's going to be confusing.
+
+Okay. It's the same thing. I am a doctor.
+
+Doctor. So, it's a problem. Okay.
+
+When we have a problem here, that's why you see that they always say don't alter, no alteration. And this thing you are going to permanently fight, because this is what they are requesting in court. Okay.
+
+You can't be changing what you have written four, five years ago. I understand. So, you must have opportunity to write it, and all that. 
+
+So, it's a medical, legal document. Okay. So, you must do that.
+
+All that is correct, I see. Yeah. But when the family sees, Money, she has to see it. 
+
+They need to see it. Maybe this is how we do it. That's how you can get a really functional EMR.
+
+This is beautiful. I hope so, sir. It's beautiful.
+
+No, it's not that it's beautiful. I'm telling you the truth. It's just that interfacing.
+
+Yeah, it's important. Keep working on that, sir. At this stage, I went to computer school.
+
+I think that's a computer school. My friend, he was looking like magic. So, I went to the computer school.
+
+There was no Judo. There was no Dr. Shen. I went to the computer school.
+
+I wrote all my questions. I just submitted it like that. Nobody touched it.
+
+I went to the computer school. And everybody thought that I was doing very well. So, I went back to the computer school.
+
+The computer school is so beautiful. If you can't go to the computer school, you can go to the one on your right. There's a building there.
+
+You can go there. It's not far. It's about 20 minutes away.
+
+(This file is longer than 30 minutes. Go Unlimited at https://turboscribe.ai/ to transcribe files up to 10 hours long.)

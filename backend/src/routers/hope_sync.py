@@ -15,7 +15,7 @@ router = APIRouter(prefix="/hope", tags=["Hope Sync"])
 
 
 @router.post("/sync/{entity}")
-async def sync_hope_entity(
+def sync_hope_entity(
     entity: str,
     limit: int = Query(200, ge=1, le=1000),
     user=Depends(require_role("admin")),

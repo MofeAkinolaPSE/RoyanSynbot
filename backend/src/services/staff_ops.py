@@ -124,14 +124,20 @@ def record_timesheet_entry(
     recorded_by: str,
     client: DBClient = db
 ) -> Dict[str, Any]:
-    """Record a single timesheet entry."""
+    """Record a single timesheet entry (submitted for HR review, like a clock-out).
+
+    royan_timesheets keeps the note in `notes` - there is no activity_note column,
+    so this insert used to fail for every call.
+    """
     payload = {
         "staff_id": staff_id,
         "date": work_date.isoformat(),
         "hours_worked": hours,
         "department": department,
-        "activity_note": note,
-        "recorded_by": recorded_by
+        "notes": note,
+        "recorded_by": recorded_by,
+        "source": "manual",
+        "status": "submitted",
     }
     resp = client.table(TABLE_TIMESHEETS).insert(payload).execute()
     return resp.data[0] if resp.data else {}

@@ -7,13 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Boxes, Loader2, Truck } from "lucide-react";
+import { Boxes, Loader2, Truck, Wand2
+} from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
 import { RiskTierBadge, DetailRow } from "@/components/pharmacy/pharmacy-shared";
 import { BatchTable } from "@/components/pharmacy/BatchTable";
 import { DispensingTrendChart } from "@/components/pharmacy/DispensingTrendChart";
+import { HelpHint } from "@/components/help/HelpHint";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { cn } from "@/lib/utils";
 
 const INVENTORY_WRITE_ROLES = ["pharmacist", "admin"];
 
@@ -44,6 +48,29 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
     void qc.invalidateQueries({ queryKey: ["inventory-summary"] });
   };
 
+  // Prefill from the last delivery: "if they say it's amoxiclav, you can just
+  // type a-m-o and the rest comes in." Fetched only when the tab is open so the
+  // panel does not pay for it on every drug.
+  const { data: suggestion } = useQuery({
+    queryKey: ["restock-suggestion", formularyId],
+    queryFn: () => api.hospital.pharmacy.inventory.restockSuggestion(formularyId),
+    enabled: tab === "receive",
+  });
+
+  const applySuggestion = () => {
+    const sg = suggestion?.suggested ?? {};
+    setReceiveForm((f) => ({
+      ...f,
+      // batch_number is deliberately NOT prefilled — two deliveries sharing a
+      // batch number cannot be told apart on a recall.
+      quantity_received: sg.quantity != null ? String(sg.quantity) : f.quantity_received,
+      unit_cost: sg.unit_cost != null ? String(sg.unit_cost) : f.unit_cost,
+      supplier: sg.supplier ?? f.supplier,
+      location: sg.location ?? f.location,
+      expiry_date: sg.expiry_date ?? f.expiry_date,
+    }));
+  };
+
   const receiveMut = useMutation({
     mutationFn: () => api.hospital.pharmacy.inventory.receiveBatch(formularyId, {
       batch_number: receiveForm.batch_number,
@@ -71,14 +98,31 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
   });
 
   const formulary = data?.formulary;
+  // Only stock that can actually be dispensed. Expired and emptied batches are
+  // returned separately and shown behind a toggle: this panel opened on 112
+  // rows for Clarithromycin, 111 of them long-empty, with the one batch holding
+  // 285 units at the very bottom.
   const batches = data?.batches ?? [];
+  const historical = data?.historical_batches ?? [];
+  const historicalCount = Number(data?.historical_batch_count ?? 0);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Migrated per-batch pricing — the only place actual margin is visible, since
+  // royan_inventory_batches carries a single unit_cost and no retail price.
+  const { data: ratesData, isLoading: ratesLoading } = useQuery({
+    queryKey: ["inventory-drug-rates", formularyId],
+    queryFn: () => api.hospital.pharmacy.inventory.drugRates(formularyId),
+    enabled: tab === "pricing",
+    staleTime: 300_000,
+  });
+  const rates: any[] = ratesData?.rates ?? [];
   const risk = data?.risk;
   const demand = data?.demand ?? { current_window_qty: 0, prior_window_qty: 0, direction: "stable", confidence: "no_recent_demand" };
   const drugName = formulary?.generic_name || formulary?.brand_name || formulary?.code || "Drug";
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         {isLoading && !data ? (
           <div className="p-5 space-y-3">
             <Skeleton className="h-8 w-2/3" />
@@ -100,7 +144,7 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
                     {formulary.code && <Badge variant="outline" className="text-xs font-mono">{formulary.code}</Badge>}
                     {risk && <RiskTierBadge tier={risk.tier} />}
                   </div>
-                  <p className="text-[13px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {[formulary.form, formulary.strength, formulary.category].filter(Boolean).join(" · ")}
                   </p>
                 </div>
@@ -110,7 +154,8 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
             <Tabs value={tab} onValueChange={setTab} className="flex-1 flex flex-col min-h-0">
               <TabsList className="mx-5 mt-3 bg-muted border border-border shrink-0 flex-wrap h-auto">
                 <TabsTrigger value="detail">Detail</TabsTrigger>
-                <TabsTrigger value="batches">Batches ({batches.length})</TabsTrigger>
+                <TabsTrigger value="batches">Stock ({batches.length})</TabsTrigger>
+                <TabsTrigger value="pricing">Pricing{rates.length > 0 ? ` (${rates.length})` : ""}</TabsTrigger>
                 <TabsTrigger value="trend">Trend</TabsTrigger>
                 {canWrite && <TabsTrigger value="receive">Receive Stock</TabsTrigger>}
               </TabsList>
@@ -151,12 +196,97 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
                 </TabsContent>
 
                 {/* ── Batches ── */}
-                <TabsContent value="batches" className="mt-0">
-                  <BatchTable
-                    batches={batches}
-                    adjustingId={adjustingId}
-                    onAdjust={(batch, adjustment, reason) => adjustMut.mutate({ batchId: batch.id, adjustment, reason })}
-                  />
+                <TabsContent value="batches" className="mt-0 space-y-2">
+                  {batches.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">
+                      No dispensable stock. Any quantity this drug had has been used
+                      or has expired — use Receive Stock to bring more in.
+                    </p>
+                  ) : (
+                    <BatchTable
+                      batches={batches}
+                      adjustingId={adjustingId}
+                      onAdjust={(batch, adjustment, reason) => adjustMut.mutate({ batchId: batch.id, adjustment, reason })}
+                    />
+                  )}
+
+                  {historicalCount > 0 && (
+                    <div className="pt-1">
+                      <button
+                        onClick={() => setShowHistory((v) => !v)}
+                        className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {showHistory ? "Hide" : "Show"} {historicalCount} past batch
+                        {historicalCount === 1 ? "" : "es"} (used up or expired)
+                      </button>
+                      {showHistory && (
+                        <div className="mt-2 opacity-70">
+                          <BatchTable batches={historical} adjustingId={null} onAdjust={() => {}} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* ── Pricing (migrated per-batch rates) ── */}
+                <TabsContent value="pricing" className="mt-0 space-y-2">
+                  {ratesLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading…</p>
+                  ) : rates.length === 0 ? (
+                    <p className="text-xs italic text-muted-foreground">
+                      No historical pricing for this drug.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Historical per-batch pricing migrated from the legacy system. Cost is what
+                        Royan paid; MRP is the retail price.
+                      </p>
+                      <div className="overflow-x-auto rounded-md border">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/40">
+                            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                              <th className="px-2 py-1.5">Batch</th>
+                              <th className="px-2 py-1.5 text-right">Cost</th>
+                              <th className="px-2 py-1.5 text-right">MRP</th>
+                              <th className="px-2 py-1.5 text-right">Margin <HelpHint id="pharmacy-batch-margin" side="left" align="end" /></th>
+                              <th className="px-2 py-1.5">Expiry</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rates.map((r: any) => {
+                              const expired = r.expiry_date && new Date(r.expiry_date) < new Date();
+                              return (
+                                <tr key={r.id} className="border-t">
+                                  <td className="px-2 py-1.5 font-mono">{r.batch_number}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">
+                                    {r.purchase_price != null ? `₦${Number(r.purchase_price).toLocaleString()}` : "—"}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">
+                                    {r.mrp != null ? `₦${Number(r.mrp).toLocaleString()}` : "—"}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">
+                                    {r.margin != null ? (
+                                      <span className={r.margin > 0 ? "text-green-600 dark:text-green-400" : "text-red-600"}>
+                                        ₦{Number(r.margin).toLocaleString()}
+                                        {r.margin_pct != null && (
+                                          <span className="ml-1 text-xs text-muted-foreground">{r.margin_pct}%</span>
+                                        )}
+                                      </span>
+                                    ) : "—"}
+                                  </td>
+                                  <td className={`px-2 py-1.5 ${expired ? "text-red-600" : "text-muted-foreground"}`}>
+                                    {r.expiry_date ?? "—"}
+                                    {expired && <span className="ml-1 text-xs">expired</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
                 </TabsContent>
 
                 {/* ── Trend ── */}
@@ -167,6 +297,36 @@ export function InventoryDrugPanel({ formularyId, onClose, onReorder }: {
                 {/* ── Receive Stock ── */}
                 {canWrite && (
                   <TabsContent value="receive" className="mt-0 space-y-3">
+                    {suggestion?.based_on && (
+                      <div className="rounded-md border bg-muted/40 p-2.5 text-xs">
+                        <p className="font-medium">Last delivery</p>
+                        <p className="mt-0.5 text-muted-foreground">
+                          {[
+                            suggestion.based_on.last_received_at
+                              ? new Date(suggestion.based_on.last_received_at).toLocaleDateString()
+                              : null,
+                            suggestion.suggested?.supplier,
+                            suggestion.suggested?.unit_cost != null
+                              ? `₦${Number(suggestion.suggested.unit_cost).toLocaleString()} each`
+                              : null,
+                          ].filter(Boolean).join(" · ") || "no details recorded"}
+                        </p>
+                        {suggestion.based_on.observed_shelf_life_days > 0 && (
+                          <p className="mt-0.5 text-muted-foreground">
+                            Shelf life was {suggestion.based_on.observed_shelf_life_days} days, so
+                            the suggested expiry is {suggestion.suggested?.expiry_date} — moved
+                            forward from the last date rather than copied.
+                          </p>
+                        )}
+                        <Button
+                          size="sm" variant="outline"
+                          className="mt-1.5 h-7 gap-1 px-2 text-xs"
+                          onClick={applySuggestion}
+                        >
+                          <Wand2 className="h-3 w-3" /> Fill from last delivery
+                        </Button>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="col-span-2 space-y-1">
                         <Label className="text-xs">Batch Number *</Label>

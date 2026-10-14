@@ -153,7 +153,7 @@ def _transition_walk_in(walk_in_id: str, new_status: str, actor: Optional[str] =
 # ---------------------------------------------------------------------------
 
 @router.post("/walk-ins", status_code=201)
-async def register_walk_in(
+def register_walk_in(
     payload: WalkInCreateIn,
     request=Depends(verify_jwt),  # type: ignore[assignment]
 ):
@@ -206,7 +206,7 @@ async def register_walk_in(
 # ---------------------------------------------------------------------------
 
 @router.get("/walk-ins")
-async def list_walk_ins(
+def list_walk_ins(
     date: Optional[str] = Query(default=None, description="YYYY-MM-DD, defaults to today"),
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=50, le=200),
@@ -247,7 +247,7 @@ async def list_walk_ins(
 # ---------------------------------------------------------------------------
 
 @router.get("/walk-ins/{walk_in_id}")
-async def get_walk_in(
+def get_walk_in(
     walk_in_id: str,
     _u=Depends(verify_jwt),
 ):
@@ -285,7 +285,7 @@ async def get_walk_in(
 # ---------------------------------------------------------------------------
 
 @router.post("/walk-ins/{walk_in_id}/invoice", status_code=201)
-async def create_invoice(
+def create_invoice(
     walk_in_id: str,
     payload: InvoiceCreateIn,
     request=Depends(verify_jwt),  # type: ignore[assignment]
@@ -378,7 +378,7 @@ async def create_invoice(
 # ---------------------------------------------------------------------------
 
 @router.post("/invoices/{invoice_id}/qc")
-async def submit_qc(
+def submit_qc(
     invoice_id: str,
     payload: QCCheckIn,
     request=Depends(require_role("quality_assurance")),  # type: ignore[assignment]
@@ -451,7 +451,7 @@ async def submit_qc(
 # ---------------------------------------------------------------------------
 
 @router.post("/invoices/{invoice_id}/finance")
-async def finance_approval(
+def finance_approval(
     invoice_id: str,
     payload: FinanceApprovalIn,
     request=Depends(require_role("finance")),  # type: ignore[assignment]
@@ -528,7 +528,7 @@ async def finance_approval(
 # ---------------------------------------------------------------------------
 
 @router.post("/invoices/{invoice_id}/notify")
-async def notify_executive(
+def notify_executive(
     invoice_id: str,
     payload: NotifyExecutiveIn,
     request=Depends(require_role("finance")),  # type: ignore[assignment]
@@ -626,7 +626,7 @@ async def notify_executive(
 # ---------------------------------------------------------------------------
 
 @router.get("/clients/search")
-async def search_clients(
+def search_clients(
     q: str = Query(..., min_length=2, description="Name, company, or phone fragment"),
     limit: int = Query(default=10, le=50),
     _u=Depends(verify_jwt),
@@ -673,7 +673,7 @@ async def search_clients(
 # ---------------------------------------------------------------------------
 
 @router.get("/clients/{walk_in_id}/history")
-async def client_history(
+def client_history(
     walk_in_id: str,
     _u=Depends(verify_jwt),
 ):
@@ -754,7 +754,7 @@ async def client_history(
 # ---------------------------------------------------------------------------
 
 @router.get("/invoices")
-async def list_invoices(
+def list_invoices(
     status: Optional[str] = Query(default=None),
     date_from: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     date_to:   Optional[str] = Query(default=None, description="YYYY-MM-DD"),
@@ -793,7 +793,7 @@ async def list_invoices(
 # ---------------------------------------------------------------------------
 
 @router.get("/invoices/{invoice_id}")
-async def get_invoice(
+def get_invoice(
     invoice_id: str,
     _u=Depends(verify_jwt),
 ):
@@ -834,7 +834,7 @@ async def get_invoice(
 # ---------------------------------------------------------------------------
 
 @router.get("/stock-check")
-async def stock_check(
+def stock_check(
     products: str = Query(..., description="Comma-separated product names or SKUs"),
     _u=Depends(verify_jwt),
 ):
@@ -899,7 +899,7 @@ async def stock_check(
 # ---------------------------------------------------------------------------
 
 @router.get("/reports/daily")
-async def daily_report(
+def daily_report(
     date: Optional[str] = Query(default=None, description="YYYY-MM-DD, defaults to today"),
     _u=Depends(verify_jwt),
 ):

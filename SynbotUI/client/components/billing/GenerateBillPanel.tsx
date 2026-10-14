@@ -14,6 +14,7 @@ import { ReceiptText, Loader2, ShieldCheck, Plus, Trash2, AlertTriangle, BedDoub
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface GenerateBillPanelProps {
   encounter: {
@@ -127,7 +128,7 @@ export function GenerateBillPanel({ encounter, onClose }: GenerateBillPanelProps
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[640px] sm:w-[720px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -186,7 +187,7 @@ export function GenerateBillPanel({ encounter, onClose }: GenerateBillPanelProps
                       <div className="flex items-center gap-1.5 text-sm truncate">
                         <span className="truncate">{row.description}</span>
                         {row.source === "lab" && !row.matched && (
-                          <Badge variant="outline" className="text-[11px] text-amber-600 border-amber-500/40 shrink-0">needs price</Badge>
+                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-500/40 shrink-0">needs price</Badge>
                         )}
                       </div>
                     )}

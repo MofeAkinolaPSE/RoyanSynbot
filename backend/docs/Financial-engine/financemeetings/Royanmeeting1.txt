@@ -1,0 +1,744 @@
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+I know that and I know that you do billing downstairs I'll show you, there's a page for billing So, this is stock But there's a page for billing So, billing and cash here So, once it generates the patient's bill Thank you I want to understand How does it get to your financial books? Is it that once you pay directly Do you just register in the books that the mentors paid for? And to what account? No, no, no No, no, no You see We have One thing is not If I would love If Motor, regular, can't Can't resolve the issue See It has been difficult Difficult to base, to set here We have registered a patient You know? You know? The mic can't hear you The mic can't hear me I'm recording You are recording? Okay We have registered a patient Actually The way an accountant System can go to be around the world Yes That means that Activities That is You know We are talking about different Using of invoices In the end payment Yes Patient coming in You know Or soon Going to pharmacy Collecting diagnostics Diagnosis, billing, everything That's what we call activities Yes So, that's supposed to trickle down Do you understand? That's supposed to trickle down to To the reporting head Okay The reporting head has to do with that So First has to do with that On the sales part How many invoices raised Okay Then How many receipts About The things About this You raise invoice In the first two To make payment Invoice and receipts are different They are not the same Yes Receipts is that I've collected cash Invoice means that I've made some sales But Yes But when the person paid Then it's okay So Whatever that Is now standing there That will go That goes to the city So How does that Trickle down to The reporting head So How does it connect To the Address And then address To the charge Yes So The end result is A final account So That's a Key and a Profit and balance sheet Profit and balance sheet Okay So now So That is The issue So now What I've been doing Is that Dr. M Takes care of Activities Okay So Then Stage and Dr. M Are not the same Yes So I need to generate reports Accountant The auditors They ask for the reports Okay So I need to find a way To connect The end That is The Where Dr. M stopped Which is Which is only Activities Okay so Up to the Bill generation Now You're just going to Make payment So Now You need to find a way To ensure I You know Interpret My own source document Okay Because you need The source document To plan out that Okay So That is like Going back You're going back To the manual Of creating My own source document So I can Now Prepare a report For Me to present To The management Or to external auditor Okay That has been the gap Okay That's the gap You know We've been facing For this one Okay So Now Operational wise It has to be not Look at the one Like this one Is one way Is One source Activities Connected to what To report Yes There's nothing like This There's one Platform There is So That has been The challenge So We have a system Who can integrate sports So That It makes Everybody's work So So what you're saying is If the system Once they generate A bill now So let's say It's a patient I can walk you Through it Test patients I hear my bariola You guys go to your bariola Or else I'll call the bariola So I'm just trying to So if we do a new patient Yeah So So So this is the way to work We have the front desk And They will do A single file Okay So Let the Let the related be for you Yes It's a consultation Yeah So, good. Good amount. Because I already have, so there's already a patient active.
+
+So the bill is pending as it is. So I'll generate the bill for the patient. Start from the beginning.
+
+After they search the name, what doctor is available, they assign the doctor, private or HMO. So I already split it up, so you know what payers and priorities. And then you just register the encounter.
+
+Let's see, test doctor. And then urgency, then register the encounter. Wow.
+
+Okay, so I'll fix that spot. This is the encounter. They'll walk through the doctor's, the doctor's testing, the doctor will confirm everything.
+
+And they can select the lab order. Yes. Add to the form.
+
+Is there any other thing you want to add? Maybe from the, what do you add? From the, to add, add to the form. So it's all on the doctor's side. If they want to request admission, they can request admission.
+
+Other than that, that patient has finished their service for now. Okay. What, say, what, can we do, can we initiate a fresh, can we register a patient? Okay.
+
+Register one, register me as a patient. I will choose for a service. Okay.
+
+So then I will initiate a B for me. So when you initiate a B for me, so, so I will check, the back end, check the bottom end. Yeah, I see.
+
+See how it reflects, because once you initiate a B, it's ready, it's supposed to have the content of the B. The content of the B. So, the first thing is that, we are going to do, when you generate a B for me, like 10,000 Naira B, I will pay 8,000. So I pay 8,000. Times that, the receipt of 8,000.
+
+So, I'm expecting the remaining 2,000. I will go and check the, I will go and check the balance sheet end to know if that 2,000 is already reflecting at the, the CBB end. So that's the connection.
+
+Can we do that? Yeah, so I'm trying to, So why don't we do it that way? Yeah, let's try another patient. So we can register new patients, but we want to use existing patients, because it is, We want to use existing patients. Okay, we use existing patients.
+
+Let's make them available. Let's let, Okay, so, what has happened now is, there's a lab order and active medication. So naturally, if you go to the pharmacy, No, no, no, no, don't let us, don't let us, let us, pharmacy is another end.
+
+And what I want to do is, so because, if the services they provide, once the other departments have confirmed the services, Later, let me sign it. I'll sign it like this. Just take it.
+
+So once the services are confirmed, that you have dispensed the drugs, the lab result has been done, that's why you cannot generate the bill. That's how it says here. You cannot generate, the bill is, it's not mine.
+
+We're talking about bill generation. I'm listening to you, I just want to try and, A what? A bill can be generated, in either of the two ways. You know, for like, those of heart patient, those of heart patient, they need to know their bill, before they can make payment.
+
+That means the bill has to be generated, before, Before the services? Yes. Okay, before the services. It has to tell you what's going on.
+
+Okay. Okay. So when I just tell you, this is a month, and what, so, that means that if I have done, that I've done all my, this is what the bill, so then, I can say once, Yes.
+
+So, like consultation, consultation has to be. So, What we do, we normally, maybe, we do the bill, we do so on admission. But actually, we still update their bills for them.
+
+As their admission goes. We update, this is an IT day. This is a current day.
+
+This is a current day. Okay. So they want to run.
+
+Okay. So this is a current day now. We update the bill for them, so, on the end.
+
+So, basically what you're saying is, as their, activity is going on, they want to see the bill. Bill is just like, It's like invoice. Now, the problem I have is that that programme does not cover HIV services, and it's not part of the HIV services.
+
+It's not part of the HIV services. Okay, so let's use this one. This one already has something, right? Yes, we don't do those kind of services for HIV patients. 
+
+It's not part of the HIV services. It's not that you are not covered for HIV. It's not that you are not covered for HIV.
+
+So there's a workflow to take the vitals, call the patient, call the doctor, start consultation, whatever the doctor is asking you to do. I would rather ask them that you be referred to the first aid. I walk to them. 
+
+I have to register before I register. They have to know that this is a registration fee. The person has already known how much is the fee.
+
+The registration fee. The registration fee. The moment I register, the person has to pay.
+
+There is a bill generated for registration. Okay. The person has to pay for registration.
+
+Okay, sir. So, as I said, after that, the person has been registered. The next thing is that if you want to see a doctor, you are going to pay.
+
+So that means that the patient is going to register and see a doctor at the same time. He has to pay for registration and consultation at the same time. Okay, so what is the consultation? After, yes, that means that automatically, the person who has to generate the bill for registration and generate the bill for consultation, the person will know that this is the amount I paid.
+
+So, he has to make payment. Before he can access to go and see, he wants to say he wants to go ahead and be taken by us. Okay.
+
+And he wants to see the doctor. The doctor he wants to see, we have to have aid for the doctor he wants to see first. First.
+
+Before he can access the doctor. So, how do we determine the consultation fee? No, the doctor, actually, if you have, once the thing is programmed, consultation fee, we are talking about usual tariff. It is something we have to have in on the system itself.
+
+Okay. It is we that determine. It is we that know it.
+
+So, if we have, there are different doctors, there are consultants. Okay. We want to have a tariff that every consultant has a consultation.
+
+So, all you as a person, you don't need to start in, put in, you just click on it. Okay, so. Even while you are here, for general consult, it is 10,000.
+
+You know it is 10,000. It is already on the system. Okay.
+
+But it is just for the person to know that you are paying 10,000 for that. Everything will be on the system. It is a tariff that is supposed to be on the system.
+
+So, add UI so that you can include each doctor's tariff. Yes, yes. So, once they click on this particular doctor in consultation, it will automatically add to the bill.
+
+I am talking about the speciality. It may not be a doctor, maybe it is a speciality for paediatrician, for follow-up, for the general consultant, for paediatrics, for all the different services. All of them has their own tariff.
+
+Consultation fee. So, everything has to be on this system. So, add a page where you can interact with the doctors and add their consultations and tariff fee.
+
+So that anytime a patient is registered to see that particular doctor, it automatically just assigns to the bill as well. So, you see consultation fee, then any other services like pharmacy, lab test, even scan care. Even pharmacy.
+
+Even pharmacy. That is Amazon. It has to add its own tariff.
+
+Okay. So, the tariff has to do with all that. There is what we call tariff or at least tariff for how much drugs is inserted.
+
+Yeah. Because they don't need to start inputting money. Once they input the drugs, it automatically accumulates in the bill for the person.
+
+Yes, that's already done. Yes. So, pharmacy is completed.
+
+So, if you want to access lab, you need to have paid for lab before you can access lab. You can't just do a lab for you, test for you, and now say, okay. Even with the way Dr. Edmond, if you have not made payment, your name will not appear on dashboard.
+
+Okay, so we are generating the bill before the services. Yes, yes, yes. You will have known what you are paying.
+
+After announcing the tariff, you now say, I can't pay for it. You know what you know. This is your, you can now say, go and make payment.
+
+Before we now say, we are now releasing, either we release drugs to you or we release our services to you, which is lab test. Before you even take your sample. Okay.
+
+You have done your bill. Your bill and you have paid your bill first. So, it should be that after, so let's say the patient walks in.
+
+Yes. They, you first do, let's say the patient register you, pay for registration fee. Yes.
+
+And then, whatever doctors are here to see, you also add quotation fee to the bills. And then, once the doctor now says, okay, you need to do lab test, get some drugs, and so on and so forth. If the doctor, when you are seeing the doctor, the doctor now said, he has written, he has, the doctor is going to request for the lab test.
+
+Yes, yes. Doctor will request for the lab test. So, doctor will want to, to limit on the drugs that is prescribed, the drug that the patient is going to take.
+
+But he is going to communicate with the patient that you are doing this, you are doing this, you are doing that. So, you now ask the patient to comment, to go and do the, go around the test. So, the patient cannot go around the test without making payment for that test.
+
+So, patient has to know how much it is, because he has to pay for everything as it is. He is, whatever he is, he is accumulating to his bill gradually. Gradually.
+
+But actually, we always prefer when it is an outpatient. To be able to have, to be paying as, to be making payment as, before you go to the lab. Now, you have to have paid before you can have access to go to the lab.
+
+Yeah. So, like the pharmacy, if you have not made payment, you cannot conduct drugs. Okay.
+
+Well, the activities now is between when, you know, there are things you have to, it's stages. You walk in, you have to register, registration, you pay for registration, you pay for consultation. That is the first stage.
+
+Then, you are given access to, have access to vitals. So, that is the, the moment they refer you to the doctor, that's another stage. The doctor now begin to say to you, you need to do test, you need to conduct drugs, you need to, that's another phase.
+
+So, at that stage, then what happens? That means that, if you have, if you do the test you want to do, you have to pay for the test. You have to know them. Immediately, once the doctor has done, once the doctor has requested the test, immediately, because there is tariff of that test there, that's supposed to pop up.
+
+Is there? This is the amount of the money you have to pay. Is there? You make payment in the cash. Okay.
+
+Then, you can also go and do your test. Okay. Let me show you what the bill, so let's say we just generate the bill for this patient now.
+
+So, this is how the bill will look like, the item, the drug and general consultation. Okay, so we just add the price or add the tariff, you need to pay for general consultation. See, this tariff.
+
+Okay. Just do a test on tariff, don't worry about the tariff. Okay.
+
+It is when, after, then, we have an existing tariff. We have an existing tariff that, at least this one can, it has set the volume of data. You just, you can export, you can import the tariff.
+
+So, I think I've got now your data from all of them, right? From doctor. Yeah, from doctor. So, that's why it's here.
+
+Yes, yes. So, this is it. So, if you generate the bill now, it will look like this.
+
+You go to billing. So, this is the most, this is the recent billing. Okay.
+
+So, it has consultation, lab, patient, amount to pay. Outstanding. Amount to pay, outstanding.
+
+At least now, at least outstanding now. This 50K is supposed to reflect, there is another leg of the account. That 50,000 Naira is the balance sheet items.
+
+Okay. So, if you go to balance sheet, you expect that 50K to have been under the data. Okay.
+
+Automatically. Okay. Because that things are not being paid for.
+
+Okay. If you go to our data, you want to see that 50,000 Naira. So, if you go to balance sheet.
+
+That is the connection. Yes. Okay.
+
+So, under debtors, would it be here? Debtors, that is the current asset. This is current asset. Debtors is supposed to be here.
+
+We have. Debtors is supposed to be here. So, debtors is not here.
+
+Debtors is not here. So, I am trying to add debtors. Do you know why debtors is not here? Yes, I know.
+
+You are using my system too. You are using my account. What I run, there are some items I will not find.
+
+You will not find two items. You will not find inventories. You will not find debtors.
+
+In CHS? You know, you see it in place. In balance sheet? Because they have their own system. Okay.
+
+But really, I cannot because there is a disconnect. So, whatever that happens there, it does not reflect. So, what I do, in accounting, we have two basis for accounting.
+
+We do cash basis. We do accruer. So, the standard system is supposed to be used for accruer.
+
+Accounting is accruer.
+
+So what I do, because of the waste systems, I use cash pieces to prepare my sage. That's why you cannot see inventory. You cannot see debtors.
+
+We don't give reports on inventories and debtors. We have them, but it doesn't reflect in the research. If I want this or you want the inventory, that means I have to type in pharmacy, what's the level of our stock and everything.
+
+So this is a total inventory. The sage is disconnected from pharmacy. The sage is disconnected from lab to ask inventories.
+
+The sage is disconnected from measure to have inventories. So the value of what's in the stock is the value of inventories. Pharmacy has an inventory at a certain date. 
+
+So lab has an inventory at a certain date. It cannot reflect in the research. So how do we get the information from labs, inventory? That's what I'm saying. 
+
+That's the reason why we have to have a system that everything now, we are not going to base on ACURA basis. System does not run on cash basis. So ACURA is what we are using. 
+
+ACURA is because they are on one structure of the system. So if it's an ACURA, this system is an ACURA. Once I've generated the invoice, if I didn't make any payment, automatically it's a sales.
+
+It will reflect in K&L as a sales. That money will not reflect in the receivables as a debtor because I'm not paid. The moment I make payment for it, only account will not change. 
+
+Sales still remain there. But it's going to do two things. When I make payment, it will debit my bank or debit my cash. 
+
+Then it will go and credit the receivable account. It will need it. So there won't be any problem. 
+
+That person is not going. So accounting is just due to double entries. When there is credit entries, there must be debit entries. 
+
+And there must be a kind of a communication with it. So there are things that have to be K&L items. There are things that have to be a balance sheet items.
+
+When someone understands that, they will know. So when you release that invoice now, I expect that's 50K. To show invoice.
+
+To show. That means that now with what you need to now as a chart of your account, you have to add up the receivables. You have to add up inventories. 
+
+Those things are now there. Because you are using my switch to generate the something. But how can I get that data? You don't need data. 
+
+All you need is to create your system. So that it can work. You don't need data.
+
+Farm and lab time. Just create. So what we need to create the system.
+
+See, don't bother us. Even when you are trying to copy my GC. You will get confused.
+
+See, there are some things I have to. There is information in Sage that is already available. Sage will not discard it. 
+
+Once it is registered, it is registered. It will be there. There are some things I have to disconnect from that same Sage.
+
+But Sage is already here. But Sage will not. Because the account is a continuum.
+
+And I have asked him, are you doing it on a continuum basis? Or you want to do a bit of disconnect? Then we now bring up our information. Then we start. What I was saying was that, let him tell you.
+
+We host the account. That's what we are doing. Yeah, that's what we are doing.
+
+From all the departments. The way he wants the payment to flow to his own site. So that he will be able to do his own accounting properly.
+
+So that's what he needs. You all say you want to replicate. Don't try that.
+
+We just want to understand it. There are more complicated things in the arena. There are some questions that I did there.
+
+There is only God that can interpret it. That's what I am talking about. When you don't have the real system to run with.
+
+You do what we call. You try to create some things to ensure that things are in order. So now, what I expect.
+
+The thing here that I want to do perfectly first. If you are copying Dr. M, you are good. Dr. M is the one that is capturing the existing patient.
+
+If you need Dr. M to get your full base. It's very important. Because you need all the patients.
+
+Their data has to go. For the lab now, the inventory for example. Is it already in Dr. M? Do they already have it stored in Dr. M? Or do you want to manually include it? It's there.
+
+The inventory is on Dr. M. Is it in Dr. M? That's all. The inventories are in this inbox. Let me tell you the problem of Dr. M. The reason why you are having issues with Dr. M. Dr. M does not have.
+
+Every accountant. Every person. Accountant is a ledger.
+
+I am a ledger in accounts. So me, any individual. You are a ledger.
+
+So me, I am a ledger. So I am supposed to have my debit. I have my credit.
+
+So my balances, whether it's credit or debit. That is going to move to the balance sheet or to P&L. So I am a ledger.
+
+So Dr. M does not have individual ledger. So that is why he cannot do P&L account. So if anybody needs payment.
+
+He should go to P&L and balance. If the person generates invoice. If the person has paid.
+
+So that means that it's only restricted to sales. There is P&L account. That means that it's only reflected on sales.
+
+If the person has generated sales. They don't need to go to P&L balance sheet. Because there is no.
+
+There is no balance or whatever. That is going to transfer to us. To balance sheet.
+
+They are all our vendors too. They are ledger. All the vendors that we use.
+
+They are ledger too. Even everybody that has stocks. Stock itself is a ledger.
+
+Every stock item is a ledger. But when you enter a stock item. It has a way of using it.
+
+It is a balance. It is an opening balance. It has its own closing balance.
+
+So everything is in an account. When it doesn't have that. So that is the reason why it cannot go beyond.
+
+Activities base. That is why it is restricted there. It has no general ledger.
+
+It has no P&L balance sheet. All that. Okay.
+
+So I will look for more of the data. And then try and create different inventories. For pharmacy lab.
+
+So what I will say now. What I will say now. Is that.
+
+What I can. It is easy for me to. It is easy for me.
+
+Yes. You should create an admin for your account. Such that.
+
+All inventory. From lab. From pharmacy.
+
+And from other areas. Because where money is coming. So you will be able to.
+
+See it and be able to. Go around it. Create its own account.
+
+So you get my point. I didn't know that it was different inventories. For different departments.
+
+Different inventories. They still link together. You know how it links together.
+
+But they have. They have their inventories. Separately.
+
+Separately. Pharmacy. Pharmacy.
+
+I only have pharmacy inventory. Lab has pharmacy. You have an admin.
+
+Mode for accounts. So you can see all the inventories. All those inventories will be.
+
+Available. Their balances. All those things.
+
+Here you understand. If anything goes out. You can see it.
+
+It will reflect in that account. Do you know what I. Let me. Let me.
+
+Let me make this work easier. For you now. See.
+
+You know what I was. If you can do something. Before next year.
+
+By the beginning. By the beginning. Or by the 30.
+
+29. 26. 27.
+
+28. So at that time. Everybody will have worked around.
+
+We have a balance. We are going to carry forward. For the next year.
+
+So. Carry forward to. This.
+
+Okay. So you are saying. Yes.
+
+You can link. You can begin to link. If I open.
+
+My laptop for you. You will cry for me. We are trying to deploy.
+
+My next fixer. You want to deploy my next fixer. Yes.
+
+As I have deployed it. Then what we are not going to do. See.
+
+We are not going to find a way. God help me. God help me.
+
+We will find a way to ensure. Pharmacy. We take stock of pharmacy.
+
+As I said. This thing accepts volume of data. We are going to take stock of pharmacy.
+
+We are going to take stock of pharmacy. Maybe 28, 27. We have minimum stock of pharmacy.
+
+For each particular address of drugs. So you know. The minimum stock.
+
+We are carrying forward to the next year. Okay. Then we take stock of.
+
+We take stock of immunisation. We know the minimum stock of each items. We are carrying forward to the next year.
+
+Then we now take stock of. There are some stocks we are not taking. There are some stocks we are taking.
+
+But they are very. They are very many. But they include all these.
+
+Yes. So we take the stock. So from there.
+
+In inventory aspects. That's the area I know. We can have some stocks.
+
+These are minimum stocks. We carry forward to 2027. So then at that time.
+
+We expect to go on. All of us have been on this system. To use it as well.
+
+Of attending. Of issuing. But if you are not using the stock.
+
+If you put in minimum stock. If you are not using it. The stock is not moving.
+
+The stock has to move. Okay. So that will make us to have.
+
+An accurate stock. That we are going to. One half is a number.
+
+One like this. It's a factor in accounting. So we don't talk with it.
+
+So let's deal with that. What I will say. If you want to deploy.
+
+Then we start. Everybody started checking it. Let's see where.
+
+We are not going to proceed. That's the point. Accounting aspect.
+
+My area. I would like you to go and look at. Is it communicating? Okay.
+
+Please decide to communicate. If it's not communicating. They will not get results.
+
+Do you know about communication? Communication is that. Do you have a report? Let's see your report. Let me check your report.
+
+That's your communication. So. We have a report centre.
+
+Where you can see all the different reports. So there is HMO. This is private.
+
+And this is what it looks like. Without visits. Without visits.
+
+Service by payer. What went to HMO. This is all the ones you requested beforehand.
+
+You have the HMO monthly bill. So you can see how much was paid. That month.
+
+Okay. Claims agent. Let's go to.
+
+We need to incorporate. Let's go to. Sales.
+
+VP. VP. That's the sales for.
+
+I'm still new to the. Financial terms. That's why I said communicate.
+
+That's communicate. So this thing is communicate. This thing is to communicate.
+
+Now look at your income revenue. So you see revenue. You see cost of sales.
+
+You see gross profits. This page is supposed to be communicating. So if you run a transaction.
+
+Immediately. I'm trying to look for. Something else that shows me.
+
+I'm trying to. Talk to you about that. That page is supposed to be communicating.
+
+It's supposed to be communicating. If let me say. A patient came in.
+
+The moment we raise an invoice. 50,000. It's supposed to be here.
+
+So you see your income statement immediately. That's true. Every time.
+
+Every time. Once I've entered it. I haven't collected.
+
+Yes. What I have is. I have Dr. Hope's data.
+
+I think June this month. I don't have your SAGE data. To connect them.
+
+So I don't have the SAGE data for 2025 or 2026. Because you said. When I tried to export.
+
+It was only 2024. That's what I said. It's going to be confusing.
+
+Even apart from that. It doesn't relate to. Communication.
+
+I'm not talking about. What I'm talking about. Is activities.
+
+It's supposed to communicate. That means that once a transaction is done. It has to reflect.
+
+We are supposed to reflect. If I make payment back. I'm supposed to have said.
+
+Which bank did I make payment to. I'm supposed to have said. I will go and check.
+
+It doesn't communicate. It's already there. So because I don't have.
+
+You don't need. You don't need. How do I put it.
+
+The activities are there. The interactions. The billing and everything is already there.
+
+But a lot of the. When I tried to export. I was only able to get.
+
+3 or 4 documents. That had actual data. Because of that break.
+
+You have to do it manually. Go to my. Go to.
+
+The balance sheet. This is. What I was telling you.
+
+Now what I'm saying is that this balance sheet has, balance sheet is continual but P&L is done for a year. It's not continual, it's not adding. P&L is done in a year but balance sheet is continual.
+
+So it's cumulating, cumulating, cumulating, cumulating, cumulating every year in items. So P&L is for that one year. So that's why I say it's good to communicate. 
+
+So it doesn't affect balance sheet. So that's why I say, if let me say, we run for this year, led with action, that action is supposed to begin to reflect. Forget about whether you didn't get the reward.
+
+Okay, so naturally, you're just saying to continue as going forward now, anytime there's an activity on the hospital side, it's supposed to be reflected. Yes, it's supposed to be reflected. You don't need my data.
+
+So but when you're ready, we can still import that data. Yes, yes. So what I will now do, what I will now do is I think most of those activities, I don't want us to get disconnected or disjointed.
+
+But as I said, if we can still looking at it, I say I'm communicating with this, then if all of us would be on one page, by the end of this year, we'll be having minimum balance. Means I will just give you all the minimum balance in all the accounts. It's what you are going to put in. 
+
+You will continue from there. We don't balance sheet is continue. Instead of now referring to go to the, let's see.
+
+So I will do complication. All this is going to create, there's some, there's some, there's some, there's some chat for account there. There's some stuff there, there, that might likely need to not even put here anymore.
+
+Yeah, definitely. So it's only what you need that we're doing. Yes.
+
+So what I would like now, like there's some older account now, we have to close. We've passed that. We need to go back to that.
+
+We see an account, I say, is gone. Is seen on our data. Because the account is on that system.
+
+So I'm going to give you the fresh data of what you can put as an account. So by the grace of God, I will have gotten all the minimum balance for each account. We are going to transfer to by the end of this year.
+
+Okay. So I'll do it in Excel format for you to do or just for you to load it. Just to upload.
+
+Yeah, upload. So then we'll have, we'll have, we'll have worked in pharmacy too. We know all our stocks in units.
+
+We know all our stocks in units. We know our stock in cost price, each unit. We know our cost in what? In value.
+
+Okay. Because we have to, when we are doing inventories, we must have cost in units. Accurate cost in cost price and what? In value.
+
+Okay, the total value of the entire stock. No, no, each in value. Okay.
+
+Units, is that cost units, is that how much you bought it. Okay. And when I buy, I buy, I buy 10 at, I buy 10 at rate of 1,000.
+
+What is the unit cost? The value is how much am I selling it. Okay. That's the selling price.
+
+So we must have each pharmacy at one unit, at each unit. The cost price, each cost price of each unit and then the value price. So because it's what I'm going to input.
+
+Into your account. On your, this has to be here. Because by the time you, somebody, that will be here.
+
+The cost price. The cost price, by the time you use your stock, once, the cost price will go to cost of sales. Once you use one, the cost will automatically go to cost of sales.
+
+When you sell one, when you sell one, the selling price automatically go to your revenue. Okay. So you can see the communication now.
+
+Okay. That is it. So what are the major reports you want to be seeing? You want to see a profit and loss? Yes.
+
+Profit and loss. Profit and loss. We call it the final account.
+
+Okay. Profit and loss. Yes.
+
+That's the essence. So the rest, you can see start doing some work. But activities is what's important.
+
+You can, stock. So basically translating all the activities into. Yes.
+
+The one that bring up to report. Where this is not correct, report will be faulty. Okay.
+
+So we need to get it from that end right. We need to get it right from pharmacy. Okay.
+
+We need to get it right from lab. We need to get it right from the cashier point. We need to get it right from one.
+
+So that's a tariff. Tariff of all our new tariff, not this one. That's a good tariff.
+
+It has to be on the new tariff for all the HMOs. It has to be there. In your head, there's always a room to upload new tariff.
+
+Yes. So that's what we work with. Yes.
+
+Okay. So you can easily upload new tariff. Yes.
+
+So that's all. So once we get the activities right, then we will now begin to find a way to stimulate. See, you don't bother about, if you need more balance.
+
+Once I have my, I will get the minimum balance. Minimum balance for this, minimum balance for this, minimum balance. It's all we are going to translate to the next.
+
+So for example, this profit and loss now, all the activity that I would have shown It's supposed to reflect. The moment you are doing it, see, automatically If I do one thing here, you see, immediately you see it's reflecting. It doesn't have to wait. 
+
+It's coming. That's what we are talking about. So basically the data from the EMR site should naturally just translate to reports automatically, there's no point in waiting for any other thing So on your general ledger as well, general ledger should be the same thing too General ledger is the one that captures all transactions that are done for the whole month, for the whole day, for the whole year If I pay one naira it will show, if I remove or withdraw one naira it will show, if I sell this it will show General ledger captures everything, the regional ledger is what we export for our external data towards it Because the regional ledger tracks the movement of our this and that But what is so important is individual ledger You can pick me, you can punch me, you can pull me out now, you can look at me and say Ah, Mr. Lekow, I sent out this pharmacy, I sent out this, I've done this, I've done transaction On my accounting end, I have received a service of 200,000 and I've paid 150,000 for my account On my account 50,000 still remains So each person has an account? Yes, most have an account, that's what we call a ledger I'm a ledger, everybody is a ledger, every individual is a ledger on my account You must be a ledger, if you are not a ledger you can't get an account It is only a ledger, it is my balance that will transfer to where the something is going to be
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+This is my balance in my ledger. If I don't have a balance in my ledger, this is my ledger. I'm a patient, I'm a ledger, I receive a service. 
+
+If I receive a service, the service I receive for today is going directly to the revenue. It's going directly to the revenue. So, that's my leg, the first leg of it.
+
+You don't see me. You don't see me. You don't see me on my own ledger.
+
+In general ledger, you see me. You see me on general ledger. Yes, I will appear here.
+
+So, if I make payment, it will reflect what I have paid. Your debit will reduce. Yes, if I pay all the time money, it will claim my debit.
+
+So, my name is still there that I received conversion and I paid. If I didn't pay, maybe I paid 51, 50, 100, 200,000. The 50K, my ledger 50K, it will transfer the money to a receivable.
+
+Okay, it's owing. Ah, it's owing. It will automatically reflect a receivable.
+
+So, it will be eight receivables. My name will not show there. My name will not show there. 
+
+It will be there. It will be there. The money, the amount will be transferred there.
+
+Okay, that's it. But if you want to click on it, it can even show you that it's all receivable. All the people are owing. 
+
+My name can still appear when you have individuals that are owing a certain amount of money. Now, the way you look at it, in a place where you know every money, they said they do, every receivable account, they said they want to know who each money, who is owing. So, that's why everyone, every one of us, both vendors and customer, is their own ledger in the account.
+
+Okay, so, another thing is, if you generated an invoice, so once the patient, because we talked about they are generating bill as soon as they are finished talking to the doctor, before any other service is given to them, they generate the bill and then they will pay. So, naturally, it will show up on the invoice. The moment it will be generated, it will transfer directly to you.
+
+It has added to its sales. It's already added to your sales. It's already been generated directly to your sales.
+
+So, you see that in sales, but I'm saying you also see it in your invoice. The invoice that was created. Yes, yes, yes. 
+
+Invoice, yes. Receipt, yes. Receipt is what you use to collect.
+
+So, you now record the receipts for that particular invoice. Yes, invoice, yes. And to now go to your revenue that this is.
+
+Yes, yes. And that person's general ledger to account to reflect that they are not owing. It's not owing an individual.
+
+Okay. It will show me as an individual, me as a person. I understand.
+
+That was what Dr. M doesn't really have. Okay. He doesn't have individual ledger.
+
+He just has your name. Sometimes, he doesn't have an account. He just has his name.
+
+Yes, I'll join you now. You're welcome. So, it has your bill.
+
+You can generate a bill on it. Dr. M can generate a bill for an individual. But he doesn't have an account. 
+
+He doesn't have a ledger for an individual. Okay. Thank you very much, sir.
+
+I think that's good for now.
+
+ry to, um, activities, we have to get the activities right. If the activity is not accurate, it's not standard. Report is sham.
+
+If somebody is expected to enter 5,000, he entered 500,000. Error, you know, that's activities. It has, it affects the report.
+
+So we need to get the activities right to ensure the people, the handlers, they understand it. Before we now go into thinking, let's see from the cutting point. Like I said, the, the, the, the, so the doctor, at least the search, the search item that you see there, don't, don't, when, when the time, when, after you have perfected all the activities, then we'll find a way to work on a minimum analysis so that we find a way to calculate your 2D.
+
+And then from there we can move. No problem. I'll work on everything I've talked about today.
+
+Communication, that's the same as to communicate. Yeah, it's very, very important. No problem, Sam.
+
+No problem, Sam. So thank you very much.
+
+We use POS. We have to ensure POS balance. So we have a large, a lot of worries for us to think of so that we don't, HM does not take up.
+
+The area that might need so much, much attention, that is need more attention, is HMOS. Okay, so in what sense? Yes, we need more attention because there are some big kind of issues, the way they are working now. It's more or less, let's say it's a man, let's say it's a man, let's say, what is he doing? He's costing, he's costing on paper.
+
+Okay. So, the reason why they are doing that is because the bills or whatever they are, they cannot use it, they cannot translate it to what? To the HMO. They have to optimize the bill. 
+
+We call it bill optimization. Some of them have done an error, some of them have done a bit of, they didn't put the right document or the right message. They begin to start kind of trying to optimize so that the HMO knows that this person is going to see this. 
+
+So HMO is better in this direction. So we need to adapt. That means that many of what I'm trying to do, they are actually like a kind of section, segment.
+
+HMO has their own... Yes, it's a factor we need to work on. So that maybe the bill, as the bill coming, they can easily just translate it to the HMO instead of now costing. Okay.
+
+So if a patient pays for HMO services, naturally you see that there's a different bill for HMO. No, what they do now, they put their bills directly on their HMO. HMO has their own access to it.
+
+From their own end. So that they can rely on the system, on the data. Instead of us now thinking to say let's optimize.
+
+At least we are going to optimize. Let's just a bit, a bit to work. Not like, as you announced and did your work.
+
+It's too manual. Yes, I see. It's too manual.
+
+I see, I see. But I understand the steps. I'll talk to him more quickly so I just understand a bit before I do.
+
+I just want to see, you know, let me show you. I just want to, I just want to quickly understand. If Dr. M were part of this signature, you don't have to be signing on this paper.
+
+Yes. I would not be importing straight from Dr. M, straight to that place. Okay. 
+
+So are you saying the patients will need to sign once they pay? HMO patients. Yeah. You know that they don't pay when they do sign.
+
+Okay. But they cannot sign on the sub-channel. But the HMO comes back to audit all these things.
+
+Okay. So you need to wait for them to sign once they are... They've collected their medication on this system. Okay. 
+
+So it would be that... Yes. So we will not eliminate on this paper. Extra manual effort.
+
+There's a document that they use. There's something they normally sign on. Yes.
+
+I reflect on this. They don't do paper now. At least the salon... Okay.
+
+So look at this now. I don't know. I'm not lost. 
+
+I'm not trying to... Don't worry. Don't worry about it. Okay. 
+
+Now... These are HMO accounts from last year. Yes. We have the program everything on.
+
+I've finished the account. I know each HMO. I know how much.
+
+I know how the payment was. I use Power Query. Okay.
+
+To do all the... Calculations. Sorting and everything. So I can get that whole data for them.
+
+Now, so for each HMO now... So what I do now... After I've finished my own end of sub-document... I will not transfer it back to what? To search. To search. So I've moved it to search.
+
+Okay. I have to work it this way. So I will not move it.
+
+You can see how the system is. So this is only just for the HMO account. I'm not talking about the payment.
+
+I'm talking about the performance. So you can see. And we have like almost the same thing HMO here.
+
+You can see their name and everything. So you need to be able to interact with their HMO data a lot better. Yes, yes.
+
+I can't interact. I'm disconnected. Okay.
+
+I need to now find a way to work my own sub-document. That makes sure that it's fact. And it's accurate.
+
+So that we don't give you wrong data or wrong information. So we cannot overstate or understate. When you do that, that's not accurate.
+
+You need to get the actual fact of what actually happens. So that is why all this... We go back to paper. And at the end, we go back to paper.
+
+And we go back to... And that's how you integrate it. So that way you can have a system that can help us. Confuse everything.
+
+That can help us. No problem. No problem.
+
+So this is... I just want to speak to her now so I can understand the exact HMO workflow. So I just want to understand now. Once a patient comes in and they are going to use HMO.
+
+How does it work for you? And how does it get to this point? And how can we solve that problem? Okay. How it will affect Mr. Nick's workflow is what I want to tell you now. Yes.
+
+When a patient comes in, you know that everything they pick is from the pharmacy. So whatever they are picking is real to reflect to him. So that this person is HMO.
+
+Okay, and this is what they used for their site. This is what they used. Okay.
+
+So it's also straight. Straight, no problem. The only difference is that they are not paying in real time.
+
+You have to now reconcile with the HMOs. Maybe at the end of the month or one week later and all that. Okay.
+
+Unlike private patients who pays on the go. On the go, okay. That's what's the difference.
+
+So I don't understand this manual part that you are talking about. For this, I see signatures. So this is like their receipt.
+
+This is the receipt to the HMO. Okay. No, it's the HMO that is paying the bill.
+
+It's the receipt. So after I finish processing it manually, I tag it and keep it. If you enter this room, I hope the paper will not kill you.
+
+Because all of us, we have a paper that we keep. But you know, the reason why we are still doing this paperwork is just because of this signature. So you are saying that there is a way that the HMO bill can be created and then they will sign.
+
+They will sign on the app. So it will be a claims form. Can I take a picture of the claims form? It might not necessarily be a claims form.
+
+It will just be them signing for their service? It could be on the pharmacy page where the pharmacy dispenses. Maybe there is also a place for them to sign there. Okay.
+
+I don't know how your software works. It won't be a problem. Because what I think would work is, let's say they take a drug now and the pharmacy wants them to sign.
+
+They sign. That signature has to go somewhere. So it has to either be on the form.
+
+That's what I want to know. So let's say the doctor or... Okay. I can give you a copy that you can go with.
+
+Okay, yeah. But it should always carry the name of the HMO. No, it's not legal.
+
+So it should be once the patient is attached to their HMO. Do you understand? Yeah, no problem. So who does this manual filling? No, the pharmacy fills this.
+
+The patient will sign. So this is the drugs that the patient was given. So this will be automated naturally? Yeah, this will be automated.
+
+The reason why I'm doing this is because this signature, nothing more, nothing less. Because the patient, yes, the patient will not sign it. They don't see what they have collected.
+
+Okay. So could I get the invoice? The Royal Invoice and Scam Care Invoice. Royal Invoice? No, no Royal Invoice.
+
+We don't have money. I swear. That's not Royal Invoice.
+
+But we have... I can print that one for you. Send me the invoice. I can... Ah! Invoice.
+
+Print it. Very well. I've already printed the invoice.
+
+Yeah, I understand. Because I know it's the doctor's invoice that he sent you. And also for Scam Care, should we just... It's the same invoice.
+
+The only difference is that... What's the name? Scam Care. Okay, and Scam Care. The name, Scam Care, Royal, the same.
+
+Okay. So do we group Scam Care as the same business or are they standalone businesses? No, no, standalone. They're standalone? Scam Care is standalone.
+
+So they will have their own accounting package in their own sense? Separate. Separate. Okay, but they will still have the same... Scam Care is straightforward.
+
+They're not like you talk to an investor. Scam Care is very straightforward. Okay.
+
+You don't really have much to... Scam Care is straightforward. Okay. So I'll just group them in their own accounts? They have their own accounts.
+
+They have their own accounts. They have their own TLL. They have their own balance sheets.
+
+They have their own everything. Okay, no problem. Okay.
+
+I think that the way the government is integrating Scam Care with... Yeah. That is only for... That is inside... In... In... In... In... In... In... In... In... In... In the United States, they have. In the United States, they have.
+
+But we just... Financial, no. Financial needs to separate them. Financial, no.
+
+We separate them. No, no. It's such a way that the doctor can view their reports.
+
+The Scam Care reports? Yes. So we are going to give them... Access to their Exported Reports. Access to their Exported Reports.
+
+No, sorry. I used to have doctors. Just... Let me see.
+
+I don't think I do anymore, don't do anymore. So what do you mean? Doctor, I... So they can view the exported report. results of the scan? All the activity. 
+
+No problem, that's not a problem. You got to be able to interact with the patient's results. They have radiology on their own. 
+
+Okay. I wanted to show you what it looks like, but unfortunately, it's my system, it's having issues. It used to forget passwords. 
+
+No problem. So every morning when I come, I have to log in. I know it's not mine, I log in.
+
+You forget it. I'm sorry, I have to buy a new phone. I hope you don't have any other questions.
+
+No, I'm fine, thank you. So I'll just get the invoice. Once I can get the invoice for William, I'll be fine.
+
+Alright, thank you very much.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)

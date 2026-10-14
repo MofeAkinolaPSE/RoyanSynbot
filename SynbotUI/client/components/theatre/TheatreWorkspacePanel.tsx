@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { cn } from "@/lib/utils";
 import {
   StatusBadge, UrgencyBadge, WorkflowProgress, DetailRow, CheckItem, elapsed,
 } from "@/components/theatre/theatre-shared";
@@ -231,7 +233,7 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         {isLoading && !data ? (
           <LoadingSkeleton />
         ) : (
@@ -250,7 +252,7 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
                     <UrgencyBadge urgency={c.urgency} />
                     <StatusBadge status={status} />
                   </div>
-                  <p className="text-[13px] text-muted-foreground mt-1">Case #{c.id} · Booked {elapsed(c.created_at)} ago</p>
+                  <p className="text-xs text-muted-foreground mt-1">Case #{c.id} · Booked {elapsed(c.created_at)} ago</p>
                 </div>
               </div>
             </SheetHeader>
@@ -301,7 +303,7 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
                 {/* ── Pre-Op ── */}
                 <TabsContent value="preop" className="mt-0 space-y-3">
                   {c.pre_op_completed_at && (
-                    <p className="text-[13px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Last saved by {c.pre_op_completed_by} · {elapsed(c.pre_op_completed_at)} ago
                     </p>
                   )}
@@ -411,7 +413,7 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
                         <p className="text-xs">Drains inserted: {c.operative_notes?.drains_inserted ? "Yes" : "No"}</p>
                         {c.operative_notes?.complications && <div><p className="text-xs text-muted-foreground mb-0.5">Complications</p><p className="whitespace-pre-wrap">{c.operative_notes.complications}</p></div>}
                         {c.operative_notes?.surgeon_notes && <div><p className="text-xs text-muted-foreground mb-0.5">Surgeon Notes</p><p className="whitespace-pre-wrap">{c.operative_notes.surgeon_notes}</p></div>}
-                        <p className="text-[13px] text-muted-foreground">Recorded by {c.operative_notes_by}</p>
+                        <p className="text-xs text-muted-foreground">Recorded by {c.operative_notes_by}</p>
                       </div>
                       {!opVerified && (
                         <Button size="sm" variant="outline" className="w-full" onClick={() => setOpMode("edit")}>Edit Notes</Button>
@@ -472,7 +474,7 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
                 {/* ── Post-Op ── */}
                 <TabsContent value="postop" className="mt-0 space-y-3">
                   {c.post_op_at && (
-                    <p className="text-[13px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Last saved by {c.post_op_by} · {elapsed(c.post_op_at)} ago
                     </p>
                   )}
@@ -543,8 +545,8 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
                             <div className="flex items-center justify-between">
                               <span className="font-medium">{v.operative_notes?.procedure_performed ?? "—"}</span>
                               {v.verified_at
-                                ? <Badge variant="outline" className="text-[12px] text-green-700 dark:text-green-400 border-green-500/30">was verified</Badge>
-                                : <Badge variant="outline" className="text-[12px] text-yellow-700 dark:text-yellow-400 border-yellow-500/30">unverified</Badge>}
+                                ? <Badge variant="outline" className="text-xs text-green-700 dark:text-green-400 border-green-500/30">was verified</Badge>
+                                : <Badge variant="outline" className="text-xs text-yellow-700 dark:text-yellow-400 border-yellow-500/30">unverified</Badge>}
                             </div>
                             <p className="text-muted-foreground">{elapsed(v.superseded_at)} ago, by {v.operative_notes_by}</p>
                             {v.amendment_reason && <p className="text-orange-500">Amended: {v.amendment_reason}</p>}
@@ -635,15 +637,6 @@ export function TheatreWorkspacePanel({ case: initialCase, onClose, initialTab }
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
   );
 }
 

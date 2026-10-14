@@ -39,7 +39,7 @@ class ConsentCreate(BaseModel):
 
 
 @router.post("/{patient_id}/consent", status_code=201)
-async def add_consent(patient_id: int, payload: ConsentCreate, user=Depends(verify_jwt)):
+def add_consent(patient_id: int, payload: ConsentCreate, user=Depends(verify_jwt)):
     """Record a patient consent event."""
     r = db.table(TABLE_PATIENTS).select("id").eq("id", patient_id).execute()
     if not r.data:
@@ -77,7 +77,7 @@ async def add_consent(patient_id: int, payload: ConsentCreate, user=Depends(veri
 
 
 @router.get("/{patient_id}/consent")
-async def list_consent(
+def list_consent(
     patient_id: int,
     user=Depends(verify_jwt),
 ):

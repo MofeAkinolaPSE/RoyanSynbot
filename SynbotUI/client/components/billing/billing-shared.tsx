@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+// Re-exported so existing call sites keep their import path.
+export { DetailRow } from "@/components/shared/panel-shared";
 
 export function fmtDate(ts?: string) {
   if (!ts) return "—";
@@ -24,6 +26,7 @@ export const BILL_STATUS_COLORS: Record<string, string> = {
   pending:     "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
   partial:     "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
   paid:        "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+  void:        "bg-muted text-muted-foreground border-border line-through",
   waived:      "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
   disputed:    "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30",
   written_off: "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30",
@@ -54,16 +57,7 @@ export function ClaimBadge({ status }: { status?: string }) {
   return <Badge variant="outline" className={cn("text-xs capitalize", CLAIM_STATUS_COLORS[s] ?? CLAIM_STATUS_COLORS.submitted)}>{s.replace(/_/g, " ")}</Badge>;
 }
 
-export function DetailRow({ label, value, mono = false, accent }: {
-  label: string; value?: string | null; mono?: boolean; accent?: string;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex items-start justify-between gap-3 py-1 border-b border-border/30 last:border-0">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className={cn("text-xs text-right font-medium", mono && "font-mono", accent)}>{value}</span>
-    </div>
-  );
-}
-
-export const PAYMENT_METHODS = ["cash", "card", "transfer", "hmo", "waiver"] as const;
+export const PAYMENT_METHODS = ["pos", "cash", "transfer", "card", "hmo", "waiver"] as const;
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  pos: "POS", cash: "Cash", transfer: "Bank transfer", card: "Card (online)", hmo: "Move to HMO", waiver: "Waiver",
+};

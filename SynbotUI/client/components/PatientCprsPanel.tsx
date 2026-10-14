@@ -12,7 +12,8 @@ import { api } from "@/lib/api-client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
-import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
+import { ENCOUNTER_STATUS_COLORS, encounterStatusLabel } from "@/lib/encounter-status";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface PatientCprsPanelProps {
   patientMrn: string;
@@ -58,7 +59,7 @@ export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCp
   return (
     <>
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[420px] sm:w-[460px] overflow-y-auto p-0" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.narrow, "pce-readable overflow-y-auto p-0")} side="right">
         {isLoading ? (
           <LoadingSkeleton />
         ) : !patient ? (
@@ -152,7 +153,7 @@ export function PatientCprsPanel({ patientMrn, encounterId, onClose }: PatientCp
                         STATUS_COLORS[activeEncounter.status ?? ""] ?? "bg-slate-100 text-slate-700"
                       )}
                     >
-                      {(activeEncounter.status ?? "—").replace(/_/g, " ")}
+                      {encounterStatusLabel(activeEncounter.status)}
                     </Badge>
                   </div>
                   {activeEncounter.department && (

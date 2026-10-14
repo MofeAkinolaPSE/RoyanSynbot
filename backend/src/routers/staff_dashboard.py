@@ -306,7 +306,7 @@ async def create_task(request: Request, user_id: str, task: dict):
 
 
 @router.put("/staff/{user_id}/tasks/{task_id}")
-async def update_task(request: Request, user_id: str, task_id: str, patch: dict):
+def update_task(request: Request, user_id: str, task_id: str, patch: dict):
     payload = verify_jwt(request)
     sub = payload.get("sub") or payload.get("user_id")
     roles = set(payload.get("roles") or [])
@@ -327,7 +327,7 @@ async def update_task(request: Request, user_id: str, task_id: str, patch: dict)
 
 
 @router.delete("/staff/{user_id}/tasks/{task_id}")
-async def delete_task(request: Request, user_id: str, task_id: str):
+def delete_task(request: Request, user_id: str, task_id: str):
     payload = verify_jwt(request)
     sub = payload.get("sub") or payload.get("user_id")
     roles = set(payload.get("roles") or [])

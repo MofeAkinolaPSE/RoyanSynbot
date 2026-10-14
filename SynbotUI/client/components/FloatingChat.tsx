@@ -77,6 +77,9 @@ const FloatingChat = () => {
     setInput("");
     setIsSending(true);
 
+    // The page the user is on, so Roy can answer "how do I do this?" for this screen.
+    const page = window.location.pathname;
+
     try {
       let token = authClient.getAccessToken();
       if (!token) {
@@ -90,7 +93,7 @@ const FloatingChat = () => {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: trimmed, mode: chatMode }),
+        body: JSON.stringify({ question: trimmed, mode: chatMode, page }),
       });
 
       if (res.status === 401) {
@@ -103,7 +106,7 @@ const FloatingChat = () => {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({ question: trimmed, mode: chatMode }),
+            body: JSON.stringify({ question: trimmed, mode: chatMode, page }),
           });
         }
       }

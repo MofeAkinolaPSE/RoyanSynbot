@@ -9,17 +9,19 @@ import {
   Sun,
   Moon,
   Settings,
+  Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { api } from "@/lib/api-client";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav-items";
-import { canViewByRoles } from "@/lib/nav-access";
+import { canViewByRoles, menuChildren } from "@/lib/nav-access";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useTour } from "@/components/tour/TourProvider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +38,8 @@ type SidebarProps = {
 const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
   const location = useLocation();
   const { roles, isLoading: authLoading, logout } = useAuth();
+  const { startTour, hasTour } = useTour();
+  const tourRole = roles?.[0] ?? "admin";
 
   // Track which collapsible groups are open
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -61,21 +65,26 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  // A link may carry a query (Finance › Scancare Books is /finance/books?company=SCN): match on the path.
+  const isActive = (path: string) => location.pathname === path.split("?")[0];
   const isActiveGroup = (paths: string[]) =>
-    paths.some((p) => location.pathname.startsWith(p));
+    paths.some((p) => location.pathname.startsWith(p.split("?")[0]));
 
   // NAV_ITEMS is the single shared source of truth (also consumed by tour-config.ts).
   // Live queue/lab badge counts are injected here at render time.
-  const navItems: NavItem[] = NAV_ITEMS.map((item) => {
-    if (item.badgeKey === "queue") return { ...item, badge: queueCount > 0 ? String(queueCount) : undefined };
-    if (item.badgeKey === "lab") return { ...item, badge: labCount > 0 ? String(labCount) : undefined };
-    return item;
-  });
+  const countFor = (k?: string) => (k === "queue" ? queueCount : k === "lab" ? labCount : 0);
+  const navItems: NavItem[] = NAV_ITEMS.map((item) =>
+    item.badgeKey ? { ...item, badge: countFor(item.badgeKey) > 0 ? String(countFor(item.badgeKey)) : undefined } : item);
 
   const canView = (allowed?: string[]) => authLoading || canViewByRoles(roles, allowed);
 
-  const visibleNavItems = navItems.filter((item) => canView(item.roles));
+  // A group is visible if the user can see the group itself OR any child that
+  // declares its own roles. Filtering on the parent alone would hide Pharmacy
+  // from quality_assurance, whose only pharmacy page is the QC child.
+  // A folder shows when at least one of its children shows (by access and by menu placement);
+  // a page shows by its own roles.
+  const kidsOf = (item: NavItem) => (authLoading ? item.children ?? [] : menuChildren(roles, item));
+  const visibleNavItems = navItems.filter((item) => (item.children ? kidsOf(item).length > 0 : canView(item.roles)));
 
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -175,7 +184,8 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
                     </CollapsibleTrigger>
                     <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
                       <div className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border/50 pl-3 pb-1">
-                        {item.children!.map((child) => (
+                        {kidsOf(item)
+                          .map((child) => (
                           <Link
                             key={child.href}
                             to={child.href}
@@ -188,7 +198,10 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
                             )}
                           >
                             <span className="h-1 w-1 rounded-full bg-current opacity-50" />
-                            {child.label}
+                            <span className="flex-1">{child.label}</span>
+                            {countFor(child.badgeKey) > 0 && (
+                              <span className="rounded-full bg-orange-500 px-1.5 text-xs font-semibold text-white">{countFor(child.badgeKey)}</span>
+                            )}
                           </Link>
                         ))}
                       </div>
@@ -219,7 +232,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
                   )}
                   {item.badge && !item.aiPulse && (
                     <span className={cn(
-                      "rounded-full px-2 py-0.5 text-[12px] font-semibold",
+                      "rounded-full px-2 py-0.5 text-xs font-semibold",
                       item.badge === "AI"
                         ? "bg-gradient-primary text-primary-foreground"
                         : "bg-orange-500 text-white",
@@ -245,7 +258,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
               <span className="truncate text-sm font-medium leading-tight">
                 Roy
               </span>
-              <span className="truncate text-[13px] capitalize text-sidebar-foreground/50 leading-tight">
+              <span className="truncate text-xs capitalize text-sidebar-foreground/50 leading-tight">
                 {userRole}
               </span>
             </div>
@@ -271,6 +284,12 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
                     Settings
                   </Link>
                 </DropdownMenuItem>
+                {hasTour(tourRole) && (
+                  <DropdownMenuItem onClick={() => startTour(tourRole)}>
+                    <Compass className="mr-2 h-4 w-4" />
+                    Take the tour again
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => setTheme(isDark ? "light" : "dark")}
                 >

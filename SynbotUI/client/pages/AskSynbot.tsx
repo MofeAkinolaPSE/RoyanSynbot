@@ -228,7 +228,7 @@ const AskSynbot = () => {
               {patientContextActive && patientContext.trim() && (
                 <div className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1">
                   <User className="h-3 w-3 text-primary" />
-                  <span className="text-[12px] text-primary flex-1">{patientContext}</span>
+                  <span className="text-xs text-primary flex-1">{patientContext}</span>
                   <button
                     onClick={() => { setPatientContextActive(false); setPatientContext(""); }}
                     className="text-primary/60 hover:text-primary"
@@ -303,7 +303,7 @@ const AskSynbot = () => {
             <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
               {mode === "clinical" ? <Stethoscope className="h-5 w-5 text-primary" /> : <BarChart3 className="h-5 w-5 text-primary" />}
               {mode === "clinical" ? "Clinical Assistant" : "Executive Intelligence"}
-              <Badge variant="outline" className="text-[12px] ml-1">
+              <Badge variant="outline" className="text-xs ml-1">
                 {mode === "clinical" ? "Roy — Clinical" : "Roy — Executive"}
               </Badge>
             </h1>

@@ -53,33 +53,37 @@ def require_executive(request: Request) -> Dict[str, Any]:
 # --- Endpoints ---
 
 @router.get("/hospital-status")
-async def hospital_status(response: Response, user: Dict[str, Any] = Depends(require_clinical)):
+def hospital_status(response: Response, user: Dict[str, Any] = Depends(verify_jwt)):
+    # Counts only (waiting, seen, wait time, per department / hour) - no patient details - so every
+    # signed-in member of staff can see the hospital's pulse. It was limited to clinical roles, which
+    # left the Front Desk's own KPI cards at zero for receptionists.
     """
     Live hospital operational status: patient flow KPIs, queue by department,
     daily clinical stats, and per-hour encounter distribution for the chart.
     Primary data source for the Hospital Command Center dashboard.
     """
     response.headers["Cache-Control"] = "no-store, no-cache"
-    try:
-        flow      = get_patient_flow_kpis()
-        queue     = get_queue_by_department()
-        clinical  = get_daily_clinical_stats()
-        hourly    = get_patient_flow_by_hour()
+    def build():
         return {
             "data": {
-                **flow,
-                "queue_by_department": queue,
-                "clinical_today":      clinical,
-                "flow_by_hour":        hourly,
+                **get_patient_flow_kpis(),
+                "queue_by_department": get_queue_by_department(),
+                "clinical_today":      get_daily_clinical_stats(),
+                "flow_by_hour":        get_patient_flow_by_hour(),
             }
         }
+    try:
+        # Every page's top bar asks for this; five seconds shared across workers keeps it live
+        # while 50 laptops don't each run the four counts.
+        from src.cache import shared_response
+        return shared_response("dashboard:hospital-status", 5, build)
     except Exception as e:
         logging.error(f"Hospital status dashboard error: {e}")
         raise HTTPException(500, "Failed to load hospital status")
 
 
 @router.get("/finance")
-async def dashboard_finance(response: Response, user: Dict[str, Any] = Depends(require_management)):
+def dashboard_finance(response: Response, user: Dict[str, Any] = Depends(require_management)):
     """Finance specific dashboard data."""
     if "finance" not in user.get("roles", []) and "admin" not in user.get("roles", []) and "management" not in user.get("roles", []):
          raise HTTPException(403, "Role not authorized for Finance view")
@@ -91,31 +95,50 @@ async def dashboard_finance(response: Response, user: Dict[str, Any] = Depends(r
         raise HTTPException(500, "Failed to load finance metrics")
 
 @router.get("/inventory")
-async def dashboard_inventory(response: Response, user: Dict[str, Any] = Depends(require_management)):
+def dashboard_inventory(response: Response, user: Dict[str, Any] = Depends(require_management)):
     """Inventory specific dashboard data."""
     response.headers["Cache-Control"] = "no-store, no-cache"
     return {"data": get_inventory_dashboard()}
 
 @router.get("/workforce")
-async def dashboard_workforce(response: Response, user: Dict[str, Any] = Depends(require_management)):
+def dashboard_workforce(response: Response, user: Dict[str, Any] = Depends(require_management)):
     """Workforce specific dashboard data."""
     response.headers["Cache-Control"] = "no-store, no-cache"
     return {"data": get_workforce_dashboard()}
 
 @router.get("/crm")
-async def dashboard_crm(response: Response, user: Dict[str, Any] = Depends(require_management)):
+def dashboard_crm(response: Response, user: Dict[str, Any] = Depends(require_management)):
     """CRM specific dashboard data."""
     response.headers["Cache-Control"] = "no-store, no-cache"
     return {"data": get_crm_stats()}
 
 @router.get("/alerts")
-async def list_alerts(response: Response, user: Dict[str, Any] = Depends(require_management)):
+def list_alerts(response: Response, user: Dict[str, Any] = Depends(require_management)):
     """Active system alerts."""
     response.headers["Cache-Control"] = "no-store, no-cache"
     return {"data": get_active_alerts()}
 
+def require_overview(request: Request) -> Dict[str, Any]:
+    """Executive overview: admin, management and finance (reportGUide.md s11)."""
+    payload = verify_jwt(request)
+    if not {"admin", "management", "finance"} & set(payload.get("roles") or []):
+        raise HTTPException(403, "The executive overview is for management and finance")
+    return payload
+
+
+@router.get("/executive")
+def executive_overview(response: Response, refresh: bool = False, user: Dict[str, Any] = Depends(require_overview)):
+    """The hospital on one page, composed from each module's hub service (services/executive.py).
+    Cached five minutes; ?refresh=true rebuilds it."""
+    from src.cache import shared_response
+    from src.services import executive
+    response.headers["Cache-Control"] = "no-store, no-cache"
+    # one build shared by every worker, not one per worker
+    return shared_response("executive:overview", 300, lambda: executive.overview(refresh=refresh), refresh=refresh)
+
+
 @router.get("/executive-briefing")
-async def executive_briefing(response: Response, user: Dict[str, Any] = Depends(require_executive)):
+def executive_briefing(response: Response, user: Dict[str, Any] = Depends(require_executive)):
     """
     High-value unified report.
     Audited access.

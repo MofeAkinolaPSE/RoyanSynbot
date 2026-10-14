@@ -409,6 +409,65 @@ def build_default_tool_registry() -> ToolRegistry:
         get_bed_status,
     )
 
+    # ── Hospital hub tools (reportGUide.md s13): the same services the pages read ──
+    from . import roy_tools
+
+    registry.register(
+        ToolMetadata(
+            name="getHospitalOverview",
+            description="The hospital now, as on the Executive overview: billing (HMO vs private), revenue, profit and cash in Roy Books, what HMOs owe, patients and beds, pharmacy stock, compliance, staff, and the ranked list of what needs attention.",
+            department="management", source="services.roy_tools.hospital_overview",
+            required_roles={"admin", "management", "finance"}, allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.hospital_overview,
+    )
+    registry.register(
+        ToolMetadata(
+            name="getStockStatus",
+            description="Pharmacy stock from the reorder plan: for a named drug, what is on the shelf, daily use, days of cover, whether to order, open orders, expiry and last supplier; otherwise what needs ordering now.",
+            department="pharmacy", source="services.roy_tools.stock_status",
+            required_roles={"pharmacist", "ops", "finance", "quality_assurance", "management", "admin", "doctor", "nurse"},
+            allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.stock_status,
+    )
+    registry.register(
+        ToolMetadata(
+            name="getPayerAccount",
+            description="An HMO or corporate payer's account from Patient Relations: billing by month, services, what they owe and how late, why they are at risk, recent contacts. Without a name, the payers billed most and owing most.",
+            department="finance", source="services.roy_tools.payer_account",
+            required_roles={"finance", "management", "admin"}, allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.payer_account,
+    )
+    registry.register(
+        ToolMetadata(
+            name="getMyDay",
+            description="The signed-in person's own day from My Workspace: what is due, overdue, requests to answer, work clock, and items for their role.",
+            department="workspace", source="services.roy_tools.my_day",
+            required_roles=set(), allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.my_day,
+    )
+    registry.register(
+        ToolMetadata(
+            name="getHospitalCalendar",
+            description="What is coming up on the hospital calendar (appointments, theatre, audits, servicing, expiries, leave, deliveries, follow-ups) that the person's roles can see.",
+            department="workspace", source="services.roy_tools.hospital_calendar",
+            required_roles=set(), allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.hospital_calendar,
+    )
+    registry.register(
+        ToolMetadata(
+            name="getComplianceStatus",
+            description="The compliance score and what is pulling it down: overdue audits and maintenance, open and serious incidents, HEFAMAA.",
+            department="quality", source="services.roy_tools.compliance_status",
+            required_roles={"quality_assurance", "ops", "management", "admin"}, allowed_modes={"assistant", "executive"},
+        ),
+        roy_tools.compliance_status,
+    )
+
     registry.register(
         ToolMetadata(
             name="runPageDiagnostics",

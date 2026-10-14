@@ -347,7 +347,7 @@ class SingleAgentRequest(BaseModel):
 
 
 @router.get("/list")
-async def api_list_agents(user=Depends(verify_jwt)):
+def api_list_agents(user=Depends(verify_jwt)):
     """List all available agents with their metadata."""
     agents = list_agents()
     return {
@@ -363,7 +363,7 @@ async def api_list_agents(user=Depends(verify_jwt)):
 
 
 @router.post("/execute")
-async def api_execute_agents(payload: AgentExecRequest, request: Request, user=Depends(verify_jwt)):
+def api_execute_agents(payload: AgentExecRequest, request: Request, user=Depends(verify_jwt)):
     """Execute agents based on question routing - runs multiple agents and merges insights."""
     user_ctx = getattr(request.state, "user", {}) or {}
     roles = set(user_ctx.get("roles") or [])
@@ -408,7 +408,7 @@ async def api_execute_agents(payload: AgentExecRequest, request: Request, user=D
 
 
 @router.post("/run/{agent_name}")
-async def api_run_single_agent(agent_name: str, request: Request, user=Depends(verify_jwt)):
+def api_run_single_agent(agent_name: str, request: Request, user=Depends(verify_jwt)):
     """Run a specific agent by name."""
     user_ctx = getattr(request.state, "user", {}) or {}
     roles = set(user_ctx.get("roles") or [])

@@ -86,7 +86,7 @@ class PortalLoginRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/auth")
-async def portal_login(payload: PortalLoginRequest):
+def portal_login(payload: PortalLoginRequest):
     """Authenticate a patient using their MRN and registered phone number."""
     mrn = payload.mrn.strip().upper()
     phone = payload.phone.strip().replace(" ", "").replace("-", "")
@@ -115,7 +115,7 @@ async def portal_login(payload: PortalLoginRequest):
 
 
 @router.get("/me")
-async def portal_me(claims: dict = Depends(portal_jwt)):
+def portal_me(claims: dict = Depends(portal_jwt)):
     """Return the authenticated patient's profile."""
     patient_id = claims["sub"]
     result = db.table(TABLE_PATIENTS).select(
@@ -128,7 +128,7 @@ async def portal_me(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/appointments")
-async def portal_appointments(claims: dict = Depends(portal_jwt)):
+def portal_appointments(claims: dict = Depends(portal_jwt)):
     """Return the patient's appointments (upcoming first)."""
     patient_id = claims["sub"]
     result = (
@@ -143,7 +143,7 @@ async def portal_appointments(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/lab-results")
-async def portal_lab_results(claims: dict = Depends(portal_jwt)):
+def portal_lab_results(claims: dict = Depends(portal_jwt)):
     """Return the patient's resulted lab orders with result values."""
     patient_id = claims["sub"]
     orders = (
@@ -177,7 +177,7 @@ _BILL_COMPONENT_FEES = (
 
 
 @router.get("/bills")
-async def portal_bills(claims: dict = Depends(portal_jwt)):
+def portal_bills(claims: dict = Depends(portal_jwt)):
     """Return the patient's bills with itemised line items where available."""
     patient_id = claims["sub"]
     result = (
@@ -214,7 +214,7 @@ async def portal_bills(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/prescriptions")
-async def portal_prescriptions(claims: dict = Depends(portal_jwt)):
+def portal_prescriptions(claims: dict = Depends(portal_jwt)):
     """Return the patient's prescriptions (active and past)."""
     patient_id = claims["sub"]
     result = (
@@ -229,7 +229,7 @@ async def portal_prescriptions(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/vitals")
-async def portal_vitals(claims: dict = Depends(portal_jwt)):
+def portal_vitals(claims: dict = Depends(portal_jwt)):
     """Return the patient's vitals from the last 30 days."""
     from datetime import timedelta
     patient_id = claims["sub"]
@@ -247,7 +247,7 @@ async def portal_vitals(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/notifications")
-async def portal_notifications(claims: dict = Depends(portal_jwt)):
+def portal_notifications(claims: dict = Depends(portal_jwt)):
     """Return SMS/WhatsApp messages sent to this patient."""
     patient_id = claims["sub"]
     try:
@@ -265,7 +265,7 @@ async def portal_notifications(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/telemedicine")
-async def portal_telemedicine(claims: dict = Depends(portal_jwt)):
+def portal_telemedicine(claims: dict = Depends(portal_jwt)):
     """Return upcoming or active telemedicine sessions for this patient."""
     patient_id = claims["sub"]
     result = (
@@ -281,7 +281,7 @@ async def portal_telemedicine(claims: dict = Depends(portal_jwt)):
 
 
 @router.get("/encounters")
-async def portal_encounters(claims: dict = Depends(portal_jwt)):
+def portal_encounters(claims: dict = Depends(portal_jwt)):
     """Return the patient's clinical encounter history (outpatient & inpatient)."""
     patient_id = claims["sub"]
     result = (

@@ -14,14 +14,25 @@ export default {
   	},
   	extend: {
   		fontSize: {
-  			// Bumped ~1px over Tailwind defaults across the board for legibility
-  			// (clinical UI complaint: small/grey text hard to read). Token-level
-  			// so it applies to every text-xs/sm/base/lg/xl usage app-wide.
-  			xs:   ['0.8125rem', { lineHeight: '1.125rem' }],  // 13px (was 12px)
-  			sm:   ['0.9375rem', { lineHeight: '1.375rem' }],  // 15px (was 14px)
-  			base: ['1.0625rem', { lineHeight: '1.625rem' }],  // 17px (was 16px)
-  			lg:   ['1.1875rem', { lineHeight: '1.75rem'  }],  // 19px (was 18px)
-  			xl:   ['1.3125rem', { lineHeight: '1.875rem' }],  // 21px (was 20px)
+  			// Bumped over Tailwind defaults for legibility. The client's staff
+  			// skew older and reported having to change browser magnification to
+  			// read the app.
+  			//
+  			// The first pass raised these tokens but the complaint persisted,
+  			// because ~320 places hardcoded text-[9px]…text-[13px] and so never
+  			// saw the token at all. Those were swept to text-xs; THAT was the
+  			// substantive fix. This second, smaller bump lifts xs and sm — where
+  			// nearly all UI text lives (~2,400 usages) — by a further 1px.
+  			//
+  			// base/lg/xl are left alone: headings were never the complaint, and
+  			// growing them costs vertical space on dense clinical screens.
+  			// Oct 2026 (go-live): staff read the app zoomed out so whole tables fit on screen; xs/sm went up again
+  			// and table cells lost horizontal padding instead, so pages keep their width.
+  			xs:   ['0.9375rem', { lineHeight: '1.375rem' }],  // 15px (Tailwind: 12px)
+  			sm:   ['1.0625rem', { lineHeight: '1.5625rem'}],  // 17px (Tailwind: 14px)
+  			base: ['1.0625rem', { lineHeight: '1.625rem' }],  // 17px (Tailwind: 16px)
+  			lg:   ['1.1875rem', { lineHeight: '1.75rem'  }],  // 19px (Tailwind: 18px)
+  			xl:   ['1.3125rem', { lineHeight: '1.875rem' }],  // 21px (Tailwind: 20px)
   		},
   		colors: {
   			border: 'hsl(var(--border))',

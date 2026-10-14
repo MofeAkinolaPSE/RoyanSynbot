@@ -192,6 +192,71 @@ HOSPITAL_CLINICAL_CONTEXT = (
     "enterprise_risk_agent (patient safety signals), diagnostics_agent (dashboard page data health). "
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Roy capability context — Phase A/B platform additions (2026-08)
+#
+# LATENCY NOTE: these are module-level string constants, concatenated into the
+# system prompt at request time. They add ZERO database calls, zero round trips
+# and zero I/O — the only cost is prompt tokens, so each block is kept tight
+# and attached ONLY to the personas that need it rather than being dumped into
+# the shared HOSPITAL_CLINICAL_CONTEXT every role pays for.
+#
+# Roy must know these exist or it will tell staff a capability is unavailable
+# when it is actually live — the same "never say you can't" problem the EOS
+# action block below already solves for actions.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Historical data migrated from the legacy Hope system and now queryable.
+# Relevant to every clinical persona: without this Roy assumes the system only
+# holds data created since go-live and will wrongly say history is unavailable.
+MIGRATED_HISTORY_CONTEXT = (
+    "Ten years of legacy clinical history (2016-2025) has been migrated from the previous "
+    "Hope system and is live in the app: 828k lab results, 618k dispensing records, 419k billing "
+    "transactions, 269k encounters, 259k prescriptions, 253k appointments, 203k lab orders, "
+    "183k vitals, 103k clinical notes (73k nursing, 24k SOAP, 6k progress), 57k radiology orders "
+    "of which 42k carry a full report, 47k ICU nursing-flowsheet observations, 11k ward stays, "
+    "9k immunisation records and 9k patient documents. "
+    "When a user asks about a patient's past, assume history EXISTS and can be retrieved — do not "
+    "say the record starts at go-live. Patient documents are an index only: the legacy binaries "
+    "were not carried across, so a document row proves a file exists in the old system but cannot "
+    "be opened here. "
+)
+
+# The rebuilt doctor consultation workflow.
+CLINICAL_DOCUMENTATION_CONTEXT = (
+    "Clinical documentation runs on a structured SOAP composer, not a free-text box. "
+    "Subjective is captured as discrete fields (Chief Complaint, History of Presenting Complaint, "
+    "Review of Systems); Objective separates general from systemic examination; Assessment requires "
+    "at least one STRUCTURED diagnosis chosen from a searchable catalog which supplies the ICD-10 code "
+    "automatically — doctors never type codes; Plan carries narrative plus staged orders. "
+    "Sections unlock strictly in order S->O->A->P: no chief complaint blocks Objective, no diagnosis "
+    "blocks Plan. Every SOAP section has its own template button drawing on 528 migrated templates "
+    "(8,370 phrases, personal templates listed above shared ones), plus 44,405 examination findings "
+    "grouped by organ system and 1,209 smart phrases that expand from a typed trigger. "
+    "Notes are medico-legal: signing locks a note permanently and there is no edit or delete anywhere "
+    "in the system. Corrections are made ONLY as a separate timestamped, attributed addendum, which "
+    "always displays beneath the original. If a user asks to change a signed note, explain the "
+    "addendum route rather than saying it is impossible. "
+    "A nurse's notes are deliberately ungated — the S->O->A->P sequence applies to doctors' SOAP "
+    "consultations only. "
+)
+
+# Catalogs backing the dropdowns, so Roy stops describing free-text entry.
+ORDERING_CATALOG_CONTEXT = (
+    "Ordering is catalog-backed throughout: 12,542 ICD-10 codes and a 198-entry curated diagnosis "
+    "shortlist, 288 laboratory tests, 211 radiology studies, 112 surgical procedures, 18,926 allergens, "
+    "815 formulary drugs, a 396-service tariff/price list, a 38-entry vaccination schedule and 4 order "
+    "sets. The Plan section offers six one-click order types: Medication, Allergy, Immunisation, Lab, "
+    "Radiology and Procedure. Orders are staged with the note and submitted when it is signed — the note "
+    "always saves first, so a failed order never costs the clinician their documentation. "
+)
+
+PHARMACY_PRICING_CONTEXT = (
+    "Per-batch pharmacy pricing is available on each drug: purchase price, cost price, MRP, sale price, "
+    "expiry and stock, with margin computed per batch. This is the only view of true margin — the live "
+    "inventory batch table holds a single unit cost and no retail price. "
+)
+
 # --- Order Status Update Models ---
 class OrderStatusUpdateRequest(BaseModel):
     status: str
@@ -349,6 +414,7 @@ from src.deepseek import DeepSeek
 from src.constants import LLM_PROVIDER, DEEPSEEK_API_KEY
 from src.constants import STAFF_ROLES
 from src.services.roy_context import render_activity_snapshot
+from src.services import roy_guide
 
 import os
 import asyncio
@@ -382,7 +448,53 @@ app = FastAPI()
 # ── Pending email draft store (confirmation-before-send flow) ─────────────────
 # Keyed by user_id (or IP fallback). Draft expires after 10 minutes.
 # Structure: { user_key → {subject, body, to_email, department, original_request, expires_at} }
-_PENDING_EMAIL_DRAFTS: dict = {}
+class _SharedDraftStore:
+    """Roy's email drafts awaiting "yes, send it". Kept in Redis so the confirmation reaches the draft
+    whichever worker process answers it (falls back to this process's memory without Redis)."""
+    _TTL = 1800
+
+    def __init__(self):
+        self._local: dict = {}
+
+    @staticmethod
+    def _r():
+        try:
+            from src.cache import get_redis_client
+            return get_redis_client()
+        except Exception:
+            return None
+
+    def get(self, key, default=None):
+        r = self._r()
+        if r is not None:
+            try:
+                raw = r.get(f"roy:draft:{key}")
+                return json.loads(raw) if raw else default
+            except Exception:
+                pass
+        return self._local.get(key, default)
+
+    def __setitem__(self, key, value):
+        r = self._r()
+        if r is not None:
+            try:
+                r.setex(f"roy:draft:{key}", self._TTL, json.dumps(value, default=str))
+                return
+            except Exception:
+                pass
+        self._local[key] = value
+
+    def __delitem__(self, key):
+        r = self._r()
+        if r is not None:
+            try:
+                r.delete(f"roy:draft:{key}")
+            except Exception:
+                pass
+        self._local.pop(key, None)
+
+
+_PENDING_EMAIL_DRAFTS = _SharedDraftStore()
 _EMAIL_DRAFT_TTL_SECONDS = 600  # 10 minutes
 
 
@@ -492,6 +604,7 @@ from src.routers.internal_reliability import router as internal_reliability_rout
 from src.routers.crm_sales import router as crm_sales_router
 from src.routers.frontdesk import router as frontdesk_router
 from src.routers.finance import router as finance_router
+from src.fin.api import router as fin_router  # Roy Books (/fin): the hospital's finance hub
 from src.routers.reports import router as reports_router
 # --- Phase 4: Hospital routers ---
 from src.routers.patient_registration import router as patient_registration_router
@@ -539,12 +652,25 @@ app.include_router(consent_router)
 app.include_router(fee_schedule_router)
 app.include_router(nursing_router)
 app.include_router(radiology_router)
+from src.routers.department_stores import router as department_stores_router
+app.include_router(department_stores_router)
 app.include_router(theatre_router)
 app.include_router(mch_router)
 app.include_router(notifications_router)
 app.include_router(telemedicine_router)
 app.include_router(quality_safety_router)
 app.include_router(hr_shifts_router)
+# Staff Workspace (every member of staff) and the HR hub built on the same tables -
+# backend/docs/Staff-workspace. hr_hub shares the /hr prefix with hr_shifts; no path overlaps.
+from src.routers.staff_workspace import router as staff_workspace_router
+app.include_router(staff_workspace_router)
+from src.routers.hr_hub import router as hr_hub_router
+app.include_router(hr_hub_router)
+# backend/docs/reportGUide.md: procurement (s6), patient relations (s7), the calendar over
+# records (s10) and reports about one record (s12). New prefix /relations is in deploy/nginx/nginx.conf.
+from src.routers.report_guide import ROUTERS as report_guide_routers
+for _r in report_guide_routers:
+    app.include_router(_r)
 app.include_router(hospital_reports_router)
 app.include_router(reports_router)
 app.include_router(payments_gateway_router)
@@ -553,6 +679,7 @@ app.include_router(clinic_templates_router)
 app.include_router(facility_ops_router)
 app.include_router(portal_router)
 app.include_router(finance_router)
+app.include_router(fin_router)
 app.include_router(billing_router)
 app.include_router(agents_exec_router)
 app.include_router(iot_router)
@@ -599,7 +726,17 @@ app.add_api_route("/orders/{order_id}/status", update_order_status, methods=["PO
 
 
 @app.on_event("startup")
+async def _start_realtime_fanout():
+    """Every worker: receive the other workers' live-update broadcasts (services/realtime.py)."""
+    from src.services.realtime import realtime_hub
+    await realtime_hub.start_fanout()
+
+
+@app.on_event("startup")
 async def _start_weekly_report_scheduler():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         from src.services.scheduler import start_scheduler
         start_scheduler()
@@ -608,7 +745,38 @@ async def _start_weekly_report_scheduler():
 
 
 @app.on_event("startup")
+async def _start_workspace_escalations():
+    """Staff Workspace: fire reminders and escalation chains every 5 minutes. Each step is
+    claimed with a conditional update, so running in several workers never double-notifies."""
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
+    try:
+        import asyncio
+        from src.services.workspace_automation import run_escalations
+
+        async def _work():
+            await asyncio.sleep(30)
+            while True:
+                try:
+                    fired = await asyncio.to_thread(run_escalations)
+                    if any(fired.values()):
+                        from src.services.realtime import realtime_hub
+                        await realtime_hub.broadcast("workspace_updates", {"event": "escalation", "users": []})
+                except Exception:
+                    logging.getLogger(__name__).exception("workspace escalation sweep failed")
+                await asyncio.sleep(300)
+
+        asyncio.get_event_loop().create_task(_work())
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
 async def _start_kpi_watchdog():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     import os
     import asyncio
     if os.getenv("KPI_WATCHDOG_ENABLED", "1") not in ("0", "false", "False"):
@@ -622,6 +790,9 @@ async def _start_kpi_watchdog():
 
 @app.on_event("startup")
 async def _start_workflow_processor():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.workflow.engine import engine
@@ -635,6 +806,9 @@ async def _start_workflow_processor():
 
 @app.on_event("startup")
 async def _start_supplier_intel():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.services.supplier_intel import compute_supplier_metrics
@@ -655,6 +829,9 @@ async def _start_supplier_intel():
 
 @app.on_event("startup")
 async def _start_agent_subscriptions():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.services.agent_subscriptions import start_processor
@@ -667,6 +844,9 @@ async def _start_agent_subscriptions():
 
 @app.on_event("startup")
 async def _start_maintenance_monitor():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.services.maintenance_service import MaintenanceMonitor
@@ -679,6 +859,9 @@ async def _start_maintenance_monitor():
 
 @app.on_event("startup")
 async def _start_digital_twin_engine():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.services.digital_twin_service import DigitalTwinEngine
@@ -691,6 +874,9 @@ async def _start_digital_twin_engine():
 
 @app.on_event("startup")
 async def _start_capability_discovery_engine():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import asyncio
         from src.services.capability_engine import CapabilityDiscoveryEngine
@@ -704,6 +890,9 @@ async def _start_capability_discovery_engine():
 @app.on_event("startup")
 async def _start_crm_and_metrics_agents():
     """Start lightweight CRM and Metrics agents in background threads if available."""
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         import threading
         from src.agents.crm_agents import CRMEventAgent
@@ -743,6 +932,9 @@ async def _start_crm_and_metrics_agents():
 @app.on_event("startup")
 async def _seed_superadmin():
     """Auto-seed superadmin user from env vars if not exists."""
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     import os
     try:
         from src.db import db
@@ -791,6 +983,9 @@ async def _seed_superadmin():
 @app.on_event("startup")
 async def _start_workflow_automation():
     """Start the workflow automation scheduler for low-stock, expiry, and credit risk checks."""
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     try:
         from src.workflow.automation import start_workflow_automation
         await start_workflow_automation()
@@ -1061,9 +1256,17 @@ def _detect_action_intent(question: str) -> str | None:
     wins) so adding new intents only requires updating tool_manifest.py."""
     q = (question or "").lower()
     for keyword, intent_type in _ORDERED_ACTION_KEYWORDS:
-        if keyword in q:
+        # Whole words only: as a plain substring, "ping the" matched inside
+        # "typing the", so "I keep typing the same examination…" fired a WhatsApp send.
+        pattern = _ACTION_KW_RE_CACHE.get(keyword)
+        if pattern is None:
+            pattern = _ACTION_KW_RE_CACHE[keyword] = re.compile(r"\b" + re.escape(keyword) + r"(s|es)?\b")
+        if pattern.search(q):
             return intent_type
     return None
+
+
+_ACTION_KW_RE_CACHE: dict[str, "re.Pattern[str]"] = {}
 
 
 _KW_WORD_BOUNDARY_CACHE: dict[str, "re.Pattern[str]"] = {}
@@ -1115,7 +1318,15 @@ _REPORT_KEYWORDS = {
 
 
 def _classify_query_intent(question: str) -> str:
-    """Return 'report' for explicit report/list requests, else 'conversational'."""
+    """Return 'guide' for how-to/where-is questions about the app, 'report' for
+    explicit report/list requests, else 'conversational'.
+
+    'guide' is checked first: "how do I register a patient?" contains the
+    clinical trigger "patient", and used to be sent down the report path,
+    answered with headings and a pile of agent data, when all it needed was
+    the button to press."""
+    if roy_guide.is_help_question(question):
+        return "guide"
     q = (question or "").lower()
     if any(_kw_in(q, kw) for kw in _REPORT_KEYWORDS):
         return "report"
@@ -1145,6 +1356,9 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             f"[DocRoy] You are assisting {display}{desig_clause}{dept_clause}{specialty_clause}{license_clause} at {BOT_BRAND}. "
             f"Address them as '{display}'. "
             + HOSPITAL_CLINICAL_CONTEXT
+            + MIGRATED_HISTORY_CONTEXT
+            + CLINICAL_DOCUMENTATION_CONTEXT
+            + ORDERING_CATALOG_CONTEXT
             + "Your primary focus is clinical medicine: active patient encounters, differential diagnoses, "
             "treatment plans, lab orders (Routine/Urgent/STAT), radiology requests (X-ray/Ultrasound/CT/MRI/Echo/ECG), "
             "prescriptions (routes: oral/IV/IM/SC/topical; frequencies: OD/BD/TDS/QDS/PRN), "
@@ -1153,7 +1367,7 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             "active lab orders, and vital signs in that order. "
             "Flag critical lab values immediately. Understand triage levels and encounter workflow stages. "
             "Clinical agents you can invoke: patient_flow_agent, lab_turnaround_agent, bed_capacity_agent, clinical_compliance_agent. "
-            "EOS actions available: request_lab_order, write_prescription, discharge_patient, book_appointment, send_email, create_task. "
+            "From chat you can send emails and create tasks. Lab orders, prescriptions, discharge and appointments are done by the doctor in the consultation workspace or on Queue & Flow, so give the steps and never claim you did them. "
             "Do NOT surface HR, payroll, or financial metrics unless explicitly asked."
         )
 
@@ -1164,6 +1378,11 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             f"[NurseRoy] You are assisting {display}{desig_clause}{dept_clause} at {BOT_BRAND}. "
             f"Address them as '{first_name or 'Nurse'}'. "
             + HOSPITAL_CLINICAL_CONTEXT
+            + MIGRATED_HISTORY_CONTEXT
+            + CLINICAL_DOCUMENTATION_CONTEXT
+            + "The Nurse Station carries a patient's full nursing record across every encounter "
+            "(73k migrated nursing notes) plus the ICU observation flowsheet, alongside vitals, "
+            "fluid balance, care plans and MAR. "
             + "Your primary focus is ward and bedside nursing care: bed occupancy per ward, "
             "patient vital signs (Temperature, Pulse, Respiratory Rate, Blood Pressure, SpO2, "
             "GCS, Pain Score 0-10, Blood Glucose), nursing notes, medication administration records (MAR), "
@@ -1172,7 +1391,7 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             "and clinical handover/ward round preparation. "
             "Prioritise patient safety: flag abnormal vitals, overdue medications, and care plan deviations immediately. "
             "Clinical agents available: bed_capacity_agent, patient_flow_agent, lab_turnaround_agent. "
-            "EOS actions available: update_vitals, book_appointment, request_lab_order, send_email, create_task. "
+            "From chat you can send emails and create tasks. Vitals, appointments and lab requests are recorded on their pages, so give the steps and never claim you recorded them. "
             "Do NOT surface financial or HR/payroll data."
         )
 
@@ -1183,13 +1402,18 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             f"[PharmRoy] You are assisting {display}{desig_clause}{dept_clause} at {BOT_BRAND}. "
             f"Address them as '{first_name or 'Pharmacist'}'. "
             + HOSPITAL_CLINICAL_CONTEXT
+            + PHARMACY_PRICING_CONTEXT
+            + "Ten years of dispensing history (618k records) and per-batch purchase pricing are migrated "
+            "and queryable. Note: the legacy system holds NO per-patient allergy history — the 18,926-entry "
+            "allergen catalog exists to power typeahead as staff begin recording allergies, so an empty "
+            "allergy list means 'never recorded', not 'no allergies'. Say so rather than implying the patient is clear. "
             + "Your primary focus is pharmacy operations: prescriptions awaiting dispensing (status: pending→dispensed/partially_dispensed/cancelled/returned), "
             "drug stock levels and replenishment thresholds, dispensing logs, "
             "Drug-Drug Interaction (DDI) checks, allergy contraindication alerts (flag and document override reason), "
             "controlled substance tracking, cold-chain integrity for refrigerated medications, "
             "medication routes (oral/IV/IM/SC/inhaled/sublingual/rectal/topical) and frequencies (OD/BD/TDS/QDS/PRN). "
             "Prioritise patient safety: surface allergy conflicts and DDI flags before any dispensing confirmation. "
-            "EOS actions available: dispense_medication, send_email, create_task. "
+            "From chat you can send emails, create tasks and trigger replenishment. Dispensing is done on Pharmacy > Dispensing, so give the steps and never claim you dispensed. "
             "Do NOT surface clinical encounter notes, HR, or financial data."
         )
 
@@ -1200,6 +1424,12 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             f"[LabRoy] You are assisting {display}{desig_clause}{dept_clause} at {BOT_BRAND}. "
             f"Address them as '{first_name or 'Staff'}'. "
             + HOSPITAL_CLINICAL_CONTEXT
+            + MIGRATED_HISTORY_CONTEXT
+            + "Ordering is catalog-backed: 288 laboratory tests and 211 radiology studies, plus 175 radiology "
+            "report section templates. 42k migrated radiology reports are attached to their orders and visible "
+            "on the patient chart. The live worklist deliberately excludes migrated historical orders so a "
+            "decade of legacy requests never appears as work outstanding — a patient's full imaging history is "
+            "still on their chart. "
             + "Your primary focus is diagnostics: pending lab test orders (urgency: Routine/Urgent/STAT), "
             "sample collection and processing workflow (ordered→sample_collected→processing→resulted→sent_out), "
             "result entry with interpretation (Normal/Abnormal/Critical/Inconclusive), "
@@ -1207,7 +1437,7 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
             "LOINC code referencing, reference range management, TAT (turnaround time) monitoring, "
             "radiology worklist and modality routing (X-ray/Ultrasound/CT/MRI/Echocardiography/ECG/Fluoroscopy). "
             "Flag STAT and critical-value orders as highest priority. Surface TAT breaches proactively. "
-            "EOS actions available: send_email, create_task. "
+            "From chat you can send emails and create tasks. "
             "Do NOT surface financial, HR, or unrelated clinical data."
         )
 
@@ -1219,6 +1449,13 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
         f"{persona_tag} You are assisting {name or 'an administrator'}{desig_clause}{dept_clause} at {BOT_BRAND}. "
         f"Address them as '{first_name or 'Admin'}'. "
         + HOSPITAL_CLINICAL_CONTEXT
+        + MIGRATED_HISTORY_CONTEXT
+        + "The legacy migration is complete: 6.16M rows across 96 tables, every one reachable from the app. "
+        "Finance additionally holds the full legacy billing archive (419k transactions, 334k encounter "
+        "summaries, 51k receipts, 79k journal entries) as a supplement to live billing, not a replacement. "
+        "Anything from the old system without a dedicated screen is preserved in a queryable reference "
+        "archive of 501k rows across 105 source tables. "
+        + CLINICAL_DOCUMENTATION_CONTEXT
         + "You have full operational visibility across all hospital domains: "
         "clinical (patient flow, queue, triage, bed occupancy, discharge rates), "
         "quality & safety (HEFAMAA compliance, incident reports, CAPA, infection control), "
@@ -1227,8 +1464,8 @@ def _build_staff_context_block(staff_profile: dict, roles: set) -> str:
         "When asked about hospital performance, lead with clinical KPIs (patients waiting, avg wait time, bed occupancy, "
         "pending labs, pending prescriptions) before financial metrics. "
         "You can invoke the diagnostics_agent to check whether all dashboard pages are receiving live data. "
-        "EOS actions available: all actions including generate_billing_summary, send_email, create_task, "
-        "generate_report, schedule_meeting, book_appointment, run_diagnostics."
+        "From chat you can send emails and WhatsApp messages, schedule meetings, create tasks, generate "
+        "reports and trigger replenishment. Bills, appointments and diagnostics runs are done on their pages."
     )
 
 
@@ -1238,8 +1475,12 @@ def _build_chat_instruction(
     staff_profile: dict | None = None,
     roles: set | None = None,
     activity_snapshot: dict | None = None,
+    intent: str | None = None,
+    budget: "roy_guide.ResponseBudget | None" = None,
+    has_guide_context: bool = False,
+    unsupported_action: str | None = None,
 ) -> str:
-    intent = _classify_query_intent(question)
+    intent = intent or _classify_query_intent(question)
 
     if mode == "customer":
         return (
@@ -1250,6 +1491,8 @@ def _build_chat_instruction(
             "Reply naturally and briefly — 1-2 sentences unless the user explicitly asks for a list or detailed breakdown. "
             "Use warm, service-oriented language suitable for clients."
         )
+
+    budget = budget or roy_guide.response_budget(question, intent)
 
     # Personalized staff greeting (MD or Admin)
     staff_block = ""
@@ -1269,20 +1512,27 @@ def _build_chat_instruction(
         "(patient safety, clinical workflow, department efficiency, quality of care) before operational or financial terms. "
         "Use ONLY the provided backend context and tool results as source of truth. "
         "Do not invent numbers, trends, or claims not present in the context. "
-        "If a metric is missing, briefly say it is unavailable and suggest the relevant clinical agent to retrieve it. "
+        "If a metric is missing, briefly say it is unavailable and name the page where it can be seen. "
         "Do NOT include customer support copy, ordering instructions, sales CTAs, or contact blocks. "
-        # ── EOS action capabilities (prevents LLM from saying "I can't") ────
-        f"You have FULL built-in ability to execute the following actions via {BOT_BRAND}'s EOS backend: "
-        "sending emails to internal departments, scheduling and managing calendar meetings, "
-        "creating workflow tasks, generating structured reports (clinical, compliance, financial, inventory, executive), "
-        "triggering inventory replenishment, running page data diagnostics, and booking patient appointments. "
-        "When the user asks you to perform any of these actions, CONFIRM that you are executing it and "
-        "report the result back. NEVER say you cannot send emails, cannot access the calendar, "
-        "cannot create tasks, or cannot generate reports — these capabilities are fully operational "
-        f"through {BOT_NAME}'s agent backend. "
+        + roy_guide.ROY_VOICE
+        # What Roy can really execute. This used to claim "FULL built-in ability" for a list
+        # that included booking appointments, which no chat handler does, so Roy confirmed
+        # actions that never happened.
+        + roy_guide.ROY_CAPABILITIES
     )
 
-    if intent == "report":
+    if intent == "guide":
+        return (
+            base
+            + roy_guide.GUIDE_INSTRUCTION
+            + (roy_guide.unsupported_action_instruction(unsupported_action) if unsupported_action else "")
+            + budget.instruction()
+        )
+
+    # "How many patients are waiting?" is routed as a report so the agents fetch the
+    # data, but the answer is a number, not a document: a short budget means the
+    # conversational shape below, never the report template.
+    if intent == "report" and budget.max_words > 120:
         return (
             base
             + "The user is asking for a structured report or list. "
@@ -1294,20 +1544,21 @@ def _build_chat_instruction(
             + "user as a downloadable Word document, so structure it like a real report: a short lead-in "
             + "sentence, then clearly labelled sections. "
             + "Still write like a person who knows the hospital, not a template generator — plain, "
-            + "specific language over generic report-speak."
+            + "specific language over generic report-speak. "
+            + (roy_guide.CONVERSATIONAL_GUIDE_NOTE if has_guide_context else "")
+            + budget.instruction()
         )
 
     # Conversational intent — the default ─────────────────────────────────────
     return (
         base
+        + (roy_guide.CONVERSATIONAL_GUIDE_NOTE if has_guide_context else "")
         + "The user is asking a conversational question, not requesting a report. Answer the way a "
         + "sharp, well-informed colleague would if you stopped them in the hallway — warm, direct, "
         + "and specific to what they actually asked. "
-        + "One to three sentences is normal. Only go longer if the question truly can't be answered "
-        + "any shorter. "
-        + "Plain prose only — no Markdown, no **bold**, no bullet lists, no headings, no numbered "
-        + "steps, no 'Here's what I see' framing. If you want to emphasize something, say it plainly "
-        + "instead of formatting it. "
+        + "Plain prose — no headings, no bullet lists, no 'Here's what I see' framing. The one "
+        + "exception: when you are telling them where to click in the app, short numbered lines and "
+        + "**bold** page or button names are fine. "
         + "If the question is broad or could mean several things ('how are we doing', 'what's going "
         + "on today'), don't dump every metric you have — give a brief, honest read and ask a short "
         + "follow-up question to find out what they actually want to dig into, the way a colleague "
@@ -1315,7 +1566,8 @@ def _build_chat_instruction(
         + "status report nobody asked for. "
         + "You're a member of this hospital's team, not a tool being queried — it's fine to have a "
         + "point of view, flag something worth their attention unprompted, or just say things plainly "
-        + "when the honest answer is short."
+        + "when the honest answer is short. "
+        + budget.instruction()
     )
 
 
@@ -1563,39 +1815,41 @@ def _plan_tools(question: str, mode: str, roles: set[str] | None = None) -> list
         if any(_kw_in(q, k) for k in ["bed", "ward", "occupancy", "inpatient", "admit", "discharge"]):
             plan.append(("getBedStatus", {}))
 
-    if any(_kw_in(q, k) for k in ["inventory", "stock", "availability", "available", "sku"]):
-        skus = _extract_skus(question)
-        if skus:
-            plan.append(("getInventoryBySkus", {"skus": skus}))
-        else:
-            plan.append(("getLatestInventorySnapshot", {"limit": 30}))
+    # ── Hospital hub tools (reportGUide.md s13): the same services the pages read. They replaced the
+    # pharma-era tools (Sage inventory snapshots, ops forecasts, project controls, the AI "health"
+    # summary) that this hospital has no data for, so Roy answered stock and finance questions from nothing.
+    if mode != "customer" and any(_kw_in(q, k) for k in ["my day", "my tasks", "my task", "to do", "todo", "my work", "on my plate",
+                                                          "do i have", "inbox", "requests for me", "my requests"]):
+        plan.append(("getMyDay", {}))
 
-    if any(_kw_in(q, k) for k in ["expiry", "expiring", "expire", "shelf life"]):
-        plan.append(("getExpiringInventory", {}))
+    def _names_a_drug() -> bool:
+        try:
+            from src.services.roy_tools import mentions_drug
+            return mentions_drug(question)
+        except Exception:
+            return False
+    if any(_kw_in(q, k) for k in ["inventory", "stock", "reorder", "order more", "running low", "out of stock", "shelf",
+                                   "expiry", "expiring", "expire", "supplier", "procure", "procurement"]) or (
+            mode != "customer" and _roles and any(_kw_in(q, k) for k in ["how much", "how many", "do we have", "left", "available"])
+            and _names_a_drug()):
+        plan.append(("getStockStatus", {"query": question}))
 
-    if mode != "customer" and any(_kw_in(q, k) for k in ["finance", "cashflow", "ar", "ap", "receivable", "payable", "revenue", "sales", "income"]):
-        plan.append(("getFinancialKpis", {}))
-        if any(_kw_in(q, k) for k in ["trend", "period", "monthly"]):
-            plan.append(("getArTrendSummary", {"periods": 6}))
-        if any(_kw_in(q, k) for k in ["aging", "overdue", "bucket"]):
-            plan.append(("getArAgingBuckets", {}))
+    if mode != "customer" and any(_kw_in(q, k) for k in ["hmo", "hmos", "payer", "insurer", "insurance company", "corporate", "retainership",
+                                                          "claim", "claims", "owe us", "owes us", "debtor", "debtors"]):
+        plan.append(("getPayerAccount", {"query": question}))
 
-    if mode != "customer" and any(_kw_in(q, k) for k in ["ops", "operations", "downtime", "fulfillment", "turnover", "forecast"]):
-        plan.append(("getOpsKpis", {}))
-        if any(_kw_in(q, k) for k in ["forecast", "predict", "projection"]):
-            plan.append(("runStockTurnoverForecast", {"window": 3, "horizon": 3}))
+    if mode != "customer" and any(_kw_in(q, k) for k in ["calendar", "this week", "next week", "upcoming", "coming up", "schedule",
+                                                          "due this", "theatre list", "appointments"]):
+        plan.append(("getHospitalCalendar", {"days": 14 if "next week" in q else 7}))
 
-    if mode != "customer" and any(_kw_in(q, k) for k in ["project", "controls", "scope", "change request", "risk register"]):
-        plan.append(("getProjectControlsRollup", {"project_id": None}))
+    if mode != "customer" and any(_kw_in(q, k) for k in ["compliance", "hefamaa", "audit", "audits", "incident", "incidents",
+                                                          "maintenance", "quality score"]):
+        plan.append(("getComplianceStatus", {}))
 
-    if mode != "customer" and any(_kw_in(q, k) for k in ["risk", "alert", "issue", "threat"]):
-        plan.append(("getRiskSignals", {}))
-
-    if mode != "customer" and any(_kw_in(q, k) for k in ["recommend", "action", "next step", "what should we do", "focus", "quarter", "priority"]):
-        plan.append(("getRecommendations", {}))
-
-    if mode == "executive" or (mode != "customer" and any(_kw_in(q, k) for k in ["executive", "overview", "health", "summary", "brief"])):
-        plan.append(("getExecutiveSummary", {}))
+    if mode == "executive" or (mode != "customer" and any(_kw_in(q, k) for k in [
+            "executive", "overview", "summary", "brief", "how is the hospital", "how are we doing", "finance", "revenue",
+            "profit", "cash", "billing", "billed", "receivable", "attention", "priority", "priorities", "what should we do"])):
+        plan.append(("getHospitalOverview", {}))
 
     # Dedupe while preserving first-seen order; keep orchestration lightweight.
     deduped: list[tuple[str, dict[str, Any]]] = []
@@ -1673,6 +1927,9 @@ def _run_orchestration_plan(
     )
 
     for tool_name, args in plan:
+        if tool_name in ("getMyDay", "getHospitalCalendar"):
+            # personal tools read as the signed-in person, with their roles
+            args = {**args, "user_id": actor_id, "roles": sorted(roles)}
         try:
             out = tool_registry.execute(tool_name, args, roles=roles, mode=mode)
             outputs.append(out)
@@ -3740,6 +3997,9 @@ def _replay_or_busy_response(existing_job: dict, imported_default: str):
 
 @app.on_event("startup")
 async def _start_background_monitors():
+    from src.services.leader import is_leader
+    if not is_leader():   # background work runs in one worker only
+        return
     enabled = os.getenv("ENABLE_EXPIRY_MONITOR", "0") in ("1", "true", "True")
     if not enabled:
         logging.info("Expiry monitor disabled (set ENABLE_EXPIRY_MONITOR=1 to enable).")
@@ -3839,17 +4099,21 @@ def _is_high_impact_change(change_row: dict | None) -> bool:
     )
 
 
-ALLOWED_ROLES = {"admin", "ops", "hr", "sales", "viewer", "finance", "management"}
+# One role catalogue (src/roles.py) for account creation, role changes and the User Access page.
+# This list used to hold only the old corporate roles, so User Access could not create a doctor,
+# nurse or pharmacist login.
+from fastapi.concurrency import run_in_threadpool
+# Imported under its own name: binding it to `_normalize_roles` replaced the /chat helper of
+# that name (a JWT payload -> role set), so every signed-in chat raised "Unknown roles: email,
+# roles, sub" and an anonymous visitor came out as "viewer", i.e. internal assistant mode.
+from src.roles import ALLOWED_ROLES, normalize as _normalize_role_list  # noqa: F401  (ALLOWED_ROLES kept for importers)
 
 
 def normalize_roles(roles: list[str] | None) -> list[str]:
-    values = [r.strip().lower() for r in (roles or []) if isinstance(r, str) and r.strip()]
-    if not values:
-        return ["viewer"]
-    invalid = [r for r in values if r not in ALLOWED_ROLES]
-    if invalid:
-        raise HTTPException(status_code=400, detail=f"Invalid roles: {', '.join(invalid)}")
-    return sorted(set(values))
+    try:
+        return _normalize_role_list(roles)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 class Lead(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
@@ -4118,7 +4382,7 @@ class DemandForecastPredictRequest(BaseModel):
 
 
 @app.get("/ai/tools", response_model=ToolCatalogResponse)
-async def ai_tools_catalog(request: Request, mode: str | None = None):
+def ai_tools_catalog(request: Request, mode: str | None = None):
     rate_limit(request)
     payload: dict[str, Any] = {}
     auth_header = request.headers.get("Authorization", "").strip()
@@ -4227,6 +4491,12 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
 
     roles = _normalize_roles(auth_payload)
     mode = _resolve_chat_mode(question=question, roles=roles, requested_mode=requested_mode)
+    # The page the user is looking at, so "how do I do this?" can be answered for this page.
+    current_page = roy_guide.sanitize_page(data.get("page"))
+    # "How do I generate a bill?" contains the action phrase "generate bill"; without this,
+    # a help question was dispatched as an action (or refused on role) instead of answered.
+    is_help_question = mode != "customer" and roy_guide.is_help_question(question)
+    unsupported_action: str | None = None
     actor_id = (auth_payload or {}).get("sub") or (auth_payload or {}).get("id")
     actor_role = sorted(list(roles))[0] if roles else None
     trace_id = str(uuid.uuid4())
@@ -4324,7 +4594,13 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
                 ).model_dump()
 
         # ── Phase 1: detect action intent and dispatch ────────────────────────
-        _action_type = _detect_action_intent(question)
+        _action_type = None if is_help_question else _detect_action_intent(question)
+        if _action_type and _action_type not in roy_guide.CHAT_EXECUTABLE_ACTIONS:
+            # Detected in the manifest but no chat handler exists (discharge, lab order,
+            # booking, billing summary...). These used to fall through to the LLM, which
+            # had been told it could do them, and it replied as if it had. Answer with
+            # the steps instead.
+            unsupported_action, _action_type = _action_type, None
         if _action_type:
             # Role gate: check if this action requires specific roles
             _action_cfg = _ACTION_INTENTS.get(_action_type, {})
@@ -4441,10 +4717,17 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
     # _is_executive_analytical_question), or a caller-supplied embedding
     # (a signal the caller already wants vector retrieval).
     _intent = _classify_query_intent(question)
+    if mode == "customer" and _intent == "guide":
+        _intent = "conversational"  # the app guide is for staff, not public visitors
+    if unsupported_action:
+        _intent = "guide"
+    # A how-to question that mentions "revenue" or "stock" is about the screen, not the
+    # numbers: it must not trigger the agents or the missing-evidence refusal.
+    _exec_analytical = _intent != "guide" and _is_executive_analytical_question(question=question, mode=mode)
     _needs_deep_context = (
         mode == "customer"
         or _intent == "report"
-        or _is_executive_analytical_question(question=question, mode=mode)
+        or _exec_analytical
         or bool(embedding)
     )
 
@@ -4460,7 +4743,7 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
     else:
         tool_outputs, tool_errors = [], []
 
-    if _is_executive_analytical_question(question=question, mode=mode) and not tool_outputs:
+    if _exec_analytical and not tool_outputs:
         answer = _build_missing_evidence_answer(tool_errors=tool_errors)
         tool_sources = _build_tool_sources(tool_outputs)
         return _normalize_chat_contract(
@@ -4534,6 +4817,19 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         logging.warning("No retrieval/live context found; using verified company profile context only.")
         context = f"{COMPANY_PROFILE_CONTEXT}\n\nUser question: {question}".strip()
 
+    # ── Roy's system guide: where pages, tabs and buttons are ───────────────
+    # Help questions always get it. Other staff questions get it only when they
+    # clearly name a feature, so Roy can mention where something lives without guessing.
+    guide_context = ""
+    if mode != "customer":
+        guide_context = roy_guide.build_guide_context(
+            question, roles, current_page,
+            help_mode=(_intent == "guide"),
+            extra_ids=("roy-capabilities",) if unsupported_action else (),
+        )
+        if guide_context:
+            context = f"{context}\n\n{guide_context}"
+
     # ── Conversation history — inject last 6 turns so LLM remembers prior actions ──
     try:
         _hist_user_id = (auth_payload or {}).get("sub") or (auth_payload or {}).get("id")
@@ -4555,11 +4851,19 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
         # Run off the event loop — this is a blocking `requests.post` under the
         # hood (deepseek.py), and without to_thread it would hold up every
         # other in-flight request on this worker for its full duration.
+        _budget = roy_guide.response_budget(question, _intent)
         answer = await asyncio.to_thread(
             llm_client.generate_response,
             context=context,
             question=question,
-            instruction=_build_chat_instruction(mode=mode, question=question, staff_profile=_staff_profile, roles=roles, activity_snapshot=_activity_snapshot),
+            instruction=_build_chat_instruction(
+                mode=mode, question=question, staff_profile=_staff_profile, roles=roles,
+                activity_snapshot=_activity_snapshot, intent=_intent, budget=_budget,
+                has_guide_context=bool(guide_context), unsupported_action=unsupported_action,
+            ),
+            # Hard backstop for the stated word budget. Reports stay uncapped: they
+            # become Word documents and a cut-off report is worse than a long one.
+            max_tokens=None if (_intent == "report" or mode == "customer") else _budget.max_tokens,
         )
     if not answer:
         answer = (
@@ -4601,7 +4905,7 @@ async def chat(request: Request):  # RAG + LLM answer with disclaimer
 
 
 @app.get("/chat/history")
-async def chat_history(request: Request, limit: int = 30):
+def chat_history(request: Request, limit: int = 30):
     rate_limit(request)
     payload = verify_jwt(request)
     user_id = payload.get("sub") or payload.get("id")
@@ -4612,7 +4916,7 @@ async def chat_history(request: Request, limit: int = 30):
     return {"history": rows, "count": len(rows)}
 
 @app.post("/submit_lead")
-async def submit_lead(lead: Lead):
+def submit_lead(lead: Lead):
     # Public form; consider separate rate limit bucket
     lead_id = store_lead(lead.model_dump(exclude_none=True))
     return {"success": True, "lead_id": lead_id}
@@ -4621,7 +4925,7 @@ async def submit_lead(lead: Lead):
 # ---- New Endpoint Scaffolds -------------------------------------------------
 
 @app.get("/stock")
-async def stock_list(request: Request):
+def stock_list(request: Request):
     rate_limit(request)
     """Return latest inventory snapshot (read-only) via GET."""
     try:
@@ -4633,7 +4937,7 @@ async def stock_list(request: Request):
 
 
 @app.post("/stock")
-async def stock(request: Request, query: StockQuery):
+def stock(request: Request, query: StockQuery):
     rate_limit(request)
     """Return latest inventory snapshot or selected SKUs (read-only)."""
     try:
@@ -4648,7 +4952,7 @@ async def stock(request: Request, query: StockQuery):
 
 
 @app.get("/inventory/expiring")
-async def inventory_expiring(request: Request, thresholds: Optional[str] = None):
+def inventory_expiring(request: Request, thresholds: Optional[str] = None):
     """Return expiring inventory tiers from the latest snapshot batch.
 
     thresholds: comma-separated days (e.g., "90,60,30"). Default [90,60,30].
@@ -4667,7 +4971,7 @@ async def inventory_expiring(request: Request, thresholds: Optional[str] = None)
 
 
 @app.get("/debug/hospital-counts")
-async def debug_hospital_counts(request: Request):
+def debug_hospital_counts(request: Request):
     """Admin-only: return row counts and latest import timestamps for all hospital data tables."""
     require_roles(request, ["admin"])
     tables = [
@@ -4689,7 +4993,7 @@ async def debug_hospital_counts(request: Request):
 
 
 @app.post("/cache/clear")
-async def admin_clear_cache(request: Request):
+def admin_clear_cache(request: Request):
     """Admin-only: flush all in-process TTL cache entries."""
     require_roles(request, ["admin"])
     from src.cache import clear_cache
@@ -4698,7 +5002,7 @@ async def admin_clear_cache(request: Request):
 
 
 @app.get("/analytics/ar_trends")
-async def analytics_ar_trends(request: Request, periods: int = 3):
+def analytics_ar_trends(request: Request, periods: int = 3):
     require_roles(request, ["admin", "finance", "management", "ops"])
     if periods < 1:
         periods = 1
@@ -4717,7 +5021,7 @@ async def analytics_ar_trends(request: Request, periods: int = 3):
 
 
 @app.get("/analytics/kpis")
-async def analytics_kpis(request: Request):
+def analytics_kpis(request: Request):
     require_role(request, "admin")
     try:
         base = kpis()
@@ -4740,7 +5044,7 @@ async def analytics_kpis(request: Request):
 
 
 @app.get("/reports/ar_aging")
-async def reports_ar_aging(request: Request, format: str | None = None):
+def reports_ar_aging(request: Request, format: str | None = None):
     require_role(request, "admin")
     try:
         data = ar_aging_buckets()
@@ -4759,7 +5063,7 @@ async def reports_ar_aging(request: Request, format: str | None = None):
 
 
 @app.get("/reports/ar_aging/customers")
-async def reports_ar_aging_customers(request: Request, bucket: str):
+def reports_ar_aging_customers(request: Request, bucket: str):
     """Detailed AR aging by customer for a given bucket.
 
     Roles: admin only.
@@ -4774,7 +5078,7 @@ async def reports_ar_aging_customers(request: Request, bucket: str):
 
 
 @app.get("/analytics/forecast/ar_balance")
-async def analytics_forecast_ar_balance(request: Request, window: int = 3, horizon: int = 3):
+def analytics_forecast_ar_balance(request: Request, window: int = 3, horizon: int = 3):
     require_role(request, "admin")
     if window < 1:
         window = 1
@@ -4790,7 +5094,7 @@ async def analytics_forecast_ar_balance(request: Request, window: int = 3, horiz
 # ---- Workflow Orchestration -------------------------------------------------
 
 @app.post("/workflow/intent")
-async def workflow_intent(request: Request, intent: IntentRequest):
+def workflow_intent(request: Request, intent: IntentRequest):
     require_role(request, "admin")
     import uuid, datetime
     intent_id = str(uuid.uuid4())
@@ -4820,7 +5124,7 @@ async def workflow_intent(request: Request, intent: IntentRequest):
 
 
 @app.post("/workflow/approve")
-async def workflow_approve(request: Request, approval: ApprovalRequest):
+def workflow_approve(request: Request, approval: ApprovalRequest):
     require_role(request, "admin")
     import datetime
     audit_event(
@@ -4848,14 +5152,14 @@ async def workflow_approve(request: Request, approval: ApprovalRequest):
 
 
 @app.get("/workflow/pending")
-async def workflow_pending(request: Request, limit: int = 50):
+def workflow_pending(request: Request, limit: int = 50):
     require_role(request, "admin")
     rows = list_pending_intents(limit=limit)
     return {"data": rows}
 
 
 @app.post("/controls/projects")
-async def controls_create_project(request: Request, payload: ProjectCreate):
+def controls_create_project(request: Request, payload: ProjectCreate):
     require_roles(request, ["admin", "ops", "management"])
     if payload.status not in PROJECT_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid project status")
@@ -4890,13 +5194,13 @@ async def controls_create_project(request: Request, payload: ProjectCreate):
 
 
 @app.get("/controls/projects")
-async def controls_list_projects(request: Request, limit: int = 50, status: str | None = None):
+def controls_list_projects(request: Request, limit: int = 50, status: str | None = None):
     require_roles(request, ["admin", "ops", "management"])
     return {"data": list_projects(limit=max(1, min(limit, 200)), status=status)}
 
 
 @app.get("/controls/readiness")
-async def controls_readiness(request: Request):
+def controls_readiness(request: Request):
     require_roles(request, ["admin", "ops", "management"])
     checks: dict[str, bool] = {
         "table_royan_patients": False,
@@ -4949,7 +5253,7 @@ async def controls_readiness(request: Request):
 
 
 @app.post("/controls/projects/{project_id}/stage")
-async def controls_update_project_stage(request: Request, project_id: str, payload: ProjectStageUpdateRequest):
+def controls_update_project_stage(request: Request, project_id: str, payload: ProjectStageUpdateRequest):
     require_roles(request, ["admin", "ops", "management"])
 
     current = get_project(project_id)
@@ -5041,7 +5345,7 @@ async def controls_update_project_stage(request: Request, project_id: str, paylo
 
 
 @app.post("/controls/scope")
-async def controls_create_scope_item(request: Request, payload: ScopeItemCreate):
+def controls_create_scope_item(request: Request, payload: ScopeItemCreate):
     require_role(request, "admin")
     if payload.status not in SCOPE_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid scope status")
@@ -5069,13 +5373,13 @@ async def controls_create_scope_item(request: Request, payload: ScopeItemCreate)
 
 
 @app.get("/controls/scope")
-async def controls_list_scope_items(request: Request, project_id: str, limit: int = 100):
+def controls_list_scope_items(request: Request, project_id: str, limit: int = 100):
     require_role(request, "admin")
     return {"data": list_scope_items(project_id=project_id, limit=max(1, min(limit, 500)))}
 
 
 @app.post("/controls/scope/{scope_item_id}/status")
-async def controls_update_scope_status(request: Request, scope_item_id: str, payload: StatusUpdateRequest):
+def controls_update_scope_status(request: Request, scope_item_id: str, payload: StatusUpdateRequest):
     require_role(request, "admin")
     if payload.status not in SCOPE_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid scope status")
@@ -5118,7 +5422,7 @@ async def controls_update_scope_status(request: Request, scope_item_id: str, pay
 
 
 @app.post("/controls/cost")
-async def controls_create_cost_item(request: Request, payload: CostItemCreate):
+def controls_create_cost_item(request: Request, payload: CostItemCreate):
     require_role(request, "admin")
     if payload.amount < 0:
         raise HTTPException(status_code=400, detail="amount must be non-negative")
@@ -5149,13 +5453,13 @@ async def controls_create_cost_item(request: Request, payload: CostItemCreate):
 
 
 @app.get("/controls/cost")
-async def controls_list_cost_items(request: Request, project_id: str, limit: int = 100):
+def controls_list_cost_items(request: Request, project_id: str, limit: int = 100):
     require_role(request, "admin")
     return {"data": list_cost_items(project_id=project_id, limit=max(1, min(limit, 500)))}
 
 
 @app.post("/controls/cost/{cost_item_id}/status")
-async def controls_update_cost_status(request: Request, cost_item_id: str, payload: StatusUpdateRequest):
+def controls_update_cost_status(request: Request, cost_item_id: str, payload: StatusUpdateRequest):
     require_role(request, "admin")
     if payload.status not in COST_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid cost status")
@@ -5198,7 +5502,7 @@ async def controls_update_cost_status(request: Request, cost_item_id: str, paylo
 
 
 @app.post("/controls/risk")
-async def controls_create_risk_item(request: Request, payload: RiskItemCreate):
+def controls_create_risk_item(request: Request, payload: RiskItemCreate):
     require_role(request, "admin")
     if payload.probability < 1 or payload.probability > 5 or payload.impact < 1 or payload.impact > 5:
         raise HTTPException(status_code=400, detail="probability and impact must be between 1 and 5")
@@ -5238,13 +5542,13 @@ async def controls_create_risk_item(request: Request, payload: RiskItemCreate):
 
 
 @app.get("/controls/risk")
-async def controls_list_risk_items(request: Request, project_id: str, limit: int = 100):
+def controls_list_risk_items(request: Request, project_id: str, limit: int = 100):
     require_role(request, "admin")
     return {"data": list_risk_items(project_id=project_id, limit=max(1, min(limit, 500)))}
 
 
 @app.post("/controls/risk/{risk_id}/status")
-async def controls_update_risk_status(request: Request, risk_id: str, payload: StatusUpdateRequest):
+def controls_update_risk_status(request: Request, risk_id: str, payload: StatusUpdateRequest):
     require_role(request, "admin")
     if payload.status not in RISK_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid risk status")
@@ -5313,7 +5617,7 @@ async def controls_update_risk_status(request: Request, risk_id: str, payload: S
 
 
 @app.post("/controls/change")
-async def controls_create_change_request(request: Request, payload: ChangeRequestCreate):
+def controls_create_change_request(request: Request, payload: ChangeRequestCreate):
     require_role(request, "admin")
     if payload.impact_cost is not None and payload.impact_cost < 0:
         raise HTTPException(status_code=400, detail="impact_cost must be non-negative")
@@ -5345,20 +5649,20 @@ async def controls_create_change_request(request: Request, payload: ChangeReques
 
 
 @app.get("/controls/change")
-async def controls_list_change_requests(request: Request, project_id: str, limit: int = 100):
+def controls_list_change_requests(request: Request, project_id: str, limit: int = 100):
     require_role(request, "admin")
     return {"data": list_change_requests(project_id=project_id, limit=max(1, min(limit, 500)))}
 
 
 @app.get("/controls/rollup")
-async def controls_rollup(request: Request, project_id: str | None = None):
+def controls_rollup(request: Request, project_id: str | None = None):
     require_role(request, "admin")
     data = get_controls_rollup(project_id=project_id)
     return {"data": data}
 
 
 @app.get("/controls/audit/export")
-async def controls_audit_export(
+def controls_audit_export(
     request: Request,
     format: str = "json",
     start_at: str | None = None,
@@ -5475,7 +5779,7 @@ async def controls_audit_export(
 
 
 @app.post("/controls/change/{change_id}/decision")
-async def controls_decide_change_request(request: Request, change_id: str, payload: ChangeDecisionRequest):
+def controls_decide_change_request(request: Request, change_id: str, payload: ChangeDecisionRequest):
     require_role(request, "admin")
     if payload.status not in CHANGE_STATUS_ALLOWED:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -5544,7 +5848,7 @@ async def controls_decide_change_request(request: Request, change_id: str, paylo
 
 
 @app.get("/audit/logs")
-async def audit_logs_endpoint(request: Request, limit: int = 50):
+def audit_logs_endpoint(request: Request, limit: int = 50):
     """Expose recent audit logs for workflow/intelligence views."""
     require_role(request, "admin")
     logs = get_audit_logs(limit=limit)
@@ -5554,7 +5858,7 @@ async def audit_logs_endpoint(request: Request, limit: int = 50):
 # ---- Dev Token Issuance (for local/testing only) ----------------------------
 
 @app.post("/auth/dev_token")
-async def auth_dev_token(request: Request, roles: list[str] = ["admin"], email: str = "dev-user@royanhospital.com"):
+def auth_dev_token(request: Request, roles: list[str] = ["admin"], email: str = "dev-user@royanhospital.com"):
     if not DEV_TOKEN_ENABLED:
         raise HTTPException(status_code=403, detail="Dev token issuance disabled")
     # This issues a JWT for local testing of admin endpoints
@@ -5716,7 +6020,7 @@ async def logout(request: Request, response: Response):
 
 
 @app.post("/submit_order")
-async def submit_order(order: SubmitOrder):
+def submit_order(order: SubmitOrder):
     """Validate, persist, and accept an order."""
     source = str(order.source or "direct").strip().lower()
     normalized_source = source.replace("-", "_")
@@ -5754,7 +6058,7 @@ async def submit_order(order: SubmitOrder):
 
 
 @app.get("/track/{tracking_id}", response_model=TrackingResponse)
-async def track_order(tracking_id: str):
+def track_order(tracking_id: str):
     """Return persisted tracking information for an order."""
     row = get_tracking(tracking_id)
     if not row:
@@ -5775,6 +6079,10 @@ class UserCreate(BaseModel):
     roles: list[str] = ["viewer"]
     approval_reason: str | None = None
     attestation_text: str | None = None
+    # optional HR profile details; the profile itself is always created
+    full_name: str | None = Field(None, max_length=200)
+    unit: str | None = Field(None, max_length=120)
+    job_title: str | None = Field(None, max_length=120)
 
 
 class UserPasswordUpdate(BaseModel):
@@ -5791,17 +6099,27 @@ class UserStatusUpdate(BaseModel):
 
 class UserRolesUpdate(BaseModel):
     roles: list[str]
+    reason: str | None = Field(None, max_length=500)
 
 
 @app.get("/users")
 async def list_all_users(request: Request, limit: int = 50):
-    """List users for admin management."""
+    """List users for admin management, with each person's name, team, unit and job title from HR."""
     require_role(request, "admin")
-    return {"users": list_users(limit=limit)}
+    from src.services import user_access
+    return {"users": await run_in_threadpool(user_access.users, min(max(limit, 1), 1000))}
+
+
+@app.get("/users/roles")
+async def user_role_catalog(request: Request):
+    """The roles User Access offers (with what each opens) and the HR units."""
+    require_role(request, "admin")
+    from src.services import user_access
+    return await run_in_threadpool(user_access.catalog)
 
 
 @app.get("/users/directory")
-async def get_user_directory(request: Request):
+def get_user_directory(request: Request):
     """
     Return a lightweight user list for task/project assignment dropdowns.
     Accessible by admin, management, manager, hr, and finance roles.
@@ -5841,6 +6159,12 @@ async def create_new_user(request: Request, payload: UserCreate):
     user_id = create_user(email, hashed, roles)
     if not user_id:
         raise HTTPException(status_code=500, detail="Failed to create user")
+    # Every login has an HR profile from the start, so the person is in HR and on the Team tab at once.
+    from src.services import user_access
+    try:
+        await run_in_threadpool(user_access.attach_profile, str(user_id), payload.full_name, payload.unit, payload.job_title)
+    except Exception as exc:
+        logging.warning("create_new_user: login %s created but HR profile failed: %s", user_id, exc)
 
     audit_event(
         "user_created",
@@ -5863,7 +6187,7 @@ async def create_new_user(request: Request, payload: UserCreate):
 
 
 @app.put("/users/{user_id}/password")
-async def reset_user_password(request: Request, user_id: str, payload: UserPasswordUpdate):
+def reset_user_password(request: Request, user_id: str, payload: UserPasswordUpdate):
     """Reset a user's password."""
     require_role(request, "admin")
     validate_password_strength(payload.password)
@@ -5893,30 +6217,34 @@ async def reset_user_password(request: Request, user_id: str, payload: UserPassw
 
 @app.patch("/users/{user_id}/roles")
 async def set_user_roles(request: Request, user_id: str, payload: UserRolesUpdate):
-    """Update the roles assigned to a user (admin only)."""
+    """Change what a person can open. Admin only, reason required, cannot remove your own admin.
+    Takes effect when their session next refreshes."""
     require_role(request, "admin")
+    from src.services import user_access
     current_sub = request.state.user.get("sub")
-    allowed_roles = set(STAFF_ROLES) | ALLOWED_ROLES
-    roles = [r.strip().lower() for r in payload.roles if r.strip().lower() in allowed_roles]
-    if not roles:
-        raise HTTPException(status_code=422, detail="No valid roles provided")
-    ok = update_user_roles(user_id, roles)
-    if not ok:
-        raise HTTPException(status_code=500, detail="Failed to update roles")
+    try:
+        out = await run_in_threadpool(user_access.set_roles, current_sub, user_id, payload.roles, payload.reason or "")
+    except user_access.AccessError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     audit_event(
         "user_roles_updated",
-        {"admin": current_sub, "target_user_id": user_id, "roles": roles},
+        {"admin": current_sub, "target_user_id": user_id, "target_email": out["email"],
+         "roles_before": out["before"], "roles": out["roles"], "reason": payload.reason},
         actor_id=current_sub,
         action="admin_update_user_roles",
         outcome="success",
+        reason_code="access_change",
         subject_type="user",
         subject_id=user_id,
+        approval_reason=payload.reason,
     )
-    return {"ok": True, "user_id": user_id, "roles": roles}
+    return {"ok": True, "user_id": user_id, "roles": out["roles"]}
 
 
 @app.patch("/users/{user_id}/status")
-async def update_user_status(request: Request, user_id: str, payload: UserStatusUpdate):
+def update_user_status(request: Request, user_id: str, payload: UserStatusUpdate):
     """Activate or deactivate a user."""
     require_role(request, "admin")
     # prevent self-lockout
@@ -5949,7 +6277,7 @@ async def update_user_status(request: Request, user_id: str, payload: UserStatus
 
 
 @app.post("/sage/import", include_in_schema=False)
-async def sage_import_removed():
+def sage_import_removed():
     raise HTTPException(status_code=410, detail="Sage import not available in hospital deployment")
 
 
@@ -6113,12 +6441,12 @@ async def import_inventory(
 
 
 @app.get("/sage/history", include_in_schema=False)
-async def sage_import_history_removed():
+def sage_import_history_removed():
     raise HTTPException(status_code=410, detail="Sage import history not available in hospital deployment")
 
 
 @app.get("/imports/jobs")
-async def import_jobs_history(
+def import_jobs_history(
     request: Request,
     limit: int = 50,
     domain: str | None = None,
@@ -6131,7 +6459,7 @@ async def import_jobs_history(
 
 
 @app.get("/imports/jobs/{job_id}")
-async def import_job_detail(request: Request, job_id: str):
+def import_job_detail(request: Request, job_id: str):
     """Admin view of one import pipeline job record."""
     require_role(request, "admin")
     job = get_import_job(job_id)
@@ -6151,7 +6479,7 @@ async def import_job_detail(request: Request, job_id: str):
 
 
 @app.post("/imports/policy/preview")
-async def import_policy_preview(request: Request, payload: ImportPolicyPreviewRequest):
+def import_policy_preview(request: Request, payload: ImportPolicyPreviewRequest):
     """Admin what-if scoring endpoint for policy calibration before activation."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -6196,7 +6524,7 @@ async def import_policy_preview(request: Request, payload: ImportPolicyPreviewRe
 
 
 @app.post("/imports/policy/activate")
-async def import_policy_activate(request: Request, payload: ImportPolicyActivateRequest):
+def import_policy_activate(request: Request, payload: ImportPolicyActivateRequest):
     """Admin endpoint to promote a controls policy version with signed attestation."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -6265,7 +6593,7 @@ async def import_policy_activate(request: Request, payload: ImportPolicyActivate
 
 
 @app.get("/imports/policy/history")
-async def import_policy_history(request: Request, domain: str, limit: int = 20):
+def import_policy_history(request: Request, domain: str, limit: int = 20):
     """Admin endpoint to review policy version history for a domain."""
     require_role(request, "admin")
     normalized_domain = (domain or "").strip().lower()
@@ -6276,7 +6604,7 @@ async def import_policy_history(request: Request, domain: str, limit: int = 20):
 
 
 @app.post("/imports/policy/rollback")
-async def import_policy_rollback(request: Request, payload: ImportPolicyRollbackRequest):
+def import_policy_rollback(request: Request, payload: ImportPolicyRollbackRequest):
     """Admin endpoint to rollback active controls policy to a previous version with signed approval."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -6352,7 +6680,7 @@ async def import_policy_rollback(request: Request, payload: ImportPolicyRollback
 
 
 @app.get("/ml/features/export")
-async def ml_features_export(
+def ml_features_export(
     request: Request,
     domain: str = "sage",
     format: str = "json",
@@ -6442,7 +6770,7 @@ async def ml_features_export(
 
 
 @app.get("/ml/features/drift/summary")
-async def ml_features_drift_summary(
+def ml_features_drift_summary(
     request: Request,
     domain: str = "sage",
     row_limit: int = 50000,
@@ -6547,7 +6875,7 @@ async def ml_features_drift_summary(
 
 
 @app.get("/ml/features/drift/history")
-async def ml_features_drift_history(
+def ml_features_drift_history(
     request: Request,
     domain: str = "sage",
     limit: int | None = None,
@@ -6619,7 +6947,7 @@ async def ml_features_drift_history(
 
 
 @app.post("/ml/features/drift/acknowledge")
-async def ml_features_drift_acknowledge(request: Request, payload: DriftAcknowledgeRequest):
+def ml_features_drift_acknowledge(request: Request, payload: DriftAcknowledgeRequest):
     """Admin drift triage workflow with owner/status/remediation evidence."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -6709,7 +7037,7 @@ async def ml_features_drift_acknowledge(request: Request, payload: DriftAcknowle
 
 
 @app.get("/ml/features/drift/remediation/export")
-async def ml_features_drift_remediation_export(
+def ml_features_drift_remediation_export(
     request: Request,
     domain: str = "sage",
     format: str = "json",
@@ -6833,7 +7161,7 @@ async def ml_features_drift_remediation_export(
 
 
 @app.get("/ml/features/drift/scorecard")
-async def ml_features_drift_scorecard(
+def ml_features_drift_scorecard(
     request: Request,
     domain: str = "sage",
     limit: int = 50,
@@ -6888,7 +7216,7 @@ async def ml_features_drift_scorecard(
 
 
 @app.get("/ml/features/drift/escalations")
-async def ml_features_drift_escalations(
+def ml_features_drift_escalations(
     request: Request,
     domain: str = "sage",
     limit: int = 50,
@@ -6943,7 +7271,7 @@ async def ml_features_drift_escalations(
 
 
 @app.post("/ml/features/drift/reminders/preview")
-async def ml_features_drift_reminders_preview(request: Request, payload: DriftReminderPreviewRequest):
+def ml_features_drift_reminders_preview(request: Request, payload: DriftReminderPreviewRequest):
     """Admin preview hook for reminder scheduling on unresolved drift issues."""
     require_role(request, "admin")
     normalized_domain = (payload.domain or "").strip().lower()
@@ -6998,7 +7326,7 @@ async def ml_features_drift_reminders_preview(request: Request, payload: DriftRe
 
 
 @app.post("/ml/models/demand-forecast/train")
-async def ml_train_demand_forecast_model(request: Request, payload: DemandForecastTrainRequest):
+def ml_train_demand_forecast_model(request: Request, payload: DemandForecastTrainRequest):
     """Train and register a demand forecast model manifest (registry-lite)."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -7081,7 +7409,7 @@ async def ml_train_demand_forecast_model(request: Request, payload: DemandForeca
 
 
 @app.post("/ml/models/demand-forecast/predict")
-async def ml_predict_demand_forecast(request: Request, payload: DemandForecastPredictRequest):
+def ml_predict_demand_forecast(request: Request, payload: DemandForecastPredictRequest):
     """Run demand forecast inference from latest (or selected) registered model manifest."""
     require_role(request, "admin")
     domain = (payload.domain or "").strip().lower()
@@ -7155,7 +7483,7 @@ async def ml_predict_demand_forecast(request: Request, payload: DemandForecastPr
 
 
 @app.get("/ml/models/demand-forecast/manifests")
-async def ml_list_demand_forecast_manifests(request: Request, domain: str = "ops", limit: int = 20):
+def ml_list_demand_forecast_manifests(request: Request, domain: str = "ops", limit: int = 20):
     """List registered demand forecast model manifests (registry-lite)."""
     require_role(request, "admin")
     normalized_domain = (domain or "").strip().lower()
@@ -7232,7 +7560,7 @@ async def hr_import(
 
 
 @app.get("/hr/analytics/summary")
-async def hr_analytics_summary(request: Request, periods: int = 3):
+def hr_analytics_summary(request: Request, periods: int = 3):
     require_roles(request, ["hr", "admin", "management"])
     res = payroll_and_absence_summary(periods=periods)
     abs_trend = res.get("absenteeism_trend", [])
@@ -7307,7 +7635,7 @@ async def ops_import(
 
 
 @app.get("/ops/kpis")
-async def ops_kpis_endpoint(request: Request):
+def ops_kpis_endpoint(request: Request):
     require_roles(request, ["ops", "admin", "management"])
     res = ops_kpis()
     series = stock_turnover_series(periods=6).get("series", [])
@@ -7324,7 +7652,7 @@ async def ops_kpis_endpoint(request: Request):
 
 
 @app.get("/intelligence/executive_summary")
-async def intelligence_executive_summary(request: Request):
+def intelligence_executive_summary(request: Request):
     """Executive business health summary.
 
     Roles: admin only.
@@ -7343,7 +7671,7 @@ async def intelligence_executive_summary(request: Request):
 
 
 @app.get("/intelligence/risk_signals")
-async def intelligence_risk_signals(request: Request):
+def intelligence_risk_signals(request: Request):
     """Unified risk signals across Finance, CRM, Inventory, Ops, and HR.
 
     Roles: admin only.
@@ -7359,7 +7687,7 @@ async def intelligence_risk_signals(request: Request):
 
 
 @app.get("/intelligence/recommendations")
-async def intelligence_recommendations(request: Request):
+def intelligence_recommendations(request: Request):
     """Explainable, rule-based recommendations.
 
     Roles: admin only.
@@ -7373,7 +7701,7 @@ async def intelligence_recommendations(request: Request):
 
 
 @app.get("/intelligence/anomalies")
-async def intelligence_anomalies(request: Request):
+def intelligence_anomalies(request: Request):
     """Optional lightweight anomaly detection (z-score based)."""
     require_roles(request, ["admin", "management", "finance", "ops"])
     try:
@@ -7384,7 +7712,7 @@ async def intelligence_anomalies(request: Request):
 
 
 @app.get("/ops/forecast/stock_turnover")
-async def ops_forecast_stock_turnover(request: Request, window: int = 3, horizon: int = 3):
+def ops_forecast_stock_turnover(request: Request, window: int = 3, horizon: int = 3):
     require_roles(request, ["ops", "admin"])
     res = forecast_stock_turnover(window=window, horizon=horizon)
     audit_event("ops_forecast_stock_turnover", {"window": window, "horizon": horizon, "user": getattr(request.state, "user", None)})
@@ -7448,7 +7776,7 @@ async def crm_import(
 
 
 @app.get("/crm/risk_scores")
-async def crm_risk_scores_endpoint(request: Request):
+def crm_risk_scores_endpoint(request: Request):
     require_roles(request, ["sales", "admin"])
     res = crm_risk_scores()
     audit_event("crm_risk_scores", {"user": getattr(request.state, "user", None)})
@@ -7456,7 +7784,7 @@ async def crm_risk_scores_endpoint(request: Request):
 
 
 @app.get("/admin/leads-to-orders")
-async def leads_to_orders(request: Request, days: int = 30):
+def leads_to_orders(request: Request, days: int = 30):
     require_role(request, "admin")
     from src.db_helpers import get_lead_order_conversion
     return {"data": get_lead_order_conversion(days=days)}
@@ -7468,7 +7796,7 @@ if __name__ == "__main__":
 
 
 @app.get("/admin/leads")
-async def admin_leads(request: Request, limit: int = 50, offset: int = 0):
+def admin_leads(request: Request, limit: int = 50, offset: int = 0):
     """Admin endpoint: return recent leads with pagination (admin only)."""
     require_role(request, "admin")
     from src.db import db, audit_event

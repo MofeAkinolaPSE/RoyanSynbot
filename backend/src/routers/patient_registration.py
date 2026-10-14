@@ -384,7 +384,7 @@ def _check_duplicates(first_name: str, last_name: str, dob: Optional[str], phone
 
 
 @router.post("/register", status_code=201)
-async def register_patient(
+def register_patient(
     payload: PatientCreate,
     force: bool = Query(False, description="Skip duplicate check and register anyway"),
     user=Depends(verify_jwt),
@@ -442,15 +442,47 @@ async def register_patient(
     return {"ok": True, "mrn": mrn, "patient": _patient_card(patient)}
 
 
+@router.get("/by-id/{patient_id}")
+def get_patient_by_id(patient_id: int, user=Depends(verify_jwt)):
+    """Identity for a numeric patient id.
+
+    Everything patient-facing is keyed by MRN, but billing, encounters and the
+    ledger all carry the numeric id. Without this, a page holding an id could
+    only show the id -- which is how patient billing came to read
+    "Showing bills for Patient ID 94398" to a cashier who needs a name.
+
+    Deliberately identity only. A fuller record has its own endpoint; this is
+    for putting a name on a screen that already has the id.
+    """
+    try:
+        rows = db.table(TABLE_PATIENTS).select(
+            "id,mrn,first_name,last_name,gender,date_of_birth,phone,patient_type"
+        ).eq("id", patient_id).limit(1).execute().data
+    except Exception as exc:
+        logger.warning("Patient id lookup failed for %s: %s", patient_id, exc)
+        rows = []
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+
+    p = rows[0]
+    p["full_name"] = " ".join(
+        x for x in [(p.get("first_name") or "").strip(), (p.get("last_name") or "").strip()] if x
+    ) or None
+    return {"patient": p}
+
+
 @router.get("/search")
-async def search_patients(
+def search_patients(
     q: Optional[str] = Query(None, description="Name, phone, or HMO ID fragment"),
     phone: Optional[str] = Query(None),
     hmo_id: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("name", pattern="^(name|recent)$", description="name: A-Z as the names show; recent: newest registered first"),
     user=Depends(verify_jwt),
 ):
-    """Search patients by MRN, name fragment, phone, or HMO ID."""
+    """Search patients by MRN, name fragment, phone, or HMO ID. Lists read A-Z (first name, then surname) unless
+    `sort=recent`."""
     if phone:
         result = db.table(TABLE_PATIENTS).select("*").eq("phone", phone.strip()).limit(limit).execute()
         rows = result.data or []
@@ -459,16 +491,24 @@ async def search_patients(
         rows = result.data or []
     elif q:
         rows = _search_patients_by_term(q, limit)
-    else:
-        result = db.table(TABLE_PATIENTS).select("*").order("registered_at", desc=True).limit(limit).execute()
+    elif sort == "recent":
+        result = db.table(TABLE_PATIENTS).select("*").order("registered_at", desc=True).range(offset, offset + limit - 1).execute()
         rows = result.data or []
+    else:
+        from src.fin.db import q as _q, tx as _tx
+        with _tx() as conn:   # A-Z by the name as shown; nameless "Unknown" records last
+            rows = _q(conn, """SELECT * FROM royan_patients
+                               ORDER BY (COALESCE(NULLIF(trim(first_name), ''), 'Unknown') = 'Unknown'),
+                                        upper(first_name), upper(last_name), id
+                               LIMIT %s OFFSET %s""", (limit, offset))
+    # a name / MRN search keeps best-match order (exact match first); only the plain list reads A-Z
 
     patients = _batch_patient_cards(rows)
     return {"patients": patients, "count": len(patients)}
 
 
 @router.get("/{mrn}/profile")
-async def get_patient_profile(mrn: str, user=Depends(verify_jwt)):
+def get_patient_profile(mrn: str, user=Depends(verify_jwt)):
     patient = _fetch_patient_by_mrn(mrn)
     audit_event(
         "patient_profile_viewed",
@@ -481,9 +521,21 @@ async def get_patient_profile(mrn: str, user=Depends(verify_jwt)):
     # per patient, invalidated by invalidate_patient_context() on writes.
     from src.services.patient_context import build_patient_context
     card = _patient_card(patient)
-    context = build_patient_context(patient["id"])
+    context = dict(build_patient_context(patient["id"]))
+
+    # build_patient_context() returns an "insurance" SECTION — a LIST of
+    # royan_patient_insurance rows. Spreading it raw used to clobber the
+    # computed insurance DICT that _patient_card() derives, and because an
+    # empty list is truthy in JS, `data.insurance` always won over
+    # `patient.insurance` in the frontend (PatientProfile.tsx:284,
+    # PatientCprsPanel.tsx:53). Net effect: HMO status rendered as permanently
+    # inactive and plan_name / membership_id never appeared for ANY patient.
+    # Renamed on the way out so both shapes survive under distinct keys.
+    context["insurance_records"] = context.pop("insurance", [])
+
     return {
         "patient": card,
+        "insurance": card.get("insurance"),
         "insurance_summary": card.get("insurance"),
         "active_encounter": card.get("current_encounter"),
         "last_encounter": card.get("last_encounter"),
@@ -492,7 +544,7 @@ async def get_patient_profile(mrn: str, user=Depends(verify_jwt)):
 
 
 @router.get("/{mrn}/relationship-tree")
-async def get_patient_relationship_tree_endpoint(mrn: str, user=Depends(verify_jwt)):
+def get_patient_relationship_tree_endpoint(mrn: str, user=Depends(verify_jwt)):
     """Counts of every FK-linked record type for one patient — powers the
     Clinical Data Explorer's graph view. Discovered from the live FK graph."""
     patient = _fetch_patient_by_mrn(mrn)
@@ -504,14 +556,14 @@ async def get_patient_relationship_tree_endpoint(mrn: str, user=Depends(verify_j
 
 
 @router.get("/{mrn}")
-async def get_patient(mrn: str, user=Depends(verify_jwt)):
+def get_patient(mrn: str, user=Depends(verify_jwt)):
     """Fetch a patient record by MRN."""
     patient = _fetch_patient_by_mrn(mrn)
     return _patient_card(patient)
 
 
 @router.patch("/{mrn}")
-async def update_patient(mrn: str, payload: PatientUpdate, user=Depends(verify_jwt)):
+def update_patient(mrn: str, payload: PatientUpdate, user=Depends(verify_jwt)):
     """Update mutable patient demographics.
 
     Uses exclude_unset (not exclude_none) so a field can be explicitly

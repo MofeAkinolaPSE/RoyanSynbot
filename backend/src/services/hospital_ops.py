@@ -55,11 +55,20 @@ def get_patient_flow_kpis(client: DBClient = db) -> Dict[str, Any]:
     Only counts native system encounters (external_source IS NULL) — excludes Hope imports.
 
     Returns:
-        patients_waiting        — active encounters in patient_registered / triaged
-        active_consultations    — encounters currently in 'consulting' state
-        patients_seen_today     — encounters discharged today
+        patients_waiting        — on the queue before the doctor (registered, waiting for vitals, ready for doctor)
+        active_consultations    — with the doctor now
+        in_services             — at lab / Scancare / pharmacy / cashier, or waiting for results
+        on_queue                — every visit not yet discharged (= Queue & Flow's main list)
+        carried_over            — of those, visits that started before today
+        patients_seen_today     — discharged today
         avg_wait_minutes        — mean minutes from triage_at delta (today)
         total_encounters_today  — all native encounters opened today
+
+    Both patients_waiting and active_consultations are scoped to today. They
+    previously counted every non-discharged encounter with no date filter at
+    all, so the figure accumulated indefinitely as encounters were left open —
+    and it drives the executive briefing's "Requires Attention" trip (>20) and
+    its "Patient Flow" focus area (>10), so the drift propagated.
     """
     today = _today_iso()
     result = {
@@ -72,31 +81,32 @@ def get_patient_flow_kpis(client: DBClient = db) -> Dict[str, Any]:
     conn = db.pool.getconn()
     try:
         cur = conn.cursor()
+        # The same patients Queue & Flow shows: every native visit not yet discharged, whatever day it started
+        # (a patient checked in yesterday and still waiting for results is on today's queue). "Today" figures use
+        # the Lagos calendar day. Visits are now discharged through the queue, so open visits no longer pile up.
         cur.execute("""
+            WITH v AS (SELECT status, created_at, discharge_at,
+                              (created_at AT TIME ZONE 'Africa/Lagos')::date AS day_in,
+                              (discharge_at AT TIME ZONE 'Africa/Lagos')::date AS day_out
+                       FROM public.royan_encounters WHERE external_source IS NULL),
+                 t AS (SELECT (now() AT TIME ZONE 'Africa/Lagos')::date AS d)
             SELECT
-                COUNT(*) FILTER (WHERE status NOT IN ('discharged', 'billing_pending')
-                                       AND external_source IS NULL),
-                COUNT(*) FILTER (WHERE status = 'consulting'
-                                       AND external_source IS NULL),
-                COUNT(*) FILTER (WHERE status = 'discharged'
-                                       AND external_source IS NULL
-                                       AND updated_at::date = %s::date),
-                COUNT(*) FILTER (WHERE external_source IS NULL
-                                       AND created_at::date = %s::date)
-            FROM public.royan_encounters
-        """, (today, today))
+                COUNT(*) FILTER (WHERE status IN ('patient_registered','triaged','nurse_assessment','called')),
+                COUNT(*) FILTER (WHERE status = 'consulting'),
+                COUNT(*) FILTER (WHERE status = 'discharged' AND day_out = t.d),
+                COUNT(*) FILTER (WHERE day_in = t.d),
+                COUNT(*) FILTER (WHERE status IN ('lab_ordered','awaiting_results','pharmacy_dispensing','billing_pending')),
+                COUNT(*) FILTER (WHERE status <> 'discharged'),
+                COUNT(*) FILTER (WHERE status <> 'discharged' AND day_in < t.d)
+            FROM v, t
+        """)
         cur2 = conn.cursor()
         cur2.execute("""
-            SELECT ROUND(
-                EXTRACT(EPOCH FROM AVG(
-                    CASE WHEN triage_at IS NOT NULL AND created_at IS NOT NULL
-                         THEN triage_at - created_at END
-                )) / 60.0, 1
-            )
+            SELECT ROUND(EXTRACT(EPOCH FROM AVG(triage_at - created_at)) / 60.0, 1)
             FROM public.royan_encounters
-            WHERE external_source IS NULL
-              AND created_at::date = %s::date
-        """, (today,))
+            WHERE external_source IS NULL AND triage_at IS NOT NULL
+              AND (created_at AT TIME ZONE 'Africa/Lagos')::date = (now() AT TIME ZONE 'Africa/Lagos')::date
+        """)
         row = cur.fetchone()
         row2 = cur2.fetchone()
         if row:
@@ -104,6 +114,9 @@ def get_patient_flow_kpis(client: DBClient = db) -> Dict[str, Any]:
             result["active_consultations"]   = int(row[1] or 0)
             result["patients_seen_today"]    = int(row[2] or 0)
             result["total_encounters_today"] = int(row[3] or 0)
+            result["in_services"]            = int(row[4] or 0)
+            result["on_queue"]               = int(row[5] or 0)
+            result["carried_over"]           = int(row[6] or 0)
         if row2:
             result["avg_wait_minutes"]       = float(row2[0] or 0.0)
     except Exception as exc:
@@ -134,8 +147,9 @@ def get_queue_by_department(client: DBClient = db) -> List[Dict[str, Any]]:
         cur.execute("""
             SELECT
                 department,
-                COUNT(*) FILTER (WHERE status IN ('patient_registered', 'triaged')) AS waiting,
-                COUNT(*) FILTER (WHERE status = 'consulting')                        AS consulting
+                COUNT(*) FILTER (WHERE status IN ('patient_registered', 'triaged', 'nurse_assessment', 'called')) AS waiting,
+                COUNT(*) FILTER (WHERE status = 'consulting')                        AS consulting,
+                COUNT(*) FILTER (WHERE status IN ('lab_ordered','awaiting_results','pharmacy_dispensing','billing_pending')) AS in_services
             FROM public.royan_encounters
             WHERE status != 'discharged'
               AND department IS NOT NULL
@@ -151,7 +165,7 @@ def get_queue_by_department(client: DBClient = db) -> List[Dict[str, Any]]:
         db.pool.putconn(conn)
 
     return [
-        {"department": row[0], "waiting": int(row[1] or 0), "consulting": int(row[2] or 0)}
+        {"department": row[0], "waiting": int(row[1] or 0), "consulting": int(row[2] or 0), "in_services": int(row[3] or 0)}
         for row in rows
     ]
 

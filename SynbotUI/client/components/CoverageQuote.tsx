@@ -14,7 +14,14 @@ export interface CoverageQuoteProps {
 }
 
 interface QuoteData {
-  service: { name: string; category: string; base_price: number };
+  service: {
+    name: string;
+    category: string;
+    base_price: number;
+    /** Which price the quote used — see the footer note below. */
+    price_basis?: "explicit" | "payer_rate" | "list_price";
+    unit_price?: number;
+  };
   insurance: { active: boolean; hmo_name?: string; plan_name?: string };
   gross_amount: number;
   covered_amount: number;
@@ -86,12 +93,14 @@ export function CoverageQuote({
   }
 
   const noInsurance = data.warnings.includes("no_active_insurance");
-  const noRule = data.warnings.includes("no_matching_coverage_rule");
+  // No rule but HMO pays in full by default (Royan's practice): show it as covered, not as a warning
+  const noRule = data.warnings.includes("no_matching_coverage_rule") && !data.warnings.includes("hmo_default_full_cover");
 
   const coverageLabel =
     data.coverage_type === "percent" ? `${data.coverage_value}% covered` :
     data.coverage_type === "fixed"   ? `${naira(data.coverage_value)} fixed` :
     data.coverage_type === "capitation" ? "100% Capitation" :
+    data.coverage_type === "default_full" ? "HMO pays in full (confirm eligibility on the HMO's platform)" :
     "Not covered";
 
   if (noInsurance) {
@@ -140,11 +149,11 @@ export function CoverageQuote({
       {/* HMO / Patient split */}
       <div className="grid grid-cols-2 divide-x divide-border/50 border-t border-border/50">
         <div className="px-3 py-2 text-center">
-          <p className="text-[12px] uppercase tracking-wide text-muted-foreground">HMO Pays</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">HMO Pays</p>
           <p className="font-semibold text-green-700 dark:text-green-400">{naira(data.covered_amount)}</p>
         </div>
         <div className="px-3 py-2 text-center">
-          <p className="text-[12px] uppercase tracking-wide text-muted-foreground">Patient Pays</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Patient Pays</p>
           <p className={cn("font-semibold", data.patient_amount > 0 ? "text-foreground" : "text-green-700 dark:text-green-400")}>
             {naira(data.patient_amount)}
           </p>
@@ -162,6 +171,23 @@ export function CoverageQuote({
       {data.limit_exceeded && !data.requires_approval && (
         <div className="border-t border-yellow-500/30 px-3 py-2 text-yellow-700 dark:text-yellow-300">
           Coverage limit applied — patient co-pay reflects the cap
+        </div>
+      )}
+
+      {/* Which price this was calculated from. Worth stating: this HMO may have
+          a negotiated rate that differs from the catalogue list price, and a
+          service with no price at all quotes zero — which looks like free
+          rather than like missing data. */}
+      {data.service.price_basis === "payer_rate" && (
+        <div className="border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
+          Priced at this HMO&apos;s negotiated rate
+          {data.service.unit_price != null ? ` (${naira(data.service.unit_price)})` : ""}
+        </div>
+      )}
+      {data.service.price_basis === "list_price" && !data.gross_amount && (
+        <div className="border-t border-amber-500/30 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+          No price on file for this service, so this quote is ₦0 — check the service
+          catalogue before billing.
         </div>
       )}
     </div>

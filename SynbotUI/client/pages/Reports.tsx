@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motionTransitions } from "@/lib/motion";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -10,7 +11,7 @@ import {
   DollarSign,
   TrendingUp,
   Building2,
-  RefreshCw,
+  RefreshCw, ShieldCheck
 } from "lucide-react";
 import {
   Card,
@@ -30,21 +31,16 @@ import {
 } from "@/components/ui/select";
 import { AlertBanner } from "@/components/AlertBanner";
 import { api } from "@/lib/api-client";
+import { RevenueSplitTab } from "@/components/billing/RevenueSplitTab";
 
-const motionTransitions = {
-  fadeInUp: {
-    initial: { opacity: 0, y: 18 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.35, ease: "easeOut" },
-  },
-};
 
-type Tab = "disease" | "hmis" | "financial" | "demographics" | "beds" | "nhia";
+type Tab = "disease" | "hmis" | "financial" | "demographics" | "beds" | "nhia" | "payer";
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: "disease",      label: "Disease Burden",     icon: Activity },
   { key: "hmis",         label: "HMIS",               icon: BarChart3 },
   { key: "financial",    label: "Financial",           icon: DollarSign },
+  { key: "payer",        label: "HMO vs Private",      icon: ShieldCheck },
   { key: "demographics", label: "Demographics",        icon: Users },
   { key: "beds",         label: "Bed Occupancy",       icon: BedDouble },
   { key: "nhia",         label: "NHIA Export",         icon: FileDown },
@@ -79,7 +75,7 @@ function KpiCard({
         <div>
           <div className="text-2xl font-bold">{value}</div>
           <div className="text-xs text-muted-foreground">{label}</div>
-          {sub && <div className="text-[13px] text-muted-foreground/70">{sub}</div>}
+          {sub && <div className="text-xs text-muted-foreground/70">{sub}</div>}
         </div>
       </CardContent>
     </Card>
@@ -464,7 +460,7 @@ function NHIATab() {
                     <td className="px-3 py-2">₦{(r.total_amount ?? 0).toLocaleString()}</td>
                     <td className="px-3 py-2">₦{(r.hmo_amount ?? 0).toLocaleString()}</td>
                     <td className="px-3 py-2">₦{(r.patient_copay ?? 0).toLocaleString()}</td>
-                    <td className="px-3 py-2"><Badge variant="outline" className="text-[12px]">{r.billing_status}</Badge></td>
+                    <td className="px-3 py-2"><Badge variant="outline" className="text-xs">{r.billing_status}</Badge></td>
                   </tr>
                 ))}
               </tbody>
@@ -520,6 +516,7 @@ export default function Reports() {
           {tab === "disease"      && <DiseaseBurdenTab />}
           {tab === "hmis"         && <HMISTab />}
           {tab === "financial"    && <FinancialTab />}
+          {tab === "payer"        && <RevenueSplitTab />}
           {tab === "demographics" && <DemographicsTab />}
           {tab === "beds"         && <BedOccupancyTab />}
           {tab === "nhia"         && <NHIATab />}

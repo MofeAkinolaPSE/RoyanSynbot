@@ -9,3 +9,5 @@ data
 wordpress
 *.md
 gradio-embed
+# Roy reads this guide at runtime (src/services/roy_guide.py); it must ship in the image.
+!src/knowledge/*.md

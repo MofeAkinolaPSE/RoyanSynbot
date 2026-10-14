@@ -272,3 +272,70 @@ def clear_cache() -> None:
                 r.delete(key)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Shared endpoint responses (one rebuild across every worker)
+# ---------------------------------------------------------------------------
+
+def shared_response(key: str, ttl_seconds: int, build: Callable[[], Any], refresh: bool = False) -> Any:
+    """An endpoint's response, built once and shared by every worker process through Redis.
+
+    For the heavy read-only dashboards (executive overview, payer directory, reorder plan): with several
+    workers each holding its own cache, an expiry made every worker run the same multi-second aggregate
+    at once. Here the first worker to miss takes a short Redis lock and builds; the others wait for its
+    result instead of repeating the query. The value is stored exactly as FastAPI would serialise it
+    (jsonable_encoder), so a cached response is identical to a fresh one. Without Redis it simply builds.
+    """
+    from fastapi.encoders import jsonable_encoder
+    r = _get_redis()
+    if r is None:
+        return jsonable_encoder(build())
+    rkey, lkey = f"resp:{key}", f"resp:{key}:lock"
+    if not refresh:
+        try:
+            hit = r.get(rkey)
+            if hit is not None:
+                return json.loads(hit)
+        except Exception:
+            pass
+    try:
+        mine = bool(r.set(lkey, "1", nx=True, ex=60))
+    except Exception:
+        mine = True
+    if not mine and not refresh:
+        deadline = time.monotonic() + 20          # another worker is building it: wait for that result
+        while time.monotonic() < deadline:
+            time.sleep(0.15)
+            try:
+                hit = r.get(rkey)
+                if hit is not None:
+                    return json.loads(hit)
+                if not r.exists(lkey):
+                    break
+            except Exception:
+                break
+    try:
+        value = jsonable_encoder(build())
+        try:
+            r.set(rkey, json.dumps(value), ex=ttl_seconds)
+        except Exception as exc:
+            logger.warning("shared_response: could not store %s: %s", key, exc)
+        return value
+    finally:
+        if mine:
+            try:
+                r.delete(lkey)
+            except Exception:
+                pass
+
+
+def drop_shared_response(*keys: str) -> None:
+    """Forget cached responses after a write that changes them."""
+    r = _get_redis()
+    if r is None:
+        return
+    try:
+        r.delete(*(f"resp:{k}" for k in keys))
+    except Exception:
+        pass

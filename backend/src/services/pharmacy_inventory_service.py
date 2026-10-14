@@ -12,6 +12,8 @@ rather than introducing an ML dependency.
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 import datetime as dt
 import logging
 from typing import Any, Dict, List, Optional
@@ -127,11 +129,21 @@ def upsert_formulary_drug(payload: Dict[str, Any]) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def list_live_batches(formulary_id: int) -> List[Dict[str, Any]]:
-    """FEFO order: earliest-expiring first (NULL expiry sorts last), then
-    earliest-received for ties."""
+    """Batches that can actually be dispensed today.
+
+    FEFO order: earliest-expiring first (NULL expiry sorts last), then
+    earliest-received for ties.
+
+    Expired batches are excluded, not merely sorted last. "Live" has to mean
+    dispensable or the word is misleading: an expired batch must never appear
+    in a picker where a pharmacist could hand it to a patient. They remain in
+    the table for reference and are reachable through list_expired_batches.
+    """
     return _q(
         f"""SELECT * FROM public.{TABLE_INVENTORY_BATCHES}
-            WHERE formulary_id = %s AND quantity_on_hand > 0
+            WHERE formulary_id = %s
+              AND quantity_on_hand > 0
+              AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
             ORDER BY expiry_date ASC NULLS LAST, received_at ASC, id ASC""",
         (formulary_id,),
     )
@@ -182,6 +194,7 @@ def upsert_batch(
             updates["notes"] = notes
         db.table(TABLE_INVENTORY_BATCHES).update(updates).eq("id", row["id"]).execute()
         invalidate_cache_tags(*_CACHE_TAGS)
+        _close_stock_order(formulary_id, quantity_received, batch_number)
         return {**row, **updates}
 
     data = {
@@ -198,7 +211,19 @@ def upsert_batch(
     }
     result = db.table(TABLE_INVENTORY_BATCHES).insert(data).execute()
     invalidate_cache_tags(*_CACHE_TAGS)
+    _close_stock_order(formulary_id, quantity_received, batch_number)
     return result.data[0] if result.data else data
+
+
+def _close_stock_order(formulary_id: int, quantity: float, batch_number: str) -> None:
+    """Stock arrived on the shelf: its open stock order is received (services/stock_orders.receive_for)."""
+    try:
+        from src.fin.db import tx
+        from src.services.stock_orders import receive_for
+        with tx() as conn:
+            receive_for(conn, formulary_id, float(quantity or 0), "pharmacy_receipt", batch_number)
+    except Exception as exc:
+        logger.warning("stock order not closed for formulary %s after receipt: %s", formulary_id, exc)
 
 
 def adjust_batch(batch_id: int, adjustment: float, reason: str = "manual_adjustment") -> Dict[str, Any]:
@@ -529,7 +554,15 @@ def get_drug_detail(formulary_id: int) -> Optional[Dict[str, Any]]:
     formulary = _q1(f"SELECT * FROM public.{TABLE_DRUG_FORMULARY} WHERE id = %s", (formulary_id,))
     if not formulary:
         return None
-    batches = list_all_batches(formulary_id)
+    # Only what is on the shelf. This panel previously listed every batch ever
+    # recorded -- 263 rows for ACT DS, all expired with nothing in them -- which
+    # buried the one batch that actually holds stock.
+    batches = list_live_batches(formulary_id)
+    historical_batches = [
+        b for b in list_all_batches(formulary_id)
+        if float(b.get("quantity_on_hand") or 0) <= 0
+        or (b.get("expiry_date") and str(b["expiry_date"]) < _dt.date.today().isoformat())
+    ]
     recent_dispensing = _q(
         f"""SELECT * FROM public.{TABLE_DISPENSING} WHERE formulary_id = %s
             ORDER BY dispensed_at DESC LIMIT 20""",
@@ -543,6 +576,9 @@ def get_drug_detail(formulary_id: int) -> Optional[Dict[str, Any]]:
     return {
         "formulary": formulary,
         "batches": batches,
+        # Kept out of the main list but still reachable: history, not stock.
+        "historical_batches": historical_batches[:100],
+        "historical_batch_count": len(historical_batches),
         "recent_dispensing": recent_dispensing,
         "demand": demand,
         "risk": risk,

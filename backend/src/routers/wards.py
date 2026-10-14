@@ -19,7 +19,7 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.db import db, audit_event
@@ -41,8 +41,24 @@ def _natural_sort_key(bed_number: object):
 
 
 def _sort_beds_naturally(beds: list) -> list:
+    """Room first, then bed number, both naturally.
+
+    Sorting on bed_number alone put Room101 bed 1 next to Room108 bed 1 and
+    scattered each room's beds through the list. Rooms are how staff navigate a
+    ward, so they group first. Natural ordering on both keeps Room2 before
+    Room10 and bed 2 before bed 10 — plain string sort gets each of those
+    backwards.
+
+    Run AFTER _enrich_bed_rooms, which is what puts room_name on the row.
+    """
     try:
-        return sorted(beds, key=lambda b: _natural_sort_key(b.get("bed_number")))
+        return sorted(
+            beds,
+            key=lambda b: (
+                _natural_sort_key(b.get("room_name") or "￿"),  # unroomed last
+                _natural_sort_key(b.get("bed_number")),
+            ),
+        )
     except TypeError:
         # Mixed key shapes that don't compare (rare) — fall back to the
         # original (already lexicographically-ordered) sequence rather than
@@ -93,7 +109,7 @@ class BedStatusUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/occupancy")
-async def bed_occupancy(user=Depends(verify_jwt)):
+def bed_occupancy(user=Depends(verify_jwt)):
     """Return bed occupancy summary per ward from the royan_bed_occupancy view."""
     # Query the view directly; if unavailable, callers still get a clear 500.
     try:
@@ -111,7 +127,7 @@ async def bed_occupancy(user=Depends(verify_jwt)):
 
 
 @router.get("")
-async def list_wards(user=Depends(verify_jwt)):
+def list_wards(user=Depends(verify_jwt)):
     result = db.table(TABLE_WARDS).select("*").order("name").execute()
     wards = result.data or []
     try:
@@ -140,7 +156,7 @@ async def list_wards(user=Depends(verify_jwt)):
 
 
 @router.post("", status_code=201)
-async def create_ward(payload: WardCreate, user=Depends(require_role("admin"))):
+def create_ward(payload: WardCreate, user=Depends(require_role("admin"))):
     ward_type = "paediatric" if payload.ward_type == "pediatrics" else payload.ward_type
     if ward_type not in WARD_TYPES:
         raise HTTPException(status_code=422, detail=f"ward_type must be one of {WARD_TYPES}")
@@ -190,10 +206,41 @@ async def create_ward(payload: WardCreate, user=Depends(require_role("admin"))):
     return {"ok": True, "ward": ward, "beds": beds_created}
 
 
+def _enrich_bed_rooms(beds: list) -> None:
+    """Attach room name and nightly rate to bed rows in place.
+
+    Beds carried only a number, so the ward page could show "bed 3" but never
+    "Room104" — the names Royan actually uses, and the ones their prices are
+    keyed to. Batched: one query for every room on the page, not one per bed.
+    """
+    if not beds:
+        return
+    room_ids = list({b["room_id"] for b in beds if b.get("room_id") is not None})
+    if not room_ids:
+        return
+    try:
+        rows = db.table("royan_rooms").select("id,name,daily_rate,room_type").in_("id", room_ids).execute()
+        rmap = {r["id"]: r for r in (rows.data or [])}
+    except Exception as exc:
+        logger.warning("Room enrichment failed: %s", exc)
+        return
+    for b in beds:
+        r = rmap.get(b.get("room_id"))
+        if r:
+            b["room_name"] = r.get("name")
+            b["room_daily_rate"] = r.get("daily_rate")
+            b["room_type"] = r.get("room_type")
+
+
 def _enrich_bed_patients(beds: list) -> None:
-    """Batch-merge patient_name/patient_mrn onto bed rows in place, keyed off
-    current_patient_id — royan_beds has no patient identity columns of its
-    own."""
+    """Batch-merge patient identity and the occupant's active encounter onto bed
+    rows in place, keyed off current_patient_id — royan_beds has no patient
+    identity columns of its own.
+
+    current_encounter_id matters because nursing notes are written against an
+    encounter, not a patient. Without it the ward view can show a patient's
+    record but not add to it, which is a worse offer than not opening it at all.
+    """
     if not beds:
         return
     try:
@@ -208,20 +255,142 @@ def _enrich_bed_patients(beds: list) -> None:
                 fn, ln = (p.get("first_name") or "").strip(), (p.get("last_name") or "").strip()
                 b["patient_name"] = f"{fn} {ln}".strip() or None
                 b["patient_mrn"] = p.get("mrn")
+
+        # Newest non-discharged native encounter per occupant.
+        try:
+            enc_rows = (
+                db.table(TABLE_ENCOUNTERS)
+                .select("id,patient_id,status,created_at")
+                .in_("patient_id", pid_set)
+                .neq("status", "discharged")
+                .is_("external_source", None)
+                .order("created_at", desc=True)
+                .execute()
+                .data
+                or []
+            )
+            enc_map: dict = {}
+            for e in enc_rows:
+                enc_map.setdefault(e["patient_id"], e["id"])
+            for b in beds:
+                b["current_encounter_id"] = enc_map.get(b.get("current_patient_id"))
+        except Exception as exc:
+            logger.warning("bed encounter enrichment failed: %s", exc)
     except Exception as exc:
         logger.warning("bed patient enrichment failed: %s", exc)
 
 
+@router.get("/rooms")
+def list_rooms(ward_id: Optional[int] = Query(None), user=Depends(verify_jwt)):
+    """Rooms, with their nightly rate and how many beds each holds.
+
+    Seeded in migration 209 from the real ward/room/bed structure in
+    royan_ward_stay_history rather than invented, so the names match what staff
+    actually say.
+    """
+    try:
+        q = db.table("royan_rooms").select("id,ward_id,name,room_type,daily_rate,is_active").order("name")
+        if ward_id:
+            q = q.eq("ward_id", ward_id)
+        rooms = q.execute().data or []
+    except Exception as exc:
+        logger.warning("Room listing failed: %s", exc)
+        return {"rooms": [], "count": 0}
+
+    try:
+        beds = db.table(TABLE_BEDS).select("id,room_id,status,current_patient_id").execute().data or []
+    except Exception:
+        beds = []
+    for r in rooms:
+        mine = [b for b in beds if b.get("room_id") == r["id"]]
+        r["bed_count"] = len(mine)
+        r["occupied_count"] = sum(1 for b in mine if b.get("current_patient_id"))
+
+    ward_ids = list({r["ward_id"] for r in rooms if r.get("ward_id")})
+    if ward_ids:
+        try:
+            wards = db.table(TABLE_WARDS).select("id,name").in_("id", ward_ids).execute()
+            wmap = {w["id"]: w.get("name") for w in wards.data or []}
+            for r in rooms:
+                r["ward_name"] = wmap.get(r.get("ward_id"))
+        except Exception:
+            pass
+
+    return {"rooms": rooms, "count": len(rooms),
+            "unpriced": sum(1 for r in rooms if not r.get("daily_rate"))}
+
+
+class RoomRateUpdate(BaseModel):
+    daily_rate: float = Field(..., ge=0)
+
+
+@router.patch("/rooms/{room_id}/rate")
+def set_room_rate(room_id: int, payload: RoomRateUpdate, user=Depends(verify_jwt)):
+    """Set a room's nightly rate."""
+    try:
+        db.table("royan_rooms").update({"daily_rate": payload.daily_rate}).eq("id", room_id).execute()
+    except Exception as exc:
+        logger.error("Room rate update failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not save the room rate")
+    return {"ok": True, "room_id": room_id, "daily_rate": payload.daily_rate}
+
+
+@router.get("/beds/available")
+def list_available_beds(user=Depends(verify_jwt)):
+    """Every free bed in the hospital, with its ward name.
+
+    Beds were only listable one ward at a time. Admitting a patient means
+    picking from whatever is free ANYWHERE, so the client would otherwise fetch
+    the ward list and then one request per ward just to populate a dropdown.
+
+    "Free" excludes maintenance beds: a bed out of service is not a placement
+    option, and offering it invites a nurse to admit someone into a bed that is
+    broken.
+    """
+    try:
+        beds = (
+            db.table(TABLE_BEDS)
+            .select("id,ward_id,bed_number,bed_type,status,current_patient_id,notes")
+            .is_("current_patient_id", None)
+            .order("bed_number")
+            .limit(500)
+            .execute().data or []
+        )
+    except Exception as exc:
+        logger.warning("Available-bed lookup failed: %s", exc)
+        return {"beds": [], "count": 0}
+
+    beds = [b for b in beds if (b.get("status") or "available") not in ("maintenance", "reserved")]
+
+    ward_ids = list({b["ward_id"] for b in beds if b.get("ward_id")})
+    ward_names = {}
+    if ward_ids:
+        try:
+            wards = db.table(TABLE_WARDS).select("id,name").in_("id", ward_ids).execute()
+            ward_names = {w["id"]: w.get("name") for w in wards.data or []}
+        except Exception:
+            ward_names = {}
+    for b in beds:
+        b["ward_name"] = ward_names.get(b.get("ward_id"))
+
+    _enrich_bed_rooms(beds)
+    beds = _sort_beds_naturally(beds)
+    return {"beds": beds, "count": len(beds)}
+
+
 @router.get("/{ward_id}/beds")
-async def list_beds(ward_id: int, user=Depends(verify_jwt)):
+def list_beds(ward_id: int, user=Depends(verify_jwt)):
     result = db.table(TABLE_BEDS).select("*").eq("ward_id", ward_id).execute()
-    beds = _sort_beds_naturally(result.data or [])
+    beds = result.data or []
     _enrich_bed_patients(beds)
+    _enrich_bed_rooms(beds)
+    # After enrichment: the sort keys on room_name, which _enrich_bed_rooms adds.
+    beds = _sort_beds_naturally(beds)
     return {"beds": beds, "count": len(beds)}
 
 
 @router.post("/{ward_id}/beds", status_code=201)
-async def add_bed(ward_id: int, payload: BedCreate, user=Depends(require_role("admin"))):
+def add_bed(ward_id: int, payload: BedCreate, user=Depends(require_role("admin"))):
     if payload.bed_type not in BED_TYPES:
         raise HTTPException(status_code=422, detail=f"bed_type must be one of {BED_TYPES}")
     # Verify ward exists
@@ -239,7 +408,7 @@ async def add_bed(ward_id: int, payload: BedCreate, user=Depends(require_role("a
 
 
 @router.post("/{ward_id}/beds/{bed_id}/admit")
-async def admit_patient(ward_id: int, bed_id: int, payload: AdmitRequest, user=Depends(verify_jwt)):
+def admit_patient(ward_id: int, bed_id: int, payload: AdmitRequest, user=Depends(verify_jwt)):
     """Assign a patient to a bed (marks bed as occupied)."""
     bed = db.table(TABLE_BEDS).select("*").eq("id", bed_id).eq("ward_id", ward_id).execute()
     if not bed.data:
@@ -288,7 +457,7 @@ async def admit_patient(ward_id: int, bed_id: int, payload: AdmitRequest, user=D
 
 
 @router.post("/{ward_id}/beds/{bed_id}/discharge")
-async def free_bed(ward_id: int, bed_id: int, user=Depends(verify_jwt)):
+def free_bed(ward_id: int, bed_id: int, user=Depends(verify_jwt)):
     """Free a bed after patient discharge (marks bed as available)."""
     bed = db.table(TABLE_BEDS).select("*").eq("id", bed_id).eq("ward_id", ward_id).execute()
     if not bed.data:
@@ -314,7 +483,7 @@ BED_STATUS_TRANSITIONS = {
 
 
 @router.patch("/{ward_id}/beds/{bed_id}/status")
-async def update_bed_status(ward_id: int, bed_id: int, payload: BedStatusUpdate, user=Depends(verify_jwt)):
+def update_bed_status(ward_id: int, bed_id: int, payload: BedStatusUpdate, user=Depends(verify_jwt)):
     """Set a bed to available/reserved/maintenance. Occupying is admit's job;
     freeing an occupied bed is discharge's job — both already own clearing
     current_patient_id/admitted_at correctly."""

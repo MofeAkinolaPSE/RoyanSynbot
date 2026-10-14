@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DoneTodayCard, type DoneRow } from "@/components/shared/DoneTodayCard";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -12,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import {
   ScanLine, RefreshCw, Loader2, Clock, CheckCircle2, AlertTriangle,
-  Timer, BarChart3,
+  Timer, BarChart3, Plus
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -20,6 +22,10 @@ import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { RadiologyWorkspacePanel } from "@/components/radiology/RadiologyWorkspacePanel";
+import { HelpHint } from "@/components/help/HelpHint";
+import { WalkInOrderDialog } from "@/components/radiology/WalkInOrderDialog";
+import { ScancareDashboard, ScancareToBill } from "@/components/radiology/ScancareDashboard";
+import { ScancareBilling } from "@/components/radiology/ScancareBilling";
 import {
   StatusBadge, UrgencyBadge, ModalityBadge, elapsed, MODALITY_COLORS, URGENCY_LEFT_BORDER,
 } from "@/components/radiology/radiology-shared";
@@ -40,8 +46,12 @@ interface RadiologyOrder {
 }
 
 export default function Radiology() {
-  const [tab, setTab] = useState("worklist");
-  const [statusFilter, setStatusFilter]     = useState("all");
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  // ?tab=billing opens Scancare's own Billing & cashier (Scancare Books links here)
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") ?? "dashboard");
+  // "active" = still to do, any day; reported scans move to "Reported today" (starts empty each morning)
+  const [statusFilter, setStatusFilter]     = useState("active");
   const [modalityFilter, setModalityFilter] = useState("all");
 
   const [panelOrder, setPanelOrder]           = useState<RadiologyOrder | null>(null);
@@ -51,11 +61,20 @@ export default function Radiology() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["radiology-orders", statusFilter, modalityFilter],
     queryFn: () => api.hospital.radiology.listOrders({
-      ...(statusFilter !== "all" && { status: statusFilter }),
+      ...(statusFilter === "active" ? { view: "active" as const } : statusFilter !== "all" && { status: statusFilter }),
       ...(modalityFilter !== "all" && { modality: modalityFilter }),
     }),
     refetchInterval: 60_000,
   });
+  const { data: doneData } = useQuery({
+    queryKey: ["radiology-orders", "done-today"],
+    queryFn: () => api.hospital.radiology.listOrders({ view: "done" }),
+    refetchInterval: 60_000,
+  });
+  const doneRows: DoneRow[] = (doneData?.orders ?? []).map((o: any) => ({
+    id: o.id, patient: o.patient_name ?? `Patient ${o.patient_id}`, mrn: o.patient_mrn,
+    what: [o.test_name, o.modality ? String(o.modality).toUpperCase() : null].filter(Boolean).join(" · "), at: o.reported_at,
+  }));
   const orders: RadiologyOrder[] = Array.isArray(data?.orders) ? data.orders : [];
 
   const { data: statsData } = useQuery({
@@ -88,8 +107,17 @@ export default function Radiology() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Radiology & Diagnostics</h1>
-          <p className="text-sm text-muted-foreground">Imaging requests, worklist, and reporting</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Scancare</h1>
+            <Badge variant="outline" className="text-xs">Imaging · its own company and books</Badge>
+            <HelpHint id="radiology-worklist-scope" />
+            {/* Radiology could only ever RECEIVE work. ScanCare also takes
+                clients off the street, so it needs to originate an order. */}
+            <Button size="sm" className="ml-2 gap-1.5" onClick={() => setWalkInOpen(true)}>
+              <Plus className="h-3.5 w-3.5" /> Walk-in study
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">Scancare's studies, worklist, reporting and billing. Every scan is billed on a Scancare invoice and posts to Scancare Books.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching} className="gap-2">
           <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Refresh
@@ -120,9 +148,16 @@ export default function Radiology() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="billing">Billing & cashier</TabsTrigger>
           <TabsTrigger value="worklist">Worklist</TabsTrigger>
+          <TabsTrigger value="tobill">Not yet billed</TabsTrigger>
           <TabsTrigger value="stats">TAT & Volume</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="mt-4"><ScancareDashboard /></TabsContent>
+        <TabsContent value="billing" className="mt-4"><ScancareBilling /></TabsContent>
+        <TabsContent value="tobill" className="mt-4"><ScancareToBill /></TabsContent>
 
         {/* ── Worklist Tab ───────────────────────────────────────────────── */}
         <TabsContent value="worklist" className="space-y-4">
@@ -137,6 +172,7 @@ export default function Radiology() {
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="active">To do (open orders)</SelectItem>
                 <SelectItem value="all">All Statuses</SelectItem>
                 {["ordered", "scheduled", "in_progress", "reported", "cancelled"].map(s => (
                   <SelectItem key={s} value={s} className="capitalize">{s.replace(/_/g, " ")}</SelectItem>
@@ -185,7 +221,7 @@ export default function Radiology() {
                               {order.patient_name ?? <span className="text-muted-foreground italic text-xs">ID {order.patient_id}</span>}
                             </span>
                             {order.patient_mrn && (
-                              <span className="font-mono text-[12px] text-muted-foreground">{order.patient_mrn}</span>
+                              <span className="font-mono text-xs text-muted-foreground">{order.patient_mrn}</span>
                             )}
                           </div>
                         </TableCell>
@@ -193,7 +229,7 @@ export default function Radiology() {
                         <TableCell className="text-sm">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-medium">{order.body_part ?? "—"}</span>
-                            <span className="text-[13px] text-muted-foreground truncate max-w-[200px]">{order.clinical_indication ?? ""}</span>
+                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">{order.clinical_indication ?? ""}</span>
                           </div>
                         </TableCell>
                         <TableCell><UrgencyBadge urgency={order.urgency} /></TableCell>
@@ -206,6 +242,8 @@ export default function Radiology() {
               )}
             </CardContent>
           </Card>
+          <DoneTodayCard title="Reported today" whatLabel="Study" rows={doneRows}
+            onOpen={(id) => { const o = (doneData?.orders ?? []).find((x: any) => x.id === id); if (o) openPanel(o); }} />
         </TabsContent>
 
         {/* ── TAT & Volume Tab ───────────────────────────────────────────── */}
@@ -264,6 +302,8 @@ export default function Radiology() {
       {panelOrder && (
         <RadiologyWorkspacePanel order={panelOrder} initialTab={panelInitialTab} onClose={closePanel} />
       )}
+      <WalkInOrderDialog open={walkInOpen} onOpenChange={setWalkInOpen} />
+
     </motion.div>
   );
 }

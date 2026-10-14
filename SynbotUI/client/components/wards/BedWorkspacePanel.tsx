@@ -18,6 +18,11 @@ import {
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { BedBadge, DetailRow, SectionLabel } from "@/components/wards/wards-shared";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { NursingWorkspacePanel } from "@/components/nursing/NursingWorkspacePanel";
+import { HeartPulse, NotebookPen, Activity } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { InpatientCharges } from "@/components/wards/InpatientCharges";
 
 interface BedWorkspacePanelProps {
   bed: {
@@ -28,6 +33,8 @@ interface BedWorkspacePanelProps {
     bed_type?: string;
     status?: string;
     current_patient_id?: string | number;
+    /** Occupant's active encounter — nursing notes are written against one. */
+    current_encounter_id?: number | null;
     patient_name?: string;
     patient_mrn?: string;
     admitted_at?: string;
@@ -42,11 +49,30 @@ function ageFromDob(dob?: string): string {
   return isNaN(age) ? "—" : `${age}y`;
 }
 
+/**
+ * royan_beds records admitted_at and no duration, so length of stay is derived.
+ * A current occupant is measured to now, which is the number a ward round
+ * actually asks for.
+ */
+function bedLengthOfStay(admitted?: string | null): string | undefined {
+  if (!admitted) return undefined;
+  const start = new Date(admitted).getTime();
+  if (!Number.isFinite(start)) return undefined;
+  const ms = Date.now() - start;
+  if (ms < 0) return undefined;
+  const days = Math.floor(ms / 86_400_000);
+  const hours = Math.floor((ms % 86_400_000) / 3_600_000);
+  if (days === 0) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  return `${days} day${days === 1 ? "" : "s"}${hours ? `, ${hours}h` : ""}`;
+}
+
 export function BedWorkspacePanel({ bed: initialBed, onClose }: BedWorkspacePanelProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  // Which nursing tab to open for the bed's occupant, if any.
+  const [nursingTab, setNursingTab] = useState<string | null>(null);
   const [patientQuery, setPatientQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -135,7 +161,7 @@ export function BedWorkspacePanel({ bed: initialBed, onClose }: BedWorkspacePane
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -172,12 +198,59 @@ export function BedWorkspacePanel({ bed: initialBed, onClose }: BedWorkspacePane
                     <SectionLabel icon={<User className="h-3.5 w-3.5" />} label="Occupant" />
                     <DetailRow label="Name" value={b.patient_name} />
                     <DetailRow label="MRN"  value={b.patient_mrn} mono />
-                    <Button variant="ghost" size="sm" className="gap-1.5 mt-1 px-0"
-                      disabled={!b.patient_mrn}
-                      onClick={() => { if (b.patient_mrn) { navigate(`/hospital/patients/${b.patient_mrn}`); onClose(); } }}>
-                      <ExternalLink className="h-3.5 w-3.5" /> Open Patient Record
-                    </Button>
+                    {/* Derived from admitted_at rather than stored — royan_beds
+                        has no duration column, and an open stay measures to now,
+                        which is what a ward round wants to know. */}
+                    <DetailRow label="Length of stay" value={bedLengthOfStay(b.admitted_at)} />
+                    {!b.current_encounter_id && (
+                      <p className="mt-2 text-xs italic text-muted-foreground">
+                        No open encounter for this patient, so nursing entries cannot be
+                        recorded from here. Open the full record to review their history.
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {/* This panel used to offer bed administration only: no
+                          vitals, notes, MAR or care plans. Clicking an occupied
+                          bed is usually about the patient in it, not the bed. */}
+                      <Button variant="outline" size="sm" className="gap-1.5"
+                        disabled={!b.current_encounter_id}
+                        onClick={() => setNursingTab("detail")}>
+                        <HeartPulse className="h-3.5 w-3.5" /> Nursing record
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-1.5"
+                        disabled={!b.current_encounter_id}
+                        onClick={() => setNursingTab("notes")}>
+                        <NotebookPen className="h-3.5 w-3.5" /> Notes
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-1.5"
+                        disabled={!b.current_encounter_id}
+                        onClick={() => setNursingTab("vitals")}>
+                        <Activity className="h-3.5 w-3.5" /> Vitals
+                      </Button>
+                      <Button variant="ghost" size="sm" className="gap-1.5"
+                        disabled={!b.patient_mrn}
+                        onClick={() => { if (b.patient_mrn) { navigate(`/hospital/patients/${b.patient_mrn}`); onClose(); } }}>
+                        <ExternalLink className="h-3.5 w-3.5" /> Full record
+                      </Button>
+                    </div>
                   </section>
+
+                  {b.current_encounter_id && (
+                    <>
+                      <Separator />
+                      <section>
+                        <InpatientCharges
+                          encounterId={b.current_encounter_id}
+                          onGenerateBill={() => {
+                            if (b.patient_mrn) {
+                              navigate(`/hospital/billing?patient_mrn=${b.patient_mrn}`);
+                              onClose();
+                            }
+                          }}
+                        />
+                      </section>
+                    </>
+                  )}
                 </>
               )}
 
@@ -279,6 +352,24 @@ export function BedWorkspacePanel({ bed: initialBed, onClose }: BedWorkspacePane
           )}
         </div>
       </SheetContent>
+
+      {/* The occupant's nursing record. Rendered as a sibling rather than
+          nested inside this Sheet's content, so there is one Sheet on screen at
+          a time and only one focus trap. Closing it returns here. */}
+      {nursingTab && b.current_patient_id && b.current_encounter_id && (
+        <NursingWorkspacePanel
+          encounter={{
+            id: b.current_encounter_id,
+            patient_id: Number(b.current_patient_id),
+            patient_mrn: b.patient_mrn,
+            patient_name: b.patient_name,
+            department: b.ward_name,
+            created_at: b.admitted_at,
+          }}
+          initialTab={nursingTab}
+          onClose={() => setNursingTab(null)}
+        />
+      )}
     </Sheet>
   );
 }

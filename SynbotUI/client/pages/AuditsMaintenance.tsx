@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -179,25 +180,8 @@ export default function AuditsMaintenance() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const auditReportMutation = useMutation({
-    mutationFn: (audit: any) => api.reports.generateDocx({
-      report_type: "facility_audit",
-      entity_id: audit.id,
-      intent_text: `Generate a report for the facility audit: ${audit.audit_title}`,
-    }),
-    onSuccess: () => toast({ title: "Report downloaded" }),
-    onError: (e: any) => toast({ title: "Report generation failed", description: e.message, variant: "destructive" }),
-  });
-
-  const maintCertMutation = useMutation({
-    mutationFn: (task: any) => api.reports.generateDocx({
-      report_type: "equipment_maintenance",
-      entity_id: task.id,
-      intent_text: `Generate a maintenance certificate for: ${task.equipment_name}`,
-    }),
-    onSuccess: () => toast({ title: "Certificate downloaded" }),
-    onError: (e: any) => toast({ title: "Certificate generation failed", description: e.message, variant: "destructive" }),
-  });
+  // Reports go through the one sequence (reportGUide.md s12): review the record, then write.
+  const navigate = useNavigate();
 
   return (
     <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
@@ -299,9 +283,8 @@ export default function AuditsMaintenance() {
                             )}
                             {a.status === "completed" && (
                               <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                                disabled={auditReportMutation.isPending}
-                                onClick={() => auditReportMutation.mutate(a)}>
-                                {auditReportMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
+                                onClick={() => navigate(`/reports/new?type=audit&kind=audit&id=${a.id}`)}>
+                                <FileText className="w-3 h-3 mr-1" />
                                 Report
                               </Button>
                             )}
@@ -365,10 +348,9 @@ export default function AuditsMaintenance() {
                             )}
                             {m.status === "completed" && (
                               <Button size="sm" variant="outline" className="h-6 text-xs px-2 border-border"
-                                disabled={maintCertMutation.isPending}
-                                onClick={() => maintCertMutation.mutate(m)}>
-                                {maintCertMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
-                                Certificate
+                                onClick={() => navigate(`/reports/new?type=maintenance&kind=maintenance&id=${m.id}`)}>
+                                <FileText className="w-3 h-3 mr-1" />
+                                Report
                               </Button>
                             )}
                           </div>

@@ -103,7 +103,7 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 @router.post("/sessions", status_code=201)
-async def create_session(payload: SessionCreate, user=Depends(verify_jwt)):
+def create_session(payload: SessionCreate, user=Depends(verify_jwt)):
     """Schedule a new telemedicine session."""
     meeting_link = _generate_meeting_link(0, payload.patient_id, payload.doctor_id, payload.scheduled_date)
 
@@ -136,7 +136,7 @@ async def create_session(payload: SessionCreate, user=Depends(verify_jwt)):
 
 
 @router.get("/sessions")
-async def list_sessions(
+def list_sessions(
     status: Optional[str] = Query(None),
     doctor_id: Optional[str] = Query(None),
     patient_id: Optional[int] = Query(None),
@@ -154,12 +154,12 @@ async def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: int, user=Depends(verify_jwt)):
+def get_session(session_id: int, user=Depends(verify_jwt)):
     return {"session": _get_session(session_id)}
 
 
 @router.patch("/sessions/{session_id}/status")
-async def advance_status(session_id: int, payload: StatusAdvance, user=Depends(verify_jwt)):
+def advance_status(session_id: int, payload: StatusAdvance, user=Depends(verify_jwt)):
     """Advance session through the status state machine."""
     session = _get_session(session_id)
     current = session["status"]
@@ -193,7 +193,7 @@ async def advance_status(session_id: int, payload: StatusAdvance, user=Depends(v
 
 
 @router.get("/sessions/{session_id}/join")
-async def get_join_links(session_id: int, user=Depends(verify_jwt)):
+def get_join_links(session_id: int, user=Depends(verify_jwt)):
     """Return the meeting join link for doctor and patient."""
     session = _get_session(session_id)
     link = session.get("meeting_link") or _generate_meeting_link(
@@ -210,7 +210,7 @@ async def get_join_links(session_id: int, user=Depends(verify_jwt)):
 
 
 @router.get("/stats")
-async def telemedicine_stats(user=Depends(verify_jwt)):
+def telemedicine_stats(user=Depends(verify_jwt)):
     result = db.table(TABLE_TELEMEDICINE_SESSIONS).select("status,visit_type,duration_minutes").execute()
     rows = result.data or []
 

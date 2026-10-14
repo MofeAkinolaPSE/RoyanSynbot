@@ -18,12 +18,16 @@ import {
 } from "@/components/ui/table";
 import {
   User, HeartPulse, ClipboardList, Plus, CheckCircle2,
-  ExternalLink, Loader2, Thermometer, Activity, AlertTriangle,
+  ExternalLink, Loader2, Thermometer, Activity, AlertTriangle, NotebookPen, Receipt, Pill
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
+import { SignedNoteList } from "@/components/soap/SignedNoteList";
 import { useToast } from "@/hooks/use-toast";
 import { AllergyBanner } from "@/components/AllergyBanner";
 import { cn } from "@/lib/utils";
+import { HelpHint } from "@/components/help/HelpHint";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
 import {
   fmtDate, elapsed, PainBadge, MarStatusBadge, CarePlanStatusBadge,
   CarePlanPriorityBadge, FluidTypeBadge, DetailRow,
@@ -109,6 +113,67 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
     staleTime: 15_000,
   });
   const marEntries: any[] = marData?.mar ?? [];
+
+  // ── Nursing notes (Phase B3) ───────────────────────────────────────────────
+  // 72,774 migrated nursing notes across 6,379 patients had no UI anywhere:
+  // this panel had no Notes tab, and the only note endpoint was
+  // encounter-scoped. Patient-scoped by default — a nurse wants this patient's
+  // nursing record, not one visit's slice of it.
+  const { data: notesData, isLoading: notesLoading } = useQuery({
+    queryKey: ["nursing-panel-notes", patientId],
+    queryFn: () => api.hospital.clinical.listPatientNotes(patientId, { note_type: "nursing", limit: 100 }),
+    enabled: tab === "notes",
+    staleTime: 30_000,
+  });
+  const nursingNotes: any[] = notesData?.notes ?? [];
+
+  const [noteDraft, setNoteDraft] = useState("");
+  // What this patient has run up, and what pharmacy has given them. Both are
+  // gated on the tab so an ordinary vitals round does not pull billing data it
+  // will never show.
+  const { data: billingData, isLoading: billingLoading } = useQuery({
+    queryKey: ["nursing-charges", patientId],
+    queryFn: () => api.hospital.clinical.listBillingHistory(patientId),
+    enabled: tab === "charges" && !!patientId,
+  });
+  const bills: any[] = billingData?.summaries ?? [];
+  const outstanding = bills.reduce(
+    (n: number, b: any) => n + Number(b.amount_pending ?? 0), 0,
+  );
+
+  const { data: rxData, isLoading: rxLoading } = useQuery({
+    queryKey: ["nursing-rx", patientId],
+    queryFn: () => api.hospital.pharmacy.listRx({ patient_id: patientId }),
+    enabled: tab === "charges" && !!patientId,
+  });
+  const prescriptions: any[] = rxData?.prescriptions ?? [];
+
+  const noteMut = useMutation({
+    // Nursing notes go through the same endpoint as doctor notes but are
+    // deliberately UNGATED — the strict S->O->A->P sequence applies to a
+    // doctor's SOAP consultation only. A nurse recording an observation must
+    // not be forced through a diagnosis.
+    mutationFn: () => api.hospital.queue.addNote(String(encounterId), {
+      note_type: "nursing",
+      content: noteDraft.trim(),
+    }),
+    onSuccess: () => {
+      toast({ title: "Nursing note saved" });
+      setNoteDraft("");
+      void qc.invalidateQueries({ queryKey: ["nursing-panel-notes", patientId] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Could not save note", description: e?.message, variant: "destructive" }),
+  });
+
+  // ── ICU flowsheet (Phase B3) ───────────────────────────────────────────────
+  const { data: flowsheetData, isLoading: flowsheetLoading } = useQuery({
+    queryKey: ["nursing-panel-flowsheet", patientId],
+    queryFn: () => api.hospital.clinical.listFlowsheet(patientId, 200),
+    enabled: tab === "flowsheet",
+    staleTime: 60_000,
+  });
+  const flowsheet: any[] = flowsheetData?.observations ?? [];
   const marSummary: Record<string, number> = marData?.summary ?? {};
 
   const invalidateVitals = () => void qc.invalidateQueries({ queryKey: ["nursing-panel-vitals", patientId] });
@@ -202,11 +267,14 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <HeartPulse className="h-5 w-5 text-primary" />
+            {/* Teal throughout, matching the "Nurse note" button that opens it.
+                A clinician who glances at an open panel must be able to tell
+                which record they are writing into without reading a label. */}
+            <div className="h-10 w-10 rounded-full bg-teal-500/15 flex items-center justify-center shrink-0">
+              <HeartPulse className="h-5 w-5 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="flex-1 min-w-0">
               <SheetTitle className="text-base leading-tight">{initialEncounter.patient_name ?? `Patient ID ${patientId}`}</SheetTitle>
@@ -215,9 +283,14 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                 {initialEncounter.department && <Badge variant="outline" className="text-xs">{initialEncounter.department}</Badge>}
                 {initialEncounter.status && <Badge variant="outline" className="text-xs capitalize">{initialEncounter.status.replace(/_/g, " ")}</Badge>}
               </div>
-              <p className="text-[13px] text-muted-foreground mt-1">
-                {initialEncounter.queue_number ?? `Encounter #${encounterId}`} · Opened {elapsed(initialEncounter.created_at)} ago
-              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-teal-700 dark:text-teal-400">Nursing record</span>
+                  {" · "}{initialEncounter.queue_number ?? `Encounter #${encounterId}`}
+                  {" · Opened "}{elapsed(initialEncounter.created_at)} ago
+                </p>
+                <ShowMeHow only={["nursing-record", "note-addendum"]} />
+              </div>
             </div>
           </div>
           {allergies.length > 0 && <div className="mt-3"><AllergyBanner allergies={allergies} /></div>}
@@ -226,10 +299,17 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
         <Tabs value={tab} onValueChange={setTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-5 mt-3 bg-muted border border-border shrink-0 flex-wrap h-auto">
             <TabsTrigger value="detail">Detail</TabsTrigger>
-            <TabsTrigger value="vitals">Vitals</TabsTrigger>
+            <TabsTrigger value="notes" data-tour-id="nursing-notes-tab">
+              Notes{nursingNotes.length > 0 ? ` (${nursingNotes.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="vitals" data-tour-id="nursing-vitals-tab">Vitals</TabsTrigger>
+            <TabsTrigger value="flowsheet" data-tour-id="nursing-flowsheet-tab">
+              Flowsheet{flowsheet.length > 0 ? ` (${flowsheet.length})` : ""}
+            </TabsTrigger>
             <TabsTrigger value="fluid">Fluid Balance</TabsTrigger>
             <TabsTrigger value="plans">Care Plans</TabsTrigger>
             <TabsTrigger value="mar">MAR</TabsTrigger>
+            <TabsTrigger value="charges">Charges</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -268,6 +348,99 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
             </TabsContent>
 
             {/* ── Vitals ── */}
+            {/* ── Nursing notes ── */}
+            <TabsContent value="notes" className="mt-0 space-y-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <SectionLabel icon={<NotebookPen className="h-3.5 w-3.5" />} label="Add nursing note" />
+                  <HelpHint id="nursing-notes-ungated" />
+                </div>
+                <Textarea
+                  data-tour-id="nursing-note-input"
+                  rows={3}
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  placeholder="Observation, intervention, handover detail…"
+                  className="text-sm"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={!noteDraft.trim() || noteMut.isPending}
+                  onClick={() => noteMut.mutate()}
+                >
+                  {noteMut.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Save note
+                </Button>
+              </div>
+
+              <div className="space-y-1.5">
+                <SectionLabel
+                  icon={<ClipboardList className="h-3.5 w-3.5" />}
+                  label={`Nursing record (${nursingNotes.length})`}
+                />
+                {notesLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading…</p>
+                ) : nursingNotes.length === 0 ? (
+                  <p className="text-xs italic text-muted-foreground">No nursing notes for this patient.</p>
+                ) : (
+                  <SignedNoteList
+                    notes={nursingNotes}
+                    encounterId={encounterId}
+                    onChanged={() => void qc.invalidateQueries({ queryKey: ["nursing-panel-notes", patientId] })}
+                    maxHeight="max-h-[26rem]"
+                  />
+                )}
+              </div>
+            </TabsContent>
+
+            {/* ── ICU observation flowsheet ── */}
+            <TabsContent value="flowsheet" className="mt-0 space-y-3">
+              <SectionLabel
+                icon={<Activity className="h-3.5 w-3.5" />}
+                label={`Observation chart (${flowsheet.length})`}
+              />
+              {flowsheetLoading ? (
+                <p className="text-xs text-muted-foreground">Loading…</p>
+              ) : flowsheet.length === 0 ? (
+                <p className="text-xs italic text-muted-foreground">
+                  No flowsheet observations recorded for this patient.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {Object.entries(
+                    flowsheet.reduce((acc: Record<string, any[]>, f: any) => {
+                      const d = f.observed_date ?? "—";
+                      (acc[d] ??= []).push(f);
+                      return acc;
+                    }, {}),
+                  )
+                    .slice(0, 8)
+                    .map(([date, rows]) => (
+                      <div key={date} className="rounded-md border">
+                        <div className="border-b bg-muted/40 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {date}
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody>
+                            {(rows as any[]).slice(0, 12).map((f: any) => (
+                              <tr key={f.id} className="border-b last:border-0">
+                                <td className="px-2 py-1 text-muted-foreground">{f.hour_slot ?? f.actual_time ?? ""}</td>
+                                <td className="px-2 py-1">{f.observation_name}</td>
+                                <td className="px-2 py-1 text-right font-medium">
+                                  {f.value_text}
+                                  {f.unit ? <span className="ml-1 text-muted-foreground">{f.unit}</span> : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </TabsContent>
+
             <TabsContent value="vitals" className="mt-0 space-y-3">
               <ScopeToggle scope={historyScope} onChange={setHistoryScope} />
               {vitalsLoading ? (
@@ -290,7 +463,7 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                     <TableBody>
                       {vitalsList.map((v: any) => (
                         <TableRow key={v.id}>
-                          <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">{fmtDate(v.recorded_at)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDate(v.recorded_at)}</TableCell>
                           <TableCell className="text-xs">{v.temperature != null ? `${v.temperature}°C` : "—"}</TableCell>
                           <TableCell className="text-xs">{v.pulse != null ? `${v.pulse}` : "—"}</TableCell>
                           <TableCell className="text-xs font-mono">{v.bp_systolic != null ? `${v.bp_systolic}/${v.bp_diastolic}` : "—"}</TableCell>
@@ -371,7 +544,7 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                     <TableBody>
                       {fluidEntries.map((e: any) => (
                         <TableRow key={e.id}>
-                          <TableCell className="text-[13px] text-muted-foreground">{fmtDate(e.recorded_at)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{fmtDate(e.recorded_at)}</TableCell>
                           <TableCell><FluidTypeBadge type={e.fluid_type} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground capitalize">{e.route ?? "—"}</TableCell>
                           <TableCell className="text-xs">{e.fluid_name ?? "—"}</TableCell>
@@ -439,9 +612,9 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                       {plan.goal && <p className="text-xs text-muted-foreground">Goal: {plan.goal}</p>}
                       {plan.interventions && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{plan.interventions}</p>}
                       <div className="flex items-center justify-between">
-                        <p className="text-[13px] text-muted-foreground">{plan.assigned_to ? `Assigned to ${plan.assigned_to}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{plan.assigned_to ? `Assigned to ${plan.assigned_to}` : ""}</p>
                         {plan.status === "active" && (
-                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px] text-green-500 hover:bg-green-500/10"
+                          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-green-500 hover:bg-green-500/10"
                             onClick={() => resolvePlanMut.mutate(plan.id)} disabled={resolvePlanMut.isPending}>
                             <CheckCircle2 className="mr-1 h-3 w-3" /> Resolve
                           </Button>
@@ -491,7 +664,7 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
               {Object.keys(marSummary).length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
                   {Object.entries(marSummary).map(([s, count]) => (
-                    <Badge key={s} variant="outline" className="text-[12px] capitalize">{s.replace(/_/g, " ")}: {count}</Badge>
+                    <Badge key={s} variant="outline" className="text-xs capitalize">{s.replace(/_/g, " ")}: {count}</Badge>
                   ))}
                 </div>
               )}
@@ -517,14 +690,14 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                           <TableRow>
                             <TableCell className="text-xs font-medium">
                               {m.drug_name}
-                              {(m.dose || m.route) && <div className="text-[12px] text-muted-foreground">{[m.dose, m.route?.toUpperCase()].filter(Boolean).join(" · ")}</div>}
+                              {(m.dose || m.route) && <div className="text-xs text-muted-foreground">{[m.dose, m.route?.toUpperCase()].filter(Boolean).join(" · ")}</div>}
                             </TableCell>
                             <TableCell><MarStatusBadge status={m.status} /></TableCell>
-                            <TableCell className="text-[13px] text-muted-foreground">{fmtDate(m.administered_at)}</TableCell>
-                            <TableCell className="text-[13px] text-muted-foreground">{m.administered_by ?? "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{fmtDate(m.administered_at)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{m.administered_by ?? "—"}</TableCell>
                             <TableCell>
                               {m.status === "scheduled" && (
-                                <Button size="sm" variant="ghost" className="h-6 px-2 text-[13px]"
+                                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
                                   onClick={() => { setEditingMarId(m.id); setMarUpdateForm({ ...emptyMarUpdate }); }}>
                                   Update
                                 </Button>
@@ -612,6 +785,76 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
                 </section>
               )}
             </TabsContent>
+
+              <TabsContent value="charges" className="mt-0 space-y-4">
+                <section>
+                  <SectionLabel icon={<Receipt className="h-3.5 w-3.5" />} label="Billing" />
+                  {billingLoading ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : bills.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      No bills raised for this patient yet.
+                    </p>
+                  ) : (
+                    <>
+                      {outstanding > 0 && (
+                        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                          <p className="text-xs text-amber-700 dark:text-amber-400">
+                            Outstanding balance
+                          </p>
+                          <p className="text-lg font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                            &#8358;{outstanding.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      {bills.slice(0, 8).map((b: any) => (
+                        <DetailRow
+                          key={b.id}
+                          label={b.bill_number ?? `Bill ${b.id}`}
+                          value={b.total_amount != null ? `\u20a6${Number(b.total_amount).toLocaleString()}` : null}
+                          accent={Number(b.amount_pending ?? 0) > 0 ? "text-amber-600" : undefined}
+                        />
+                      ))}
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Read-only. Recording a payment is a cashier action on the billing screen.
+                      </p>
+                    </>
+                  )}
+                </section>
+
+                <Separator />
+
+                <section>
+                  <SectionLabel icon={<Pill className="h-3.5 w-3.5" />} label="Pharmacy" />
+                  {rxLoading ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : prescriptions.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      Nothing prescribed for this patient.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {prescriptions.slice(0, 12).map((rx: any) => (
+                        <li key={rx.id} className="flex items-start justify-between gap-2 border-b border-border/30 py-1 last:border-0">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">{rx.drug_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {[rx.dosage, rx.frequency, rx.route].filter(Boolean).join(" \u00b7 ")}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="shrink-0 text-xs capitalize">
+                            {String(rx.status ?? "").replace(/_/g, " ")}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </TabsContent>
           </div>
         </Tabs>
 
@@ -628,20 +871,11 @@ export function NursingWorkspacePanel({ encounter: initialEncounter, onClose, in
   );
 }
 
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
-  );
-}
-
 function VitalMini({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
   return (
     <div className="rounded-md border p-2 flex items-center justify-between">
       <div>
-        <p className="text-[12px] text-muted-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-sm font-bold">{value}</p>
       </div>
       <span className={color}>{icon}</span>

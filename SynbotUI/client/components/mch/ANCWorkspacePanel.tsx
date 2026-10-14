@@ -25,6 +25,7 @@ import {
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
 import {
   ANCStatusBadge, BoolCheck, DetailRow, SectionLabel,
   emptyVisit, emptyDelivery, emptyNewborn, stripEmptyStrings,
@@ -169,6 +170,15 @@ export function ANCWorkspacePanel({ anc: initialAnc, onClose }: ANCWorkspacePane
       setNewbornOpen(false);
       setNewbornForm({ ...emptyNewborn });
       void qc.invalidateQueries({ queryKey: ["anc-newborn", delivery?.id] });
+      // The assessment creates the baby's own patient record (mother_patient_id
+      // -> anc.patient_id) as a side effect, so every babies-roster view needs
+      // invalidating too -- previously only the assessment query itself was
+      // invalidated, so a freshly-created baby didn't appear anywhere (this
+      // panel's own list, the mother's chart, or the hospital-wide roster)
+      // until something unrelated happened to refetch it.
+      void qc.invalidateQueries({ queryKey: ["mch-babies", anc.patient_id] });
+      void qc.invalidateQueries({ queryKey: ["patient-babies", anc.patient_id] });
+      void qc.invalidateQueries({ queryKey: ["immunisation-babies"] });
       void qc.invalidateQueries({ queryKey: ["mch-babies", anc.patient_id] });
       invalidateAll();
     },
@@ -179,7 +189,7 @@ export function ANCWorkspacePanel({ anc: initialAnc, onClose }: ANCWorkspacePane
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { motionTransitions } from "@/lib/motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -41,14 +42,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AlertBanner } from "@/components/AlertBanner";
 import { api } from "@/lib/api-client";
+import { RecordDetailPanel } from "@/components/patient/RecordDetailPanel";
 
-const motionTransitions = {
-  fadeInUp: {
-    initial: { opacity: 0, y: 18 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.35, ease: "easeOut" },
-  },
-};
 
 const SPECIALTIES = [
   "cardiology","ent","ophthalmology","dermatology","orthopaedics",
@@ -163,7 +158,7 @@ function TemplateCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <Badge variant="outline" className={`text-[12px] ${color}`}>
+              <Badge variant="outline" className={`text-xs ${color}`}>
                 {SPECIALTY_LABELS[tmpl.specialty] ?? tmpl.specialty}
               </Badge>
             </div>
@@ -323,7 +318,7 @@ function NoteWriter({
           <p className="text-xs font-medium text-muted-foreground mb-1.5">Default Order Sets</p>
           <div className="flex flex-wrap gap-1.5">
             {(template.default_order_sets as string[]).map(o => (
-              <Badge key={o} variant="secondary" className="text-[12px]">{o}</Badge>
+              <Badge key={o} variant="secondary" className="text-xs">{o}</Badge>
             ))}
           </div>
         </div>
@@ -386,12 +381,19 @@ function NotesTab() {
               <tr><td colSpan={8} className="text-center py-10 text-muted-foreground text-sm">No notes found.</td></tr>
             )}
             {notes.map((n: any) => (
-              <tr key={n.id} className="border-b hover:bg-muted/20">
+              /* The whole row opens the note. A lone chevron button at the far
+                 right was the only affordance, so the obvious click target —
+                 the note itself — did nothing. */
+              <tr
+                key={n.id}
+                onClick={() => setViewNote(n)}
+                className="cursor-pointer border-b transition-colors hover:bg-muted/40"
+              >
                 <td className="px-4 py-2.5 text-xs text-muted-foreground">#{n.id}</td>
                 <td className="px-4 py-2.5">{n.patient_id}</td>
                 <td className="px-4 py-2.5 text-xs text-muted-foreground">{n.encounter_id ?? "—"}</td>
                 <td className="px-4 py-2.5">
-                  <Badge variant="outline" className={`text-[12px] ${SPECIALTY_COLORS[n.specialty] ?? ""}`}>
+                  <Badge variant="outline" className={`text-xs ${SPECIALTY_COLORS[n.specialty] ?? ""}`}>
                     {SPECIALTY_LABELS[n.specialty] ?? n.specialty}
                   </Badge>
                 </td>
@@ -400,10 +402,8 @@ function NotesTab() {
                 <td className="px-4 py-2.5 text-xs text-muted-foreground">
                   {n.noted_at ? new Date(n.noted_at).toLocaleDateString() : "—"}
                 </td>
-                <td className="px-4 py-2.5">
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setViewNote(n)}>
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
+                <td className="px-4 py-2.5 text-muted-foreground">
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </td>
               </tr>
             ))}
@@ -411,55 +411,42 @@ function NotesTab() {
         </table>
       </div>
 
-      {/* Note detail dialog */}
-      <Dialog open={!!viewNote} onOpenChange={() => setViewNote(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Specialist Note #{viewNote?.id}</DialogTitle>
-          </DialogHeader>
-          {viewNote && (
-            <div className="space-y-3 text-sm max-h-[480px] overflow-y-auto">
-              <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground">
-                <div><span className="font-medium text-foreground">Patient:</span> {viewNote.patient_id}</div>
-                <div><span className="font-medium text-foreground">Encounter:</span> {viewNote.encounter_id ?? "—"}</div>
-                <div><span className="font-medium text-foreground">By:</span> {viewNote.noted_by}</div>
-              </div>
-              {viewNote.icd10_codes?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {viewNote.icd10_codes.map((c: string) => (
-                    <Badge key={c} variant="outline" className="text-[12px]">{c}</Badge>
-                  ))}
-                </div>
-              )}
-              {viewNote.assessment && (
-                <div>
-                  <p className="text-xs font-semibold mb-1">Assessment</p>
-                  <p className="text-sm bg-muted/50 rounded p-2">{viewNote.assessment}</p>
-                </div>
-              )}
-              {viewNote.plan && (
-                <div>
-                  <p className="text-xs font-semibold mb-1">Plan</p>
-                  <p className="text-sm bg-muted/50 rounded p-2">{viewNote.plan}</p>
-                </div>
-              )}
-              {viewNote.note_data && Object.keys(viewNote.note_data).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold mb-2">Full Note Data</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(viewNote.note_data).map(([k, v]) => (
-                      <div key={k} className="bg-muted/40 rounded p-2">
-                        <p className="text-[12px] text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
-                        <p className="text-xs font-medium">{String(v)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Note detail — a workspace panel, matching every other clinical record
+          in the app. The centred dialog it replaced squeezed the assessment and
+          plan into a narrow column and rendered note_data as a grid of tiny
+          boxes. */}
+      <RecordDetailPanel
+        detail={viewNote ? {
+          title: `${SPECIALTY_LABELS[viewNote.specialty] ?? viewNote.specialty} note`,
+          subtitle: viewNote.noted_at ? new Date(viewNote.noted_at).toLocaleString("en-NG") : undefined,
+          icon: Stethoscope,
+          badges: [
+            { label: `#${viewNote.id}`, tone: "default" as const },
+            ...(viewNote.icd10_codes ?? []).map((c: string) => ({ label: c, tone: "info" as const })),
+          ],
+          rows: [
+            ["Patient", viewNote.patient_id],
+            ["Encounter", viewNote.encounter_id ?? "—"],
+            ["Noted by", viewNote.noted_by],
+          ],
+          blocks: [
+            { label: "Assessment", text: viewNote.assessment },
+            { label: "Plan", text: viewNote.plan },
+          ],
+          sections: viewNote.note_data && Object.keys(viewNote.note_data).length > 0
+            ? [{
+                label: "Full note",
+                rows: Object.entries(viewNote.note_data)
+                  .filter(([, v]) => v !== null && v !== undefined && v !== "" && v !== false)
+                  .map(([k, v]): [string, any] => [
+                    k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+                    String(v),
+                  ]),
+              }]
+            : undefined,
+        } : null}
+        onClose={() => setViewNote(null)}
+      />
     </div>
   );
 }

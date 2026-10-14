@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { handlePayFirst } from "@/lib/pay-first";
+import { useAuth } from "@/components/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -19,6 +21,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { cn } from "@/lib/utils";
 import {
   StatusBadge, UrgencyBadge, ModalityBadge, WorkflowProgress, DetailRow, elapsed,
 } from "@/components/radiology/radiology-shared";
@@ -57,6 +61,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
   const [templateId, setTemplateId] = useState("");
 
   const orderId = String(initialOrder.id);
+  const { roles: payFirstRoles } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["radiology-panel-order", orderId],
@@ -114,7 +119,10 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
   const startMut = useMutation({
     mutationFn: () => api.hospital.radiology.advanceStatus(orderId, { status: "in_progress" }),
     onSuccess: () => { toast({ title: "Scan started" }); invalidateAll(); },
-    onError: (e: any) => toast({ title: "Failed to start scan", description: e.message, variant: "destructive" }),
+    onError: async (e: any) => {
+      if (await handlePayFirst(e, "radiology_order", orderId, payFirstRoles, toast)) return;
+      toast({ title: "Failed to start scan", description: e.message, variant: "destructive" });
+    },
   });
 
   const reportMut = useMutation({
@@ -157,7 +165,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.default, "overflow-y-auto p-0 flex flex-col")} side="right">
         {isLoading && !data ? (
           <LoadingSkeleton />
         ) : (
@@ -178,7 +186,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                     <UrgencyBadge urgency={order.urgency} />
                     <StatusBadge status={status} />
                   </div>
-                  <p className="text-[13px] text-muted-foreground mt-1">Order #{order.id} · Ordered {elapsed(order.ordered_at)} ago</p>
+                  <p className="text-xs text-muted-foreground mt-1">Order #{order.id} · Ordered {elapsed(order.ordered_at)} ago</p>
                 </div>
               </div>
             </SheetHeader>
@@ -228,7 +236,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                         <SectionLabel icon={<CalendarClock className="h-3.5 w-3.5" />} label="Schedule Exam" />
                         <Input type="datetime-local" value={scheduledAt}
                           onChange={e => setScheduledAt(e.target.value)} />
-                        <p className="text-[12px] text-muted-foreground">Leave blank to schedule for now.</p>
+                        <p className="text-xs text-muted-foreground">Leave blank to schedule for now.</p>
                         <Button size="sm" variant="outline" className="w-full gap-1.5"
                           disabled={scheduleMut.isPending} onClick={() => scheduleMut.mutate()}>
                           {scheduleMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
@@ -249,7 +257,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                             <CheckCircle2 className="h-4 w-4" /> Verified & Finalized
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            By {order.verified_by} · {new Date(order.verified_at).toLocaleString()}
+                            By {order.verified_by_name ?? order.verified_by} · {new Date(order.verified_at).toLocaleString()}
                           </p>
                         </div>
                       ) : (
@@ -279,7 +287,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                             <p className="whitespace-pre-wrap text-xs">{order.findings}</p>
                           </div>
                         )}
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           Reported by {order.radiologist_id} · {elapsed(order.reported_at)} ago
                           {order.tat_minutes != null && ` · TAT ${order.tat_minutes}m`}
                         </p>
@@ -383,8 +391,8 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                             <div className="flex items-center justify-between">
                               <span className="font-medium">{v.impression ?? v.report?.slice(0, 60) ?? "—"}</span>
                               {v.verified_at
-                                ? <Badge variant="outline" className="text-[12px] text-green-700 dark:text-green-400 border-green-500/30">was verified</Badge>
-                                : <Badge variant="outline" className="text-[12px] text-yellow-700 dark:text-yellow-400 border-yellow-500/30">unverified</Badge>}
+                                ? <Badge variant="outline" className="text-xs text-green-700 dark:text-green-400 border-green-500/30">was verified</Badge>
+                                : <Badge variant="outline" className="text-xs text-yellow-700 dark:text-yellow-400 border-yellow-500/30">unverified</Badge>}
                             </div>
                             <p className="text-muted-foreground">{elapsed(v.superseded_at)} ago, by {v.radiologist_id}</p>
                             {v.amendment_reason && <p className="text-orange-500">Amended: {v.amendment_reason}</p>}
@@ -459,15 +467,6 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
   );
 }
 

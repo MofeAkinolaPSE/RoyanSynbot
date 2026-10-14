@@ -26,6 +26,10 @@ export const ROLE_PRIORITY = [
   "receptionist",
   "ops",
   "physiotherapist",
+  "hmo",
+  "cashier",
+  "store",
+  "auditor",
 ] as const;
 
 export type RoleKey = (typeof ROLE_PRIORITY)[number];
@@ -41,12 +45,12 @@ export function resolvePrimaryRole(userRoles: string[]): RoleKey | null {
 // can already see in the sidebar, not the full sidebar dumped as cards.
 export const WORKSTATION_FEATURED: Record<RoleKey, string[]> = {
   admin: [
-    "/hospital/admin-dashboard", "/hospital/patients", "/hospital/queue",
-    "/hospital/billing", "/hospital/hr", "/hospital/quality", "/admin/registrations",
+    "/executive", "/finance/books", "/hospital/admin-dashboard", "/hospital/patients", "/hospital/queue",
+    "/hr", "/hospital/quality", "/admin/users",
   ],
   management: [
-    "/hospital/admin-dashboard", "/executive", "/hospital/patients",
-    "/hospital/queue", "/hospital/hr", "/hospital/reports",
+    "/executive", "/finance/books", "/hospital/admin-dashboard", "/hospital/patients",
+    "/hospital/queue", "/hr", "/hospital/reports",
   ],
   doctor: [
     "/hospital/doctor", "/hospital/patients", "/hospital/queue",
@@ -54,20 +58,25 @@ export const WORKSTATION_FEATURED: Record<RoleKey, string[]> = {
   ],
   nurse: [
     "/hospital/nurse", "/hospital/patients", "/hospital/queue",
-    "/hospital/wards", "/hospital/nursing",
+    "/hospital/wards", "/hospital/nurse",
   ],
   lab: ["/hospital/lab", "/hospital/patients", "/hospital/queue"],
   radiology: ["/hospital/radiology", "/hospital/patients", "/hospital/queue"],
-  pharmacist: ["/hospital/pharmacy", "/hospital/pharmacy/inventory", "/hospital/patients"],
-  finance: ["/hospital/billing", "/hospital/hmo", "/admin/fee-schedule", "/hospital/reports"],
-  hr: ["/hospital/hr", "/hr", "/staff/dashboard"],
+  pharmacist: ["/hospital/pharmacy", "/hospital/pharmacy/inventory", "/procurement", "/finance/books/stock", "/hospital/patients"],
+  // Roy Books is finance's home; the overview and credit control are the daily starting points
+  finance: ["/finance/books", "/executive", "/relations", "/hospital/billing", "/finance/ar", "/hospital/hmo", "/finance/books/reports"],
+  hr: ["/hr", "/workspace"],
   quality_assurance: [
-    "/hospital/quality", "/compliance", "/hospital/audits-maintenance", "/hospital/reports",
+    "/hospital/quality", "/compliance", "/hospital/audits-maintenance", "/reports/new", "/calendar",
   ],
   receptionist: ["/hospital/front-desk", "/hospital/appointments", "/hospital/patients"],
   ops: [
     "/hospital/queue", "/hospital/wards", "/hospital/audits-maintenance",
-    "/operations/suppliers", "/hospital/engagement",
+    "/procurement", "/calendar", "/hospital/engagement",
   ],
-  physiotherapist: ["/hospital/patients", "/hospital/queue", "/hospital/wards", "/hospital/nursing"],
+  physiotherapist: ["/hospital/patients", "/hospital/queue", "/hospital/wards", "/hospital/nurse"],
+  hmo: ["/hospital/hmo", "/hospital/billing", "/finance/books/sales", "/hospital/patients"],
+  cashier: ["/hospital/billing", "/hospital/patients", "/hospital/queue"],
+  store: ["/hospital/stores", "/hospital/pharmacy/inventory", "/procurement"],
+  auditor: ["/finance/books", "/finance/books/ledger", "/finance/books/statements", "/finance/books/reports", "/executive"],
 };

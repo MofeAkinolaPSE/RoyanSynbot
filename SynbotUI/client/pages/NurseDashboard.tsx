@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { WorkspaceView } from "@/pages/StaffWorkspace";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,11 @@ import { cn } from "@/lib/utils";
 import { LabWorkspacePanel } from "@/components/lab/LabWorkspacePanel";
 import { TheatreWorkspacePanel } from "@/components/theatre/TheatreWorkspacePanel";
 import { NursingWorkspacePanel } from "@/components/nursing/NursingWorkspacePanel";
+import { AdmissionRequestsCard } from "@/components/nursing/AdmissionRequestsCard";
+import { RecentNursingNotes } from "@/components/nursing/RecentNursingNotes";
+import { NursingWorklist } from "@/components/nursing/NursingWorklist";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
+import { BedWorkspacePanel } from "@/components/wards/BedWorkspacePanel";
 
 function fmtDate(ts?: string) {
   if (!ts) return "—";
@@ -45,7 +51,15 @@ function waitMins(ts?: string): string {
 }
 
 // ── Ward Row (lazy-loads beds on expand) ──────────────────────────────────────
-function WardRow({ ward }: { ward: any }) {
+function WardRow({
+  ward,
+  onOpenBed,
+}: {
+  ward: any;
+  /** Opens the bed workspace in place, so the nurse never leaves the station. */
+  onOpenBed?: (bed: any) => void;
+}) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
 
   const { data: bedsData, isLoading: bedsLoading } = useQuery({
@@ -88,26 +102,62 @@ function WardRow({ ward }: { ward: any }) {
             <p className="text-xs text-muted-foreground py-2">No beds configured</p>
           ) : (
             <div className="space-y-1">
+              <div className="flex items-center gap-3 border-b pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="w-[92px] shrink-0">Room</span>
+                <span className="w-8 shrink-0">Bed</span>
+                <span className="w-[76px] shrink-0">Rate</span>
+                <span className="w-[68px] shrink-0">Status</span>
+                <span className="min-w-0 flex-1">Patient</span>
+              </div>
+              {/* Same column sequence as the Wards & Beds page — Room, Bed,
+                  Rate, Status, Patient — so a nurse reading one and then the
+                  other is not re-learning the row. Room and rate only became
+                  available once migration 209 gave beds a real room. */}
               {beds.map((bed: any) => (
-                <div key={bed.id} className="flex items-center gap-3 text-xs py-1">
-                  <span className="font-mono text-muted-foreground w-10 shrink-0">{bed.bed_number}</span>
-                  <span className="flex-1 min-w-0 truncate">
-                    {bed.patient_name ?? <span className="text-muted-foreground/50 italic">Empty</span>}
+                // Clicking a bed opens the same workspace the IPD queue uses —
+                // room detail, running charges, add a service, nursing record.
+                // A nurse standing at the station should not have to navigate to
+                // another page to chart the patient in front of them.
+                <button
+                  key={bed.id}
+                  onClick={() => onOpenBed?.({ ...bed, ward_id: ward.id, ward_name: ward.name ?? ward.ward_name })}
+                  disabled={!onOpenBed}
+                  className="flex w-full items-center gap-3 rounded px-1 -mx-1 py-1 text-left text-xs transition-colors hover:bg-muted/60 disabled:cursor-default disabled:hover:bg-transparent"
+                >
+                  <span className="w-[92px] shrink-0 truncate font-medium">
+                    {bed.room_name ?? <span className="italic text-muted-foreground/60">Unassigned</span>}
+                  </span>
+                  <span className="w-8 shrink-0 font-mono text-muted-foreground">{bed.bed_number}</span>
+                  <span className="w-[76px] shrink-0 tabular-nums text-muted-foreground">
+                    {bed.room_daily_rate
+                      ? `₦${Number(bed.room_daily_rate).toLocaleString()}`
+                      : <span className="text-amber-600">no rate</span>}
                   </span>
                   <Badge
                     variant="outline"
-                    className={cn("text-[12px] shrink-0",
+                    className={cn("shrink-0 text-xs",
                       bed.status === "occupied" ? "bg-blue-50 text-blue-700 border-blue-300" : "bg-green-50 text-green-700 border-green-300"
                     )}
                   >
                     {bed.status ?? "available"}
                   </Badge>
+                  <span className="min-w-0 flex-1 truncate">
+                    {bed.patient_name ?? <span className="italic text-muted-foreground/50">Empty</span>}
+                  </span>
                   {bed.patient_mrn && (
-                    <Button variant="ghost" size="sm" asChild className="h-5 px-1.5 text-[12px] text-primary shrink-0">
-                      <Link to={`/hospital/patients/${bed.patient_mrn}`}>PCE</Link>
-                    </Button>
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      className="h-5 shrink-0 rounded px-1.5 text-xs text-primary hover:underline"
+                      onClick={(e) => { e.stopPropagation(); navigate(`/hospital/patients/${bed.patient_mrn}`); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.stopPropagation(); navigate(`/hospital/patients/${bed.patient_mrn}`); }
+                      }}
+                    >
+                      PCE
+                    </span>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -118,7 +168,18 @@ function WardRow({ ward }: { ward: any }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
+/** The Nursing Station: the ward first, then the nurse's whole workspace (day, tasks, inbox, messages). */
 export default function NurseDashboard() {
+  return <WorkspaceView title="Nursing Station" lead={[{ key: "ward", label: "Nursing station", icon: HeartPulse, render: () => <NursingStation /> }]} />;
+}
+
+function NursingStation() {
+
+  // Each KPI has its own section on this same page, so the tile scrolls rather
+  // than navigating the nurse away from the board they are working from.
+  const scrollTo = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   const qc = useQueryClient();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -130,6 +191,24 @@ export default function NurseDashboard() {
   const [labPanelOrder, setLabPanelOrder] = useState<any | null>(null);
   const [theatrePanelCase, setTheatrePanelCase] = useState<any | null>(null);
   const [nursingPanelEncounter, setNursingPanelEncounter] = useState<any | null>(null);
+  // NursingWorkspacePanel has always accepted initialTab; neither page ever
+  // passed one, so Notes and Flowsheet sat three clicks deep with no signpost.
+  const [nursingPanelTab, setNursingPanelTab] = useState<string | undefined>(undefined);
+  // Held so the notes feed can resolve a note back to a live encounter without
+  // issuing its own duplicate query.
+  const [worklistEncounters, setWorklistEncounters] = useState<any[]>([]);
+  // Bed workspace opened from the ward card, so the station is self-sufficient.
+  const [stationBed, setStationBed] = useState<any | null>(null);
+
+  /**
+   * queue_clinical.py names the field `mrn`; every other department's
+   * enrichment calls it `patient_mrn`. Normalised here so the shared panel gets
+   * the prop shape it expects.
+   */
+  const openNursingPanel = (enc: any, tab?: string) => {
+    setNursingPanelTab(tab);
+    setNursingPanelEncounter({ ...enc, patient_mrn: enc.patient_mrn ?? enc.mrn });
+  };
   const [vitalsForm, setVitalsForm] = useState({
     bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "",
     spo2: "", respiratory_rate: "", weight: "",
@@ -258,15 +337,15 @@ export default function NurseDashboard() {
   });
 
   return (
-    <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
+    <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
       <AlertBanner />
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <HeartPulse className="h-6 w-6 text-blue-600" /> Nurse Dashboard
-          </h1>
+          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+            <HeartPulse className="h-5 w-5 text-blue-600" /> Ward today
+          </h2>
           <p className="text-sm text-muted-foreground">{today}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={doRefresh}>
@@ -274,15 +353,26 @@ export default function NurseDashboard() {
         </Button>
       </div>
 
+      {/* Doctors asking for a bed. Above the KPIs because it is the one
+          thing on this page another clinician is actively waiting on. */}
+      <AdmissionRequestsCard onOpenPatient={(r) => openNursingPanel(r, "detail")} />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: "Waiting for Nurse",  value: pendingAssessment.length, icon: Syringe,      color: "text-teal-700",   bg: pendingAssessment.length > 0 ? "bg-teal-50 border-teal-200" : "" },
-          { label: "Inpatients",         value: inpatients.length,        icon: Activity,     color: "text-blue-700",   bg: "bg-blue-50" },
-          { label: "Beds Available",     value: availableBeds,            icon: BedDouble,    color: "text-green-700",  bg: "bg-green-50" },
-          { label: "Critical Flags",     value: critFlags.length,         icon: AlertTriangle,color: critFlags.length > 0 ? "text-red-700" : "text-muted-foreground", bg: critFlags.length > 0 ? "bg-red-50" : "bg-muted/30" },
+          { label: "Waiting for Nurse",  value: pendingAssessment.length, icon: Syringe,      color: "text-teal-700",   bg: pendingAssessment.length > 0 ? "bg-teal-50 border-teal-200" : "", anchor: "sec-waiting" },
+          { label: "Inpatients",         value: inpatients.length,        icon: Activity,     color: "text-blue-700",   bg: "bg-blue-50", anchor: "sec-inpatients" },
+          { label: "Beds Available",     value: availableBeds,            icon: BedDouble,    color: "text-green-700",  bg: "bg-green-50", anchor: "sec-beds" },
+          { label: "Critical Flags",     value: critFlags.length,         icon: AlertTriangle,color: critFlags.length > 0 ? "text-red-700" : "text-muted-foreground", bg: critFlags.length > 0 ? "bg-red-50" : "bg-muted/30", anchor: "sec-critical" },
         ].map(k => (
-          <Card key={k.label} className={cn("border-border/60", k.bg)}>
+          <Card
+            key={k.label}
+            role="button"
+            tabIndex={0}
+            onClick={() => scrollTo(k.anchor)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); scrollTo(k.anchor); } }}
+            className={cn("border-border/60 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5", k.bg)}
+          >
             <CardContent className="pt-4 pb-3">
               <div className="flex justify-between items-start">
                 <div>
@@ -297,13 +387,13 @@ export default function NurseDashboard() {
       </div>
 
       {/* ── Waiting for Assessment ─────────────────────────────────────────── */}
-      <Card className={cn(pendingAssessment.length > 0 && "border-teal-500/30")}>
+      <Card id="sec-waiting" className={cn(pendingAssessment.length > 0 && "border-teal-500/30")}>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Syringe className={cn("h-4 w-4", pendingAssessment.length > 0 ? "text-teal-400" : "text-muted-foreground")} />
             Waiting for Assessment
             {pendingAssessment.length > 0 && (
-              <span className="rounded-full bg-teal-500/20 text-teal-700 dark:text-teal-400 text-[12px] font-semibold px-2 py-0.5">
+              <span className="rounded-full bg-teal-500/20 text-teal-700 dark:text-teal-400 text-xs font-semibold px-2 py-0.5">
                 {pendingAssessment.length}
               </span>
             )}
@@ -340,7 +430,7 @@ export default function NurseDashboard() {
                         >
                           {enc.patient_name ?? <span className="text-muted-foreground italic text-xs">Unknown</span>}
                         </button>
-                        {enc.mrn && <span className="font-mono text-[12px] text-muted-foreground">{enc.mrn}</span>}
+                        {enc.mrn && <span className="font-mono text-xs text-muted-foreground">{enc.mrn}</span>}
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[180px] truncate">
@@ -367,7 +457,7 @@ export default function NurseDashboard() {
       </Card>
 
       {/* Ward Bed Status */}
-      <Card>
+      <Card id="sec-beds">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <BedDouble className="h-4 w-4 text-blue-500" />
@@ -382,20 +472,20 @@ export default function NurseDashboard() {
             </div>
           ) : wards.length === 0 ? (
             <p className="text-center py-8 text-sm text-muted-foreground">No wards configured</p>
-          ) : wards.map((w: any) => <WardRow key={w.id} ward={w} />)
+          ) : wards.map((w: any) => <WardRow key={w.id} ward={w} onOpenBed={setStationBed} />)
           }
         </CardContent>
       </Card>
 
       {/* Critical Labs + Medications to Administer + Theatre In Progress + Active Inpatients */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <Card>
+        <Card id="sec-critical">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <AlertTriangle className={cn("h-4 w-4", critFlags.length > 0 ? "text-red-500" : "text-muted-foreground")} />
               Critical Lab Flags
               {critFlags.length > 0 && (
-                <span className="rounded-full bg-red-100 text-red-700 text-[12px] font-semibold px-2 py-0.5">{critFlags.length}</span>
+                <span className="rounded-full bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5">{critFlags.length}</span>
               )}
             </CardTitle>
             <Button variant="ghost" size="sm" asChild className="h-7 text-xs gap-1">
@@ -425,11 +515,11 @@ export default function NurseDashboard() {
                     })}>
                     <div>
                       <p className="text-xs font-medium text-red-700">{f.test_name ?? `Result #${f.lab_order_id}`}</p>
-                      <p className="text-[12px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Patient #{f.patient_id} · {fmtDate(f.resulted_at)}
                       </p>
                     </div>
-                    <Badge variant="outline" className="text-[12px] bg-red-50 text-red-700 border-red-300 shrink-0">CRITICAL</Badge>
+                    <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300 shrink-0">CRITICAL</Badge>
                   </li>
                 ))}
               </ul>
@@ -461,7 +551,7 @@ export default function NurseDashboard() {
                     <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <div>
                         <p className="text-xs font-medium">{m.drug_name} {m.dosage ? `· ${m.dosage}` : ""}</p>
-                        <p className="text-[12px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {m.patient_name ?? `Patient #${m.patient_id}`} · {m.route ?? "—"}
                         </p>
                       </div>
@@ -473,7 +563,7 @@ export default function NurseDashboard() {
                     </li>
                   ))}
                 </ul>
-                <p className="px-4 py-2 text-[12px] text-muted-foreground border-t">
+                <p className="px-4 py-2 text-xs text-muted-foreground border-t">
                   Shows first dose not yet given only — doesn't track later scheduled doses.
                 </p>
               </>
@@ -505,11 +595,11 @@ export default function NurseDashboard() {
                     onClick={() => setTheatrePanelCase(c)}>
                     <div>
                       <p className="text-xs font-medium">{c.procedure_name}</p>
-                      <p className="text-[12px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {c.patient_name ?? `Patient #${c.patient_id}`} · {c.theatre_name ?? "—"}
                       </p>
                     </div>
-                    <Badge variant="outline" className={cn("text-[12px] shrink-0 capitalize",
+                    <Badge variant="outline" className={cn("text-xs shrink-0 capitalize",
                       c.status === "in_theatre" ? "bg-sky-50 text-sky-700 border-sky-300" : "bg-blue-50 text-blue-700 border-blue-300")}>
                       {c.status?.replace("_", " ")}
                     </Badge>
@@ -520,7 +610,7 @@ export default function NurseDashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="sec-inpatients">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Droplets className="h-4 w-4 text-blue-500" />
@@ -540,7 +630,7 @@ export default function NurseDashboard() {
                     onClick={() => setNursingPanelEncounter({ ...enc, patient_mrn: enc.mrn })}>
                     <div>
                       <p className="text-xs font-medium">{enc.patient_name ?? enc.mrn ?? `Patient #${enc.patient_id}`}</p>
-                      <p className="text-[12px] text-muted-foreground">{enc.department ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{enc.department ?? "—"}</p>
                     </div>
                     {enc.mrn && (
                       <Button variant="outline" size="sm" asChild className="h-6 px-2 text-xs border-primary/40 text-primary shrink-0"
@@ -555,6 +645,13 @@ export default function NurseDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Folded in from the retired Nursing Station page. The cards above
+          each answer one question; this is the single view of everybody,
+          which is what a nurse taking over a shift actually opens. */}
+      <NursingWorklist onOpen={openNursingPanel} onEncountersLoaded={setWorklistEncounters} />
+
+      <RecentNursingNotes encounters={worklistEncounters} onOpenNote={openNursingPanel} />
 
       {/* Quick Links */}
       <div className="flex flex-wrap gap-3">
@@ -642,9 +739,21 @@ export default function NurseDashboard() {
         <TheatreWorkspacePanel case={theatrePanelCase} onClose={() => setTheatrePanelCase(null)} />
       )}
 
+      {/* Bed workspace, opened from the ward card. Same panel the IPD queue and
+          the wards page use: room detail, running charges, add a service,
+          nursing record — so a nurse configures the bed and charts the patient
+          without leaving the station. */}
+      {stationBed && (
+        <BedWorkspacePanel bed={stationBed} onClose={() => setStationBed(null)} />
+      )}
+
       {/* ── Nursing Workspace panel (inline active-inpatient charting) ───── */}
       {nursingPanelEncounter && (
-        <NursingWorkspacePanel encounter={nursingPanelEncounter} onClose={() => setNursingPanelEncounter(null)} />
+        <NursingWorkspacePanel
+          encounter={nursingPanelEncounter}
+          initialTab={nursingPanelTab}
+          onClose={() => { setNursingPanelEncounter(null); setNursingPanelTab(undefined); }}
+        />
       )}
     </motion.div>
   );

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PayrollRunPanel } from "@/components/hr/payroll-run";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -40,7 +41,15 @@ const MONTHS = [
   "July","August","September","October","November","December",
 ];
 
-export default function HRShifts() {
+/**
+ * The shift/leave/payroll half of HR. Rendered by pages/HR.tsx as three tabs
+ * alongside Overview, Staff Directory and Timesheets — this was a second HR
+ * page on its own route until they were merged.
+ *
+ * Keeps its own queries, mutations and dialogs; contributes only TabsContent,
+ * which Radix resolves through Tabs context regardless of nesting depth.
+ */
+export function HRShiftsPanels() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -176,65 +185,7 @@ export default function HRShifts() {
     : null;
 
   return (
-    <motion.div className="p-6 space-y-6" {...motionTransitions.fadeInUp}>
-      <AlertBanner />
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-500/20 rounded-lg">
-            <Users className="w-6 h-6 text-blue-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">HR — Shifts & Leave</h1>
-            <p className="text-sm text-muted-foreground">Staff scheduling, leave management, and payroll</p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap justify-end">
-          <Button variant="outline" size="sm" className="border-border"
-            onClick={() => { refetchShifts(); refetchLeave(); refetchPayroll(); }}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
-          </Button>
-          <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/10"
-            onClick={() => { resetLeaveForm(); setLeaveOpen(true); }}>
-            <CalendarDays className="w-4 h-4 mr-1" /> Leave Request
-          </Button>
-          <Button size="sm" variant="outline" className="border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/10"
-            onClick={() => { resetPayrollForm(); setPayrollOpen(true); }}>
-            <Banknote className="w-4 h-4 mr-1" /> Add Payroll
-          </Button>
-          <Button size="sm" className="bg-blue-700 hover:bg-blue-800"
-            onClick={() => { resetShiftForm(); setShiftOpen(true); }}>
-            <Plus className="w-4 h-4 mr-1" /> Add Shift
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <OnlineStaffCard />
-        {[
-          { label: "On Duty Today",   value: hrStats.on_duty,                   color: "text-blue-700",    bg: "bg-blue-50" },
-          { label: "Total Shifts",    value: hrStats.total,                      color: "text-foreground",  bg: "bg-muted/30" },
-          { label: "Pending Leave",   value: leaveKpi.pending,                  color: leaveKpi.pending > 0 ? "text-yellow-700" : "text-muted-foreground", bg: leaveKpi.pending > 0 ? "bg-yellow-50" : "bg-muted/30" },
-          { label: "Pending Payroll", value: `₦${payKpi.pending_amount.toLocaleString()}`, color: "text-green-700 dark:text-green-400", bg: "bg-green-500/10" },
-        ].map(k => (
-          <Card key={k.label} className={cn("border-border", k.bg)}>
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
-              <p className={cn("text-2xl font-bold mt-1", k.color)}>{k.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="shifts">
-        <TabsList className="bg-muted border border-border">
-          <TabsTrigger value="shifts">Shift Roster</TabsTrigger>
-          <TabsTrigger value="leave">Leave Requests</TabsTrigger>
-          <TabsTrigger value="payroll">Payroll</TabsTrigger>
-        </TabsList>
+    <>
 
         {/* Shifts Tab */}
         <TabsContent value="shifts" className="mt-4 space-y-4">
@@ -357,55 +308,10 @@ export default function HRShifts() {
           </Card>
         </TabsContent>
 
-        {/* Payroll Tab */}
+        {/* Payroll Tab - the monthly run (prepare, approve, pay), each step into Roy Books */}
         <TabsContent value="payroll" className="mt-4 space-y-4">
-          <div className="flex gap-2">
-            {["all", ...PAYROLL_STATUSES].map(s => (
-              <button key={s} onClick={() => setFilterPayStatus(s)}
-                className={cn("px-3 py-1 rounded-full text-xs border transition-colors capitalize",
-                  filterPayStatus === s ? "bg-green-700 border-green-600 text-foreground" : "border-border text-muted-foreground hover:border-primary/50")}>
-                {s === "all" ? "All" : s}
-              </button>
-            ))}
-          </div>
-          <Card className="border-border bg-muted/30">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border">
-                  {["Staff","Department","Period","Gross","Allowances","Deductions","Net Salary","Status"].map(h => (
-                    <TableHead key={h} className="text-muted-foreground text-xs">{h}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payLoading
-                  ? <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      <Loader2 className="w-5 h-5 animate-spin inline mr-2" />Loading…
-                    </TableCell></TableRow>
-                  : payrolls.length === 0
-                    ? <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No payroll records</TableCell></TableRow>
-                    : payrolls.map((p: any) => (
-                      <TableRow key={p.id} className="border-border hover:bg-muted">
-                        <TableCell className="text-sm text-foreground">{p.staff_name || p.staff_id}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{p.department || "—"}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{MONTHS[(p.period_month || 1) - 1]?.slice(0, 3)} {p.period_year}</TableCell>
-                        <TableCell className="text-sm">₦{Number(p.gross_salary).toLocaleString()}</TableCell>
-                        <TableCell className="text-sm text-green-700 dark:text-green-400">+₦{Number(p.allowances || 0).toLocaleString()}</TableCell>
-                        <TableCell className="text-sm text-red-700 dark:text-red-400">-₦{(Number(p.deductions || 0) + Number(p.tax || 0) + Number(p.pension || 0)).toLocaleString()}</TableCell>
-                        <TableCell className="text-sm font-bold text-foreground">₦{Number(p.net_salary || 0).toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={cn("text-xs capitalize", PAY_STATUS_COLORS[p.status] || "")}>
-                            {p.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                }
-              </TableBody>
-            </Table>
-          </Card>
+          <PayrollRunPanel />
         </TabsContent>
-      </Tabs>
 
       {/* ── Add Shift Dialog ──────────────────────────────────────────────── */}
       <Dialog open={shiftOpen} onOpenChange={(o) => { setShiftOpen(o); if (!o) resetShiftForm(); }}>
@@ -664,6 +570,6 @@ export default function HRShifts() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </>
   );
 }

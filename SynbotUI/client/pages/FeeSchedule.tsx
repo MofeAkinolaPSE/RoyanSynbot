@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { ConsultationFees } from "@/components/billing/ConsultationFees";
 
 const FEE_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "pharmacy", "nursing", "theatre", "ward", "other"];
 
@@ -117,6 +118,8 @@ export default function FeeSchedule() {
           </Button>
         </div>
       </div>
+
+      <ConsultationFees />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

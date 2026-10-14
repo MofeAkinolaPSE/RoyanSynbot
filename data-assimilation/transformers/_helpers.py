@@ -39,6 +39,16 @@ def safe_str(value: Any) -> Optional[str]:
     return text or None
 
 
+def normalize_text(text: Optional[str]) -> Optional[str]:
+    """Hope's free-text fields frequently carry literal "\\r\\n" escape
+    sequences (not real line breaks) rather than actual newlines. Collapses
+    those to real newlines and strips per-line whitespace/blank lines."""
+    if not text:
+        return text
+    lines = [ln.strip() for ln in text.replace("\\r\\n", "\n").replace("\\n", "\n").splitlines()]
+    return "\n".join(ln for ln in lines if ln) or None
+
+
 def safe_date(value: Any) -> Optional[str]:
     """Like safe_str but treats MySQL zero/invalid-year dates as None."""
     s = safe_str(value)

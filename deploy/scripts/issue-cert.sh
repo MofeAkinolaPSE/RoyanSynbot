@@ -23,12 +23,12 @@ docker compose run --rm certbot certonly \
 
 echo "[2/3] Installing certificate for nginx ..."
 docker compose run --rm --entrypoint sh certbot -c "
-  cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /nginx-ssl/cert.pem &&
-  cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem /nginx-ssl/key.pem
+  cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /etc/nginx/ssl/cert.pem &&
+  cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem /etc/nginx/ssl/key.pem
 "
 
 echo "[3/3] Reloading nginx ..."
-docker compose restart nginx
+docker compose exec nginx nginx -s reload
 
 echo "Done. Verify with: curl -I https://${DOMAIN}/"
 echo "Now add renewal to the server's crontab — see scripts/renew-cert.sh."

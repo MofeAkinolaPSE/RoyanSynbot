@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ALERT_ROLES } from "@/components/AlertBanner";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -54,10 +55,15 @@ export default function Workstation() {
   const { data: alertsData, isLoading: alertsLoading, isError: alertsIsError } = useQuery({
     queryKey: ["dashboard-alerts"],
     queryFn: () => api.dashboard.alerts(),
+    enabled: roles.some((r) => ALERT_ROLES.includes(r)),   // the alert feed is for admin / management / finance / ops
   });
 
   const h = (hospitalData as any) ?? {};
   const patientsWaiting: number = h.patients_waiting ?? 0;
+  // the same patients Queue & Flow shows: every visit not yet discharged, whatever day it started
+  const onQueue: number = h.on_queue ?? patientsWaiting;
+  const inServices: number = h.in_services ?? 0;
+  const carriedOver: number = h.carried_over ?? 0;
   const activeConsultations: number = h.active_consultations ?? 0;
   const patientsSeen: number = h.patients_seen_today ?? 0;
   const avgWaitMin: number = h.avg_wait_minutes ?? 0;
@@ -65,7 +71,7 @@ export default function Workstation() {
   const appointmentsToday: number = clinical.appointments_today ?? 0;
   const labOrdersPending: number = clinical.lab_orders_pending ?? 0;
   const prescriptionsPending: number = clinical.prescriptions_pending ?? 0;
-  const queueByDept: { department: string; waiting: number; consulting: number }[] =
+  const queueByDept: { department: string; waiting: number; consulting: number; in_services?: number }[] =
     Array.isArray(h.queue_by_department) ? h.queue_by_department : [];
   const flowByHour: { hour: string; patients: number }[] =
     Array.isArray(h.flow_by_hour) ? h.flow_by_hour : [];
@@ -80,10 +86,14 @@ export default function Workstation() {
     avgWaitMin > 0  ? "text-success" : "";
 
   // ── Tier 2 — role-specific metrics, each gated to fire only for its role ──
-  const briefingQ = useQuery({
-    queryKey: ["workstation-briefing"],
-    queryFn: api.dashboard.briefing,
-    enabled: primaryRole === "admin" || primaryRole === "management",
+  // Leaders see the same composed figures as the Executive overview (one source, server-cached),
+  // not a separate "health score" verdict.
+  const isLeader = roles.some((r) => r === "admin" || r === "management" || r === "finance");
+  const execQ = useQuery({
+    queryKey: ["executive-overview"],
+    queryFn: () => api.dashboard.executive(),
+    enabled: isLeader,
+    staleTime: 120_000,
   });
   const labQ = useQuery({
     queryKey: ["workstation-lab"], queryFn: api.hospital.lab.stats, enabled: primaryRole === "lab",
@@ -164,22 +174,30 @@ export default function Workstation() {
 
       {/* ── Tier 1: Hospital Pulse (universal) ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-primary bg-gradient-to-br from-primary/5 to-card">
+        <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-l-4 border-l-primary bg-gradient-to-br from-primary/5 to-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/queue?status=waiting")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/queue?status=waiting"); } }}>
           <CardHeader className="pb-2 pt-4">
             <div className="flex items-center justify-between">
-              <CardDescription className="text-xs font-medium uppercase tracking-wide">Patients Waiting</CardDescription>
+              <CardDescription className="text-xs font-medium uppercase tracking-wide">On the queue</CardDescription>
               <Users2 className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent className="pb-4">
             <div className="text-3xl font-bold tabular-nums">
-              {hospitalLoading ? <Skeleton className="h-8 w-16" /> : patientsWaiting}
+              {hospitalLoading ? <Skeleton className="h-8 w-16" /> : onQueue}
             </div>
-            <div className="mt-2 text-xs text-muted-foreground">In queue right now</div>
+            <div className="mt-2 text-xs text-muted-foreground">{patientsWaiting} before the doctor · {inServices} at lab, Scancare, pharmacy or cashier</div>
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-accent bg-gradient-to-br from-accent/5 to-card">
+        <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-l-4 border-l-accent bg-gradient-to-br from-accent/5 to-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/queue?status=waiting&view=waits")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/queue?status=waiting&view=waits"); } }}>
           <CardHeader className="pb-2 pt-4">
             <div className="flex items-center justify-between">
               <CardDescription className="text-xs font-medium uppercase tracking-wide">Avg Wait Time</CardDescription>
@@ -194,7 +212,11 @@ export default function Workstation() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-success bg-gradient-to-br from-success/5 to-card">
+        <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-l-4 border-l-success bg-gradient-to-br from-success/5 to-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/queue?status=discharged")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/queue?status=discharged"); } }}>
           <CardHeader className="pb-2 pt-4">
             <div className="flex items-center justify-between">
               <CardDescription className="text-xs font-medium uppercase tracking-wide">Seen Today</CardDescription>
@@ -209,7 +231,11 @@ export default function Workstation() {
           </CardContent>
         </Card>
 
-        <Card className="border-l-4 border-l-secondary bg-gradient-to-br from-secondary/5 to-card">
+        <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-l-4 border-l-secondary bg-gradient-to-br from-secondary/5 to-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/hospital/queue?status=consulting")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/hospital/queue?status=consulting"); } }}>
           <CardHeader className="pb-2 pt-4">
             <div className="flex items-center justify-between">
               <CardDescription className="text-xs font-medium uppercase tracking-wide">Consultations</CardDescription>
@@ -257,75 +283,109 @@ export default function Workstation() {
         </Card>
       )}
 
-      {(primaryRole === "admin" || primaryRole === "management") && briefingQ.data && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Health Score" value={briefingQ.data.summary?.health_score} icon={Activity} loading={briefingQ.isLoading} />
-          <MetricTile label="Focus Area" value={briefingQ.data.summary?.focus_area} icon={AlertCircle} loading={briefingQ.isLoading} />
-          <MetricTile label="Cash Outstanding" value={briefingQ.data.finance_brief?.cash_outstanding != null ? `₦${Number(briefingQ.data.finance_brief.cash_outstanding).toLocaleString()}` : undefined} icon={Receipt} loading={briefingQ.isLoading} />
-          <MetricTile label="Weekly Hours" value={briefingQ.data.workforce_brief?.weekly_hours} icon={Users2} loading={briefingQ.isLoading} />
-        </div>
-      )}
+      {isLeader && execQ.data && (() => {
+        const x: any = execQ.data;
+        const naira = (v: any) => { const n = Number(v ?? 0); return Math.abs(n) >= 1e6 ? `₦${(n / 1e6).toFixed(1)}M` : `₦${Math.round(n).toLocaleString()}`; };
+        const asOf = (v?: string) => (v ? new Date(v.slice(0, 10) + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
+        const top = (x.attention ?? []).slice(0, 4);
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MetricTile label="Billed, 12 months" value={naira(x.billing?.billed_12m)} icon={Receipt} loading={execQ.isLoading}
+                          sub={x.billing?.as_of ? `to ${asOf(x.billing.as_of)} · ${x.billing.hmo_share_pct ?? "—"}% HMO` : undefined} href="/executive" />
+              <MetricTile label="HMOs & corporates owe" value={naira(x.debtors?.total)} icon={Building2} loading={execQ.isLoading}
+                          sub={x.debtors?.over_90_pct != null ? `${x.debtors.over_90_pct}% over 90 days` : undefined} href="/finance/ar" />
+              <MetricTile label="Cash & bank" value={naira(x.finance?.cash)} icon={Receipt} loading={execQ.isLoading}
+                          sub={x.finance?.cash_on ? `at ${asOf(x.finance.cash_on)}` : undefined} href="/finance/books/banking" />
+              <MetricTile label="Pharmacy stock (cost)" value={naira(x.finance?.stock?.in_books ? x.finance.stock.books_value : x.finance?.stock?.shelf_value)} icon={Boxes}
+                          loading={execQ.isLoading} sub={x.finance?.stock?.expired_value ? `${naira(x.finance.stock.expired_value)} expired` : undefined} href="/finance/books/stock" />
+            </div>
+            {top.length > 0 && (
+              <Card className="border-warning/40 bg-warning/5">
+                <CardContent className="p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warning">
+                      <AlertCircle className="h-3.5 w-3.5" /> Needs attention
+                    </p>
+                    <Link to="/executive" className="text-xs text-primary hover:underline">All {(x.attention ?? []).length} on the Executive overview</Link>
+                  </div>
+                  <ul className="space-y-1">
+                    {top.map((a: any, i: number) => (
+                      <li key={i}>
+                        <Link to={a.link} className="flex items-start gap-2 rounded px-1 py-0.5 text-sm hover:bg-warning/10">
+                          <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", a.level === "critical" ? "bg-destructive" : a.level === "action" ? "bg-warning" : "bg-sky-500")} />
+                          <span>{a.title}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
 
       {primaryRole === "lab" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Pending" value={labQ.data?.pending} icon={FlaskConical} loading={labQ.isLoading} color="text-yellow-500" />
-          <MetricTile label="Processing" value={labQ.data?.processing} icon={Activity} loading={labQ.isLoading} color="text-purple-500" />
-          <MetricTile label="STAT Overdue" value={labQ.data?.stat_overdue} icon={AlertTriangle} loading={labQ.isLoading} color="text-red-500" />
-          <MetricTile label="Urgent Overdue" value={labQ.data?.urgent_overdue} icon={AlertTriangle} loading={labQ.isLoading} color="text-orange-500" />
+          <MetricTile label="Pending" value={labQ.data?.pending} icon={FlaskConical} loading={labQ.isLoading} color="text-yellow-500" href="/hospital/lab" />
+          <MetricTile label="Processing" value={labQ.data?.processing} icon={Activity} loading={labQ.isLoading} color="text-purple-500" href="/hospital/lab" />
+          <MetricTile label="STAT Overdue" value={labQ.data?.stat_overdue} icon={AlertTriangle} loading={labQ.isLoading} color="text-red-500" href="/hospital/lab" />
+          <MetricTile label="Urgent Overdue" value={labQ.data?.urgent_overdue} icon={AlertTriangle} loading={labQ.isLoading} color="text-orange-500" href="/hospital/lab" />
         </div>
       )}
 
       {primaryRole === "radiology" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Pending" value={radiologyQ.data?.pending} icon={ScanLine} loading={radiologyQ.isLoading} color="text-yellow-500" />
-          <MetricTile label="In Progress" value={radiologyQ.data?.in_progress} icon={Activity} loading={radiologyQ.isLoading} color="text-purple-500" />
-          <MetricTile label="STAT Pending" value={radiologyQ.data?.stat_pending} icon={AlertTriangle} loading={radiologyQ.isLoading} color="text-red-500" />
-          <MetricTile label="Reported" value={radiologyQ.data?.reported} icon={CheckCircle2} loading={radiologyQ.isLoading} color="text-green-500" />
+          <MetricTile label="Pending" value={radiologyQ.data?.pending} icon={ScanLine} loading={radiologyQ.isLoading} color="text-yellow-500" href="/hospital/radiology" />
+          <MetricTile label="In Progress" value={radiologyQ.data?.in_progress} icon={Activity} loading={radiologyQ.isLoading} color="text-purple-500" href="/hospital/radiology" />
+          <MetricTile label="STAT Pending" value={radiologyQ.data?.stat_pending} icon={AlertTriangle} loading={radiologyQ.isLoading} color="text-red-500" href="/hospital/radiology" />
+          <MetricTile label="Reported" value={radiologyQ.data?.reported} icon={CheckCircle2} loading={radiologyQ.isLoading} color="text-green-500" href="/hospital/radiology" />
         </div>
       )}
 
       {primaryRole === "pharmacist" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Active Prescriptions" value={pharmacyQ.data?.active} icon={Pill} loading={pharmacyQ.isLoading} />
-          <MetricTile label="Total Rx" value={pharmacyQ.data?.total} icon={Pill} loading={pharmacyQ.isLoading} />
-          <MetricTile label="Critical Stock" value={pharmacyInvQ.data?.critical_count ?? pharmacyInvQ.data?.tier_counts?.CRITICAL} icon={Boxes} loading={pharmacyInvQ.isLoading} color="text-red-500" />
-          <MetricTile label="Expiring Soon" value={pharmacyInvQ.data?.expiring_soon_count} icon={AlertTriangle} loading={pharmacyInvQ.isLoading} color="text-orange-500" />
+          <MetricTile label="Active Prescriptions" value={pharmacyQ.data?.active} icon={Pill} loading={pharmacyQ.isLoading} href="/hospital/pharmacy" />
+          <MetricTile label="Total Rx" value={pharmacyQ.data?.total} icon={Pill} loading={pharmacyQ.isLoading} href="/hospital/pharmacy" />
+          <MetricTile label="Critical Stock" value={pharmacyInvQ.data?.critical_count ?? pharmacyInvQ.data?.tier_counts?.CRITICAL} icon={Boxes} loading={pharmacyInvQ.isLoading} color="text-red-500" href="/hospital/pharmacy/inventory" />
+          <MetricTile label="Expiring Soon" value={pharmacyInvQ.data?.expiring_soon_count} icon={AlertTriangle} loading={pharmacyInvQ.isLoading} color="text-orange-500" href="/hospital/pharmacy/inventory" />
         </div>
       )}
 
       {primaryRole === "finance" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Pending Bills" value={billingQ.data?.pending_count} icon={Receipt} loading={billingQ.isLoading} color="text-yellow-500" />
-          <MetricTile label="Disputed" value={billingQ.data?.disputed_count} icon={AlertTriangle} loading={billingQ.isLoading} color="text-red-500" />
-          <MetricTile label="HMO Pending" value={billingQ.data?.hmo_pending_count} icon={Building2} loading={billingQ.isLoading} />
-          <MetricTile label="Total Outstanding" value={billingQ.data?.total_outstanding != null ? `₦${Number(billingQ.data.total_outstanding).toLocaleString()}` : undefined} icon={Receipt} loading={billingQ.isLoading} color="text-red-500" />
+          <MetricTile label="Pending Bills" value={billingQ.data?.pending_count} icon={Receipt} loading={billingQ.isLoading} color="text-yellow-500" href="/hospital/billing" />
+          <MetricTile label="Disputed" value={billingQ.data?.disputed_count} icon={AlertTriangle} loading={billingQ.isLoading} color="text-red-500" href="/hospital/billing" />
+          <MetricTile label="HMO Pending" value={billingQ.data?.hmo_pending_count} icon={Building2} loading={billingQ.isLoading} href="/hospital/hmo" />
+          <MetricTile label="Total Outstanding" value={billingQ.data?.total_outstanding != null ? `₦${Number(billingQ.data.total_outstanding).toLocaleString()}` : undefined} icon={Receipt} loading={billingQ.isLoading} color="text-red-500" href="/hospital/billing" />
         </div>
       )}
 
       {primaryRole === "hr" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="On Duty Today" value={hrQ.data?.shifts_today?.on_duty} icon={Users2} loading={hrQ.isLoading} />
-          <MetricTile label="Online Now" value={presenceQ.data?.count} icon={Wifi} loading={presenceQ.isLoading} color="text-green-500" />
-          <MetricTile label="Pending Leave" value={hrQ.data?.leave?.pending} icon={CalendarCheck} loading={hrQ.isLoading} color="text-yellow-500" />
-          <MetricTile label="Pending Payroll" value={hrQ.data?.payroll?.pending_amount != null ? `₦${Number(hrQ.data.payroll.pending_amount).toLocaleString()}` : undefined} icon={Receipt} loading={hrQ.isLoading} />
+          <MetricTile label="On Duty Today" value={hrQ.data?.shifts_today?.on_duty} icon={Users2} loading={hrQ.isLoading} href="/hr" />
+          <MetricTile label="Online Now" value={presenceQ.data?.count} icon={Wifi} loading={presenceQ.isLoading} color="text-green-500" href="/workspace?tab=team" />
+          <MetricTile label="Pending Leave" value={hrQ.data?.leave?.pending} icon={CalendarCheck} loading={hrQ.isLoading} color="text-yellow-500" href="/hr" />
+          <MetricTile label="Pending Payroll" value={hrQ.data?.payroll?.pending_amount != null ? `₦${Number(hrQ.data.payroll.pending_amount).toLocaleString()}` : undefined} icon={Receipt} loading={hrQ.isLoading} href="/hr" />
         </div>
       )}
 
       {primaryRole === "quality_assurance" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Open Incidents" value={qualityQ.data?.incidents?.open} icon={ShieldCheck} loading={qualityQ.isLoading} color="text-orange-500" />
-          <MetricTile label="Total Incidents" value={qualityQ.data?.incidents?.total} icon={AlertCircle} loading={qualityQ.isLoading} />
-          <MetricTile label="HEFAMAA Avg Score" value={qualityQ.data?.hefamaa?.avg_score} icon={CheckCircle2} loading={qualityQ.isLoading} color="text-green-500" />
-          <MetricTile label="HAI Cases" value={infectionQ.data?.hai_count} icon={AlertTriangle} loading={infectionQ.isLoading} color="text-red-500" />
+          <MetricTile label="Open Incidents" value={qualityQ.data?.incidents?.open} icon={ShieldCheck} loading={qualityQ.isLoading} color="text-orange-500" href="/hospital/quality" />
+          <MetricTile label="Total Incidents" value={qualityQ.data?.incidents?.total} icon={AlertCircle} loading={qualityQ.isLoading} href="/hospital/quality" />
+          <MetricTile label="HEFAMAA Avg Score" value={qualityQ.data?.hefamaa?.avg_score} icon={CheckCircle2} loading={qualityQ.isLoading} color="text-green-500" href="/hospital/quality" />
+          <MetricTile label="HAI Cases" value={infectionQ.data?.hai_count} icon={AlertTriangle} loading={infectionQ.isLoading} color="text-red-500" href="/hospital/quality" />
         </div>
       )}
 
       {primaryRole === "ops" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MetricTile label="Online Now" value={presenceQ.data?.count} icon={Wifi} loading={presenceQ.isLoading} color="text-green-500" />
-          <MetricTile label="Audits Overdue" value={facilityQ.data?.audits?.overdue} icon={AlertTriangle} loading={facilityQ.isLoading} color="text-orange-500" />
-          <MetricTile label="Maintenance Overdue" value={facilityQ.data?.maintenance?.overdue} icon={AlertTriangle} loading={facilityQ.isLoading} color="text-orange-500" />
-          <MetricTile label="Total Maintenance" value={facilityQ.data?.maintenance?.total} icon={Activity} loading={facilityQ.isLoading} />
+          <MetricTile label="Online Now" value={presenceQ.data?.count} icon={Wifi} loading={presenceQ.isLoading} color="text-green-500" href="/workspace?tab=team" />
+          <MetricTile label="Audits Overdue" value={facilityQ.data?.audits?.overdue} icon={AlertTriangle} loading={facilityQ.isLoading} color="text-orange-500" href="/hospital/audits-maintenance" />
+          <MetricTile label="Maintenance Overdue" value={facilityQ.data?.maintenance?.overdue} icon={AlertTriangle} loading={facilityQ.isLoading} color="text-orange-500" href="/hospital/audits-maintenance" />
+          <MetricTile label="Total Maintenance" value={facilityQ.data?.maintenance?.total} icon={Activity} loading={facilityQ.isLoading} href="/hospital/audits-maintenance" />
         </div>
       )}
 
@@ -364,7 +424,8 @@ export default function Workstation() {
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
                       <Activity className="h-6 w-6 opacity-40" />
-                      <span>No encounter data for today yet.</span>
+                      <span>No new patients registered today yet.</span>
+                      {onQueue > 0 && <span className="text-xs">{onQueue} still on the queue{carriedOver ? ` (${carriedOver} from earlier days)` : ""} - see the live queue.</span>}
                     </div>
                   )}
                 </div>
@@ -392,9 +453,10 @@ export default function Workstation() {
                       <div key={d.department} className="flex items-center justify-between rounded-lg border bg-card px-3 py-2">
                         <span className="text-sm font-medium truncate max-w-[130px]">{d.department}</span>
                         <div className="flex items-center gap-2 text-xs">
-                          {d.waiting > 0 && <Badge variant="outline" className="border-warning/60 text-warning text-[12px] px-1.5">{d.waiting} waiting</Badge>}
-                          {d.consulting > 0 && <Badge variant="outline" className="border-primary/60 text-primary text-[12px] px-1.5">{d.consulting} active</Badge>}
-                          {d.waiting === 0 && d.consulting === 0 && <Badge variant="outline" className="border-success/60 text-success text-[12px] px-1.5">Clear</Badge>}
+                          {d.waiting > 0 && <Badge variant="outline" className="border-warning/60 text-warning text-xs px-1.5">{d.waiting} waiting</Badge>}
+                          {d.consulting > 0 && <Badge variant="outline" className="border-primary/60 text-primary text-xs px-1.5">{d.consulting} active</Badge>}
+                          {(d.in_services ?? 0) > 0 && <Badge variant="outline" className="text-xs px-1.5">{d.in_services} at services</Badge>}
+                          {d.waiting === 0 && d.consulting === 0 && !d.in_services && <Badge variant="outline" className="border-success/60 text-success text-xs px-1.5">Clear</Badge>}
                         </div>
                       </div>
                     ))}
@@ -430,7 +492,7 @@ export default function Workstation() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight">{alert.title}</p>
                           <p className="text-xs text-muted-foreground">{alert.message}</p>
-                          <p className="mt-0.5 text-[12px] text-muted-foreground/60">{new Date(alert.created_at).toLocaleTimeString()}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground/60">{new Date(alert.created_at).toLocaleTimeString()}</p>
                         </div>
                       </div>
                     ))

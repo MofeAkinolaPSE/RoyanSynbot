@@ -2,11 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel, Field, EmailStr, validator
 from typing import Dict, Any, List, Optional
 from datetime import date
+import datetime as dt
 import logging
 import csv
 import io
 import codecs
 
+from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
 from src.services.staff_ops import (
     create_staff_member,
@@ -17,11 +19,13 @@ from src.services.staff_ops import (
     get_latest_staff_snapshot,
 )
 from src.services.realtime import realtime_hub
+from src.constants import TABLE_TIMESHEETS
 from src.cache import invalidate_cache_tags
 from src.services.oeis import process_operational_event
 
 router = APIRouter(tags=["staff_ops"])
 audit_logger = logging.getLogger("audit")
+logger = logging.getLogger("staff_ops")
 
 # --- Models ---
 
@@ -41,7 +45,15 @@ class StaffCreateRequest(BaseModel):
 class TimesheetEntryRequest(BaseModel):
     staff_id: str = Field(..., max_length=100)
     date: date
-    hours_worked: float = Field(..., gt=0, le=24)
+    # A timesheet entry covers ONE date, so 24 is the real ceiling. The limit is
+    # correct; what was missing was any way for a user to act on it. A shift left
+    # running for days used to submit its whole elapsed time here (504 hours was
+    # reported from the field) and get rejected with no path forward -- the
+    # client now asks the user for the hours actually worked instead.
+    hours_worked: float = Field(
+        ..., gt=0, le=24,
+        description="Hours worked on this date. One date per entry, so at most 24.",
+    )
     department: str = Field(..., max_length=100)
     activity_note: Optional[str] = Field(None, max_length=1000)
 
@@ -111,7 +123,7 @@ async def register_staff(
         raise HTTPException(500, "Failed to create staff record")
 
 @router.get("/staff")
-async def list_staff(
+def list_staff(
     department: Optional[str] = None,
     user: Dict[str, Any] = Depends(require_dept_read)
 ):
@@ -119,7 +131,7 @@ async def list_staff(
     return {"data": get_staff_by_department(department)}
 
 @router.get("/staff/snapshot")
-async def list_staff_snapshot(
+def list_staff_snapshot(
     limit: int = 1000,
     user: Dict[str, Any] = Depends(require_dept_read)
 ):
@@ -129,7 +141,7 @@ async def list_staff_snapshot(
 
 
 @router.get("/staff/{staff_id}")
-async def get_single_staff(
+def get_single_staff(
     staff_id: str,
     user: Dict[str, Any] = Depends(require_dept_read)
 ):
@@ -139,7 +151,7 @@ async def get_single_staff(
     return {"data": staff}
 
 @router.post("/staff/import")
-async def import_staff_csv(
+def import_staff_csv(
     file: UploadFile = File(...),
     user: Dict[str, Any] = Depends(require_hr_admin)
 ):
@@ -211,7 +223,7 @@ async def submit_timesheet(
         raise HTTPException(500, "Failed to record timesheet")
 
 @router.get("/timesheets")
-async def view_timesheets(
+def view_timesheets(
     department: Optional[str] = None,
     limit: int = 50,
     user: Dict[str, Any] = Depends(require_dept_read)
@@ -220,9 +232,69 @@ async def view_timesheets(
     return {"data": get_timesheets(department=department, limit=limit)}
 
 @router.get("/timesheets/staff/{staff_id}")
-async def view_staff_timesheets(
+def view_staff_timesheets(
     staff_id: str,
     limit: int = 50,
     user: Dict[str, Any] = Depends(require_dept_read)
 ):
     return {"data": get_timesheets(staff_id=staff_id, limit=limit)}
+
+
+# ── Clock in / clock out ─────────────────────────────────────────────────────
+#
+# The clock now lives in the Staff Workspace (services/staff_workspace.py,
+# POST /workspace/time/*): a server-side session with breaks, split at local
+# midnight into royan_timesheets rows that HR reviews. These routes stay for any
+# older caller and delegate to it, so there is one clock and one answer to
+# "who is on shift". They were never reachable from the old Time Tracker page,
+# which called /staff/clock/* while this router has no /staff prefix.
+
+def _ws(fn, *args):
+    from src.services import staff_workspace as sw
+    try:
+        return fn(*args)
+    except sw.WorkspaceError as e:
+        raise HTTPException(status_code=409, detail=str(e).replace("NEEDS_END_TIME: ", ""))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except (LookupError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/clock/status")
+def clock_status(user: Dict[str, Any] = Depends(verify_jwt)):
+    """Who is clocked in, and since when."""
+    from src.services import staff_workspace as sw
+    v = _ws(sw.my_time, user)
+    s = v.get("session")
+    return {"on_shift": bool(s), "status": v["status"], "started_at": s["started_at"] if s else None,
+            "elapsed_hours": round(s["worked_seconds"] / 3600, 2) if s else None,
+            "today_seconds": v["today_seconds"], "week_seconds": v["week_seconds"]}
+
+
+@router.post("/clock/in", status_code=201)
+def clock_in(payload: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(verify_jwt)):
+    from src.services import staff_workspace as sw
+    r = _ws(sw.clock_start, user, payload or {})
+    invalidate_cache_tags("staff", "workforce_dashboard", "hr_summary", "executive")
+    return {"ok": True, **r}
+
+
+@router.post("/clock/out")
+def clock_out(payload: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(verify_jwt)):
+    from src.services import staff_workspace as sw
+    r = _ws(sw.clock_stop, user, payload or {})
+    invalidate_cache_tags("staff", "workforce_dashboard", "hr_summary", "executive")
+    audit_event("staff_clock_out", {"hours": r.get("recorded_hours")}, actor_id=user.get("sub"),
+                subject_type="timesheet", subject_id=str(user.get("sub")))
+    return {"ok": True, "hours_worked": r.get("recorded_hours"), **r}
+
+
+@router.post("/clock/cancel")
+def clock_cancel(user: Dict[str, Any] = Depends(verify_jwt)):
+    """Discard a running clock without recording time (a clock-in that should not have happened)."""
+    from src.services import staff_workspace as sw
+    r = _ws(sw.clock_discard, user)
+    audit_event("staff_clock_cancelled", {}, actor_id=user.get("sub"), subject_type="timesheet",
+                subject_id=str(user.get("sub")))
+    return {"ok": True, "cancelled": True, **r}

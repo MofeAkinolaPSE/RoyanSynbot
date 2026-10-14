@@ -7,7 +7,12 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /backend
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# --timeout/--retries because this builds over a slow link: the default 15s read
+# timeout kills the botocore download (15.7 MB at ~50 kB/s) partway through and
+# fails the whole layer.
+RUN pip install --no-cache-dir --user \
+      --timeout 120 --retries 10 \
+      -r requirements.txt
 
 # ── Stage 2: Runtime image ─────────────────────────────────────────────────
 FROM python:3.12-slim-bookworm

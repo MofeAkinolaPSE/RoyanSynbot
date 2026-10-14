@@ -1,4 +1,7 @@
 import { useState, useMemo } from "react";
+import { PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { useAuth } from "@/components/AuthProvider";
+import { useDoctorsToday } from "@/components/frontdesk/DoctorsToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +41,8 @@ import { AlertBanner } from "@/components/AlertBanner";
 interface Appointment {
   id: string;
   patient_id?: string;
+  patient_name?: string;
+  patient_mrn?: string;
   slot_id?: string;
   appointment_type?: string;
   status?: string;
@@ -114,11 +119,18 @@ const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const today = new Date().toISOString().split("T")[0];
-const EMPTY_SLOT = { date: today, start_time: "08:00", end_time: "08:30", provider_name: "", department: "General OPD", capacity: 1 };
+const EMPTY_SLOT = { date: today, start_time: "08:00", end_time: "08:30", provider_name: "", doctor_id: "", department: "General OPD", capacity: 1 };
+// Same rule as the server (routers/appointments._doctor_scope): a doctor sees the appointments booked
+// to them; the desk, nurses, operations and management run the whole book.
+const DIARY_ROLES = ["admin", "management", "receptionist", "ops", "nurse"];
 const EMPTY_BOOK = { patient_id: "", slot_id: "", slot_date: today, appointment_type: "consultation", notes: "" };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function HospitalAppointments() {
+  const { roles } = useAuth();
+  const personal = roles.includes("doctor") && !roles.some((r) => DIARY_ROLES.includes(r));
+  const slotDoctorsQ = useDoctorsToday();
+  const slotDoctors: any[] = slotDoctorsQ.data?.doctors ?? [];
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -341,8 +353,11 @@ export default function HospitalAppointments() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Appointments</h1>
-          <p className="text-sm text-muted-foreground">Schedule, track, and manage patient appointments</p>
+          <h1 className="text-2xl font-bold tracking-tight">{personal ? "My appointments" : "Appointments"}</h1>
+          <p className="text-sm text-muted-foreground">
+            {personal ? "Patients booked to see you. The whole hospital's diary is on the Hospital Calendar."
+              : "Every doctor's appointments - book, check in and manage them"}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-2"
@@ -568,7 +583,7 @@ export default function HospitalAppointments() {
                             </TableCell>
                             <TableCell className="text-xs capitalize">{apt.appointment_type?.replace(/_/g, " ") ?? "—"}</TableCell>
                             <TableCell>
-                              <Badge className={cn("text-[12px] capitalize", APT_STATUS_COLORS[ns] ?? "")}>
+                              <Badge className={cn("text-xs capitalize", APT_STATUS_COLORS[ns] ?? "")}>
                                 {ns.replace(/_/g, " ")}
                               </Badge>
                             </TableCell>
@@ -633,7 +648,7 @@ export default function HospitalAppointments() {
                         <p className={cn("text-lg font-bold mt-0.5", isToday && "text-primary")}>
                           {day.getDate()}
                         </p>
-                        <p className="text-[12px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {day.toLocaleDateString("en-NG", { month: "short" })}
                         </p>
                       </div>
@@ -653,7 +668,7 @@ export default function HospitalAppointments() {
                           isToday && "bg-primary/5",
                         )}>
                         {dayApts.length === 0 ? (
-                          <p className="py-4 text-center text-[13px] text-muted-foreground/40">—</p>
+                          <p className="py-4 text-center text-xs text-muted-foreground/40">—</p>
                         ) : dayApts.map(apt => {
                           const ns = normalizeStatus(apt.ui_status ?? apt.status);
                           const blockCls = APT_BLOCK_COLORS[ns] ?? APT_BLOCK_COLORS.scheduled;
@@ -662,7 +677,7 @@ export default function HospitalAppointments() {
                               key={apt.id}
                               onClick={() => openDetail(apt)}
                               className={cn(
-                                "w-full rounded-md border px-2 py-1.5 text-left transition-colors text-[13px] leading-tight",
+                                "w-full rounded-md border px-2 py-1.5 text-left transition-colors text-xs leading-tight",
                                 blockCls,
                               )}
                             >
@@ -736,7 +751,7 @@ export default function HospitalAppointments() {
 
       {/* ── Appointment Detail Sheet ──────────────────────────────────── */}
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent className="w-80 space-y-4">
+        <SheetContent className={cn(PANEL_WIDTH.narrow, "space-y-4")}>
           <SheetHeader>
             <SheetTitle>Appointment Details</SheetTitle>
           </SheetHeader>
@@ -771,7 +786,7 @@ export default function HospitalAppointments() {
                   )}
                 </div>
 
-                <p className="text-[13px] font-mono text-muted-foreground">
+                <p className="text-xs font-mono text-muted-foreground">
                   Patient: {activeApt.patient_id ?? "—"}
                 </p>
               </div>
@@ -903,7 +918,12 @@ export default function HospitalAppointments() {
             </div>
             <div className="space-y-1">
               <Label>Provider Name *</Label>
-              <Input value={slotForm.provider_name} onChange={e => setSlotForm(f => ({ ...f, provider_name: e.target.value }))} placeholder="Dr. Name" />
+              {/* the slot - and every appointment booked into it - belongs to this doctor */}
+              <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={slotForm.doctor_id}
+                      onChange={e => { const d = slotDoctors.find((x: any) => x.id === e.target.value); setSlotForm(f => ({ ...f, doctor_id: e.target.value, provider_name: d?.full_name ?? "" })); }}>
+                <option value="">Choose the doctor</option>
+                {slotDoctors.map((d: any) => <option key={d.id} value={d.id}>{d.full_name}{d.specialty ? ` - ${d.specialty}` : ""}</option>)}
+              </select>
             </div>
             <div className="space-y-1">
               <Label>Capacity</Label>
@@ -917,7 +937,7 @@ export default function HospitalAppointments() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSlotOpen(false)}>Cancel</Button>
-            <Button disabled={!slotForm.provider_name.trim() || createSlotMut.isPending} onClick={() => createSlotMut.mutate()}>
+            <Button disabled={!slotForm.doctor_id || createSlotMut.isPending} onClick={() => createSlotMut.mutate()}>
               {createSlotMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Create Slot
             </Button>
           </DialogFooter>

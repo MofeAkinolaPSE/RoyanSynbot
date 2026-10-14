@@ -61,7 +61,7 @@ def _days_ago(n: int) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/health")
-async def platform_health():
+def platform_health():
     """Infrastructure health: API alive, DB reachable, table row counts."""
     t0 = time.perf_counter()
     db_ok = False
@@ -99,7 +99,7 @@ async def platform_health():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/clinical-kpis")
-async def clinical_kpis(
+def clinical_kpis(
     since: Optional[str] = Query(None, description="ISO date YYYY-MM-DD (default: today)"),
     user=Depends(verify_jwt),
 ):
@@ -216,7 +216,7 @@ async def clinical_kpis(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/workflow-performance")
-async def workflow_performance(
+def workflow_performance(
     days: int = Query(7, ge=1, le=90, description="Look-back window in days"),
     user=Depends(verify_jwt),
 ):
@@ -306,7 +306,7 @@ async def workflow_performance(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/data-quality-live")
-async def data_quality_live(user=Depends(verify_jwt)):
+def data_quality_live(user=Depends(verify_jwt)):
     """Current data quality scores per clinical domain (completeness + integrity)."""
     conn = _get_conn()
     try:
@@ -421,7 +421,7 @@ async def data_quality_live(user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/bed-census")
-async def bed_census(user=Depends(verify_jwt)):
+def bed_census(user=Depends(verify_jwt)):
     """Ward-level bed census: occupied, available, and maintenance counts."""
     conn = _get_conn()
     try:
@@ -476,7 +476,7 @@ async def bed_census(user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/lab-performance")
-async def lab_performance(
+def lab_performance(
     days: int = Query(7, ge=1, le=90),
     user=Depends(verify_jwt),
 ):
@@ -538,7 +538,7 @@ async def lab_performance(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/revenue-snapshot")
-async def revenue_snapshot(
+def revenue_snapshot(
     days: int = Query(30, ge=1, le=365),
     user=Depends(verify_jwt),
 ):
@@ -650,7 +650,7 @@ async def revenue_snapshot(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/workflow-health")
-async def workflow_health(
+def workflow_health(
     stuck_threshold_hours: int = Query(4, ge=1, le=72,
         description="Hours with no transition before an encounter is considered stuck"),
     user=Depends(verify_jwt),
@@ -739,7 +739,7 @@ async def workflow_health(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/data-quality/latest")
-async def data_quality_latest(user=Depends(verify_jwt)):
+def data_quality_latest(user=Depends(verify_jwt)):
     """Quality scores from the latest completed pipeline run.
 
     Reads from royan_import_rejections to surface rejection counts per
@@ -807,7 +807,7 @@ async def data_quality_latest(user=Depends(verify_jwt)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/knowledge-freshness")
-async def knowledge_freshness(user=Depends(verify_jwt)):
+def knowledge_freshness(user=Depends(verify_jwt)):
     """Knowledge cache freshness: age of assembled PatientClinicalContext objects."""
     conn = _get_conn()
     try:

@@ -205,7 +205,7 @@ def _write_audit(encounter_id, from_state, to_state, transition_name,
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/workflow/transitions")
-async def list_transitions(user=Depends(verify_jwt)):
+def list_transitions(user=Depends(verify_jwt)):
     """Return the full state machine definition (all active transitions)."""
     conn = _get_conn()
     try:
@@ -220,7 +220,7 @@ async def list_transitions(user=Depends(verify_jwt)):
 
 
 @router.get("/encounters/{encounter_id}/available-transitions")
-async def available_transitions(encounter_id: int, user=Depends(verify_jwt)):
+def available_transitions(encounter_id: int, user=Depends(verify_jwt)):
     """Return all transitions legally reachable from the encounter's current state."""
     conn = _get_conn()
     try:
@@ -255,7 +255,7 @@ async def available_transitions(encounter_id: int, user=Depends(verify_jwt)):
 
 
 @router.post("/encounters/{encounter_id}/transition", response_model=TransitionResult)
-async def perform_transition(
+def perform_transition(
     encounter_id: int,
     payload: TransitionRequest,
     user=Depends(verify_jwt),
@@ -409,7 +409,7 @@ class WorkflowTransitionRequest(BaseModel):
 
 
 @router.get("/workflow/entity/{entity_type}/{entity_id}")
-async def get_entity_workflow(
+def get_entity_workflow(
     entity_type: str,
     entity_id: int,
     user=Depends(verify_jwt),
@@ -427,7 +427,7 @@ async def get_entity_workflow(
 
 
 @router.get("/workflow/entity/{entity_type}/{entity_id}/transitions")
-async def get_available_workflow_transitions(
+def get_available_workflow_transitions(
     entity_type: str,
     entity_id: int,
     user=Depends(verify_jwt),
@@ -452,7 +452,7 @@ async def get_available_workflow_transitions(
 
 
 @router.post("/workflow/entity/{entity_type}/{entity_id}/transition")
-async def fire_workflow_transition(
+def fire_workflow_transition(
     entity_type: str,
     entity_id: int,
     payload: WorkflowTransitionRequest,
@@ -496,7 +496,7 @@ async def fire_workflow_transition(
 
 
 @router.get("/workflow/entity/{entity_type}/{entity_id}/history")
-async def get_workflow_history(
+def get_workflow_history(
     entity_type: str,
     entity_id: int,
     user=Depends(verify_jwt),

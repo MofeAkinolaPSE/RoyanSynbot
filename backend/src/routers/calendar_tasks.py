@@ -11,16 +11,35 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from src.db import db
+from src.middleware import verify_jwt
 from src.services.realtime import realtime_hub
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/calendar", tags=["Calendar"])
-tasks_router = APIRouter(prefix="/tasks", tags=["Tasks"])
+# Both routers require a signed-in user. They had no auth at all, so staff tasks and calendar
+# events could be read and created by anyone who could reach the server.
+router = APIRouter(prefix="/calendar", tags=["Calendar"], dependencies=[Depends(verify_jwt)])
+tasks_router = APIRouter(prefix="/tasks", tags=["Tasks"], dependencies=[Depends(verify_jwt)])
+
+
+def _sub(request: Request) -> str:
+    return str((verify_jwt(request) or {}).get("sub") or "")
+
+
+def _event_is_mine(e: dict, me: str) -> bool:
+    """Same rule as My Day: an event is mine when I am an attendee or I created it (holidays are everyone's)."""
+    meta = e.get("metadata")
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    return (e.get("event_type") == "holiday" or me in json.dumps(e.get("attendees") or [])
+            or str((meta or {}).get("created_by") or "") == me)
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -81,15 +100,17 @@ class TaskUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/events")
-async def list_calendar_events(
+def list_calendar_events(
+    request: Request,
     month: Optional[str] = Query(None, description="YYYY-MM format to filter by month"),
     event_type: Optional[str] = Query(None),
+    mine: bool = Query(False, description="Only events I attend or created (My Schedule)"),
     limit: int = Query(100, ge=1, le=500),
 ):
     """List calendar events, optionally filtered by month or type."""
     try:
         query = db.table("royan_calendar_events").select("*")
-        
+
         if month:
             # Filter by month (start_time starts with YYYY-MM)
             start_of_month = f"{month}-01T00:00:00"
@@ -100,23 +121,28 @@ async def list_calendar_events(
             else:
                 end_of_month = f"{year}-{mon + 1:02d}-01T00:00:00"
             query = query.gte("start_time", start_of_month).lt("start_time", end_of_month)
-        
+
         if event_type:
             query = query.eq("event_type", event_type)
-        
+
         result = query.order("start_time", desc=False).limit(limit).execute()
-        events = result.data if hasattr(result, 'data') else result
-        
-        return {"events": events or [], "count": len(events or [])}
+        events = (result.data if hasattr(result, 'data') else result) or []
+        if mine:
+            me = _sub(request)
+            events = [e for e in events if _event_is_mine(e, me)]
+        return {"events": events, "count": len(events)}
     except Exception as e:
         logger.error(f"Failed to list calendar events: {e}")
         return {"events": [], "count": 0}
 
 
 @router.post("/events")
-async def create_calendar_event(payload: CalendarEventCreate):
-    """Create a new calendar event."""
+async def create_calendar_event(payload: CalendarEventCreate, request: Request):
+    """Create a new calendar event (recorded as created by the caller)."""
     try:
+        meta = dict(payload.metadata or {})
+        meta.setdefault("created_by", _sub(request))
+        payload.metadata = meta
         data = {
             "title": payload.title,
             "description": payload.description,
@@ -128,7 +154,7 @@ async def create_calendar_event(payload: CalendarEventCreate):
             "attendees": json.dumps(payload.attendees or []),
             "metadata": json.dumps(payload.metadata or {}),
         }
-        
+
         result = db.table("royan_calendar_events").insert(data).execute()
         inserted = result.data[0] if hasattr(result, 'data') and result.data else data
 
@@ -137,7 +163,7 @@ async def create_calendar_event(payload: CalendarEventCreate):
             "id": inserted.get("id") if isinstance(inserted, dict) else None,
             "event_type": payload.event_type,
         })
-        
+
         return {"data": inserted, "status": "created"}
     except Exception as e:
         logger.error(f"Failed to create calendar event: {e}")
@@ -149,10 +175,10 @@ async def update_calendar_event(event_id: str, payload: CalendarEventUpdate):
     """Update an existing calendar event."""
     try:
         data = {k: v for k, v in payload.model_dump().items() if v is not None}
-        
+
         if not data:
             raise HTTPException(status_code=400, detail="No fields to update")
-        
+
         result = db.table("royan_calendar_events").update(data).eq("id", event_id).execute()
         updated = result.data[0] if hasattr(result, 'data') and result.data else data
 
@@ -160,7 +186,7 @@ async def update_calendar_event(event_id: str, payload: CalendarEventUpdate):
             "event": "calendar_event_updated",
             "id": event_id,
         })
-        
+
         return {"data": updated, "status": "updated"}
     except HTTPException:
         raise
@@ -194,7 +220,7 @@ LOGISTICS_ALERT_WINDOW_DAYS = 30
 
 
 @router.get("/logistics/alerts")
-async def get_logistics_alerts(window_days: int = Query(30, ge=1, le=180)):
+def get_logistics_alerts(window_days: int = Query(30, ge=1, le=180)):
     """
     Return batches/events with expiry dates within the alert window.
     Scans metadata.batch_expiry on all logistics calendar events that start
@@ -257,37 +283,45 @@ async def get_logistics_alerts(window_days: int = Query(30, ge=1, le=180)):
 # ---------------------------------------------------------------------------
 
 @tasks_router.get("")
-async def list_tasks(
+def list_tasks(
+    request: Request,
     status: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
+    mine: bool = Query(False, description="Only tasks assigned to me or created by me (My Schedule)"),
     limit: int = Query(100, ge=1, le=500),
 ):
     """List tasks, optionally filtered by status, priority, or assignee."""
     try:
         query = db.table("royan_tasks").select("*")
-        
+
         if status:
             query = query.eq("status", status)
         if priority:
             query = query.eq("priority", priority)
         if assigned_to:
             query = query.eq("assigned_to", assigned_to)
-        
+
         result = query.order("created_at", desc=True).limit(limit).execute()
-        tasks = result.data if hasattr(result, 'data') else result
-        
-        return {"tasks": tasks or [], "count": len(tasks or [])}
+        tasks = (result.data if hasattr(result, 'data') else result) or []
+        if mine:
+            me = _sub(request)
+            tasks = [t for t in tasks if str(t.get("assigned_to") or "") == me or str(t.get("created_by") or "") == me]
+        return {"tasks": tasks, "count": len(tasks)}
     except Exception as e:
         logger.error(f"Failed to list tasks: {e}")
         return {"tasks": [], "count": 0}
 
 
 @tasks_router.post("")
-async def create_task(payload: TaskCreate):
-    """Create a new task."""
+async def create_task(payload: TaskCreate, request: Request):
+    """Create a new task. Unassigned tasks belong to whoever created them."""
     try:
+        me = _sub(request)
+        if not payload.assigned_to and me:
+            payload.assigned_to = me
         data = {
+            "created_by": me or None,
             "title": payload.title,
             "description": payload.description,
             "status": payload.status,
@@ -300,10 +334,10 @@ async def create_task(payload: TaskCreate):
             "tags": json.dumps(payload.tags or []),
             "metadata": json.dumps(payload.metadata or {}),
         }
-        
+
         result = db.table("royan_tasks").insert(data).execute()
         inserted = result.data[0] if hasattr(result, 'data') and result.data else data
-        
+
         logger.info(f"Task created: {payload.title} (source: {payload.source})")
         await realtime_hub.broadcast("calendar_tasks", {
             "event": "task_created",
@@ -335,14 +369,14 @@ async def update_task(task_id: str, payload: TaskUpdate):
     """Update an existing task."""
     try:
         data = {k: v for k, v in payload.model_dump().items() if v is not None}
-        
+
         if not data:
             raise HTTPException(status_code=400, detail="No fields to update")
-        
+
         # If marking as completed, set completed_at
         if data.get("status") == "completed":
             data["completed_at"] = datetime.utcnow().isoformat()
-        
+
         result = db.table("royan_tasks").update(data).eq("id", task_id).execute()
         updated = result.data[0] if hasattr(result, 'data') and result.data else data
 
@@ -351,7 +385,7 @@ async def update_task(task_id: str, payload: TaskUpdate):
             "id": task_id,
             "status": data.get("status"),
         })
-        
+
         return {"data": updated, "status": "updated"}
     except HTTPException:
         raise
@@ -402,10 +436,10 @@ def create_task_from_chat(
             "tags": json.dumps([]),
             "metadata": json.dumps({"created_via": "synbot_chat"}),
         }
-        
+
         result = db.table("royan_tasks").insert(data).execute()
         inserted = result.data[0] if hasattr(result, 'data') and result.data else data
-        
+
         logger.info(f"Task created from chat: {title}")
         return {"success": True, "task": inserted}
     except Exception as e:

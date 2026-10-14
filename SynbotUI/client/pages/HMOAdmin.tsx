@@ -21,7 +21,7 @@ import {
   ShieldCheck, Plus, Loader2, Building2, ListChecks, Tag,
   RefreshCw, CheckCircle2, XCircle, Clock, KeyRound,
   Database, Users, CalendarCheck, FlaskConical, Pill, Receipt, BedDouble,
-  Pencil, Check, X,
+  Pencil, Check, X, ClipboardList,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,8 @@ import { HMO, Service, CoverageRule } from "@/components/hmo/hmo-shared";
 import { AddCoverageRuleDialog } from "@/components/hmo/AddCoverageRuleDialog";
 import { HMOWorkspacePanel } from "@/components/hmo/HMOWorkspacePanel";
 import { PatientHMOWorkspacePanel } from "@/components/hmo/PatientHMOWorkspacePanel";
+import { ServicePayerPricesPanel } from "@/components/hmo/ServicePayerPricesPanel";
+import HMODesk from "@/pages/HMODesk";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +99,10 @@ export default function HMOAdmin() {
     staleTime: 60_000,
   });
   const services: Service[] = servicesData?.services ?? servicesData ?? [];
+  // An unpriced service quotes to ₦0 through calculate_coverage, so this is a
+  // functional gap worth counting, not a cosmetic one.
+  const unpricedCount = services.filter((s: any) => !Number(s.base_price)).length;
+  const [pricesService, setPricesService] = useState<any | null>(null);
 
   const serviceMut = useMutation({
     mutationFn: () => api.hospital.coverage.createService({
@@ -213,14 +219,17 @@ export default function HMOAdmin() {
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">HMO & Coverage Engine</h1>
+        <h1 className="text-2xl font-bold tracking-tight">HMO Desk & Coverage</h1>
         <p className="text-sm text-muted-foreground">
-          Configure health maintenance organisations, service pricing, and coverage rules
+          Today's HMO patients and their claims forms; HMOs, service pricing, coverage rules and approvals
         </p>
       </div>
 
-      <Tabs defaultValue="patients">
-        <TabsList className="mb-4">
+      <Tabs defaultValue={new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("tab") ?? "desk"}>
+        <TabsList className="mb-4 h-auto flex-wrap">
+          <TabsTrigger value="desk" className="gap-2">
+            <ClipboardList className="h-4 w-4" /> HMO Desk
+          </TabsTrigger>
           <TabsTrigger value="patients" className="gap-2">
             <Users className="h-4 w-4" /> Patients
           </TabsTrigger>
@@ -236,7 +245,7 @@ export default function HMOAdmin() {
           <TabsTrigger value="approvals" className="gap-2">
             <KeyRound className="h-4 w-4" /> Approvals
             {requestedCount > 0 && (
-              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-[12px] font-bold text-white">
+              <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white">
                 {requestedCount}
               </span>
             )}
@@ -245,6 +254,11 @@ export default function HMOAdmin() {
             <Database className="h-4 w-4" /> Hope Sync
           </TabsTrigger>
         </TabsList>
+
+        {/* ── HMO Desk: today's HMO patients, claims forms, signatures ─────────── */}
+        <TabsContent value="desk">
+          <HMODesk embedded />
+        </TabsContent>
 
         {/* ── Patients Tab (HMO Dashboard roster) ──────────────────────────────── */}
         <TabsContent value="patients" className="space-y-4">
@@ -384,12 +398,15 @@ export default function HMOAdmin() {
         {/* ── Coverage Rules Tab ─────────────────────────────────────────────── */}
         <TabsContent value="rules" className="space-y-4">
           <div className="flex items-center gap-3">
-            <Select value={selectedHmoId} onValueChange={setSelectedHmoId}>
+            {/* Radix Select throws on an empty-string item value, which took the
+                whole page down rather than just this filter. Same "__all"
+                sentinel the Patients tab already uses above. */}
+            <Select value={selectedHmoId || "__all"} onValueChange={v => setSelectedHmoId(v === "__all" ? "" : v)}>
               <SelectTrigger className="w-56">
                 <SelectValue placeholder="Filter by HMO…" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All HMOs</SelectItem>
+                <SelectItem value="__all">All HMOs</SelectItem>
                 {hmos.map(h => <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -440,7 +457,7 @@ export default function HMOAdmin() {
                           </TableCell>
                           <TableCell>
                             {r.requires_approval ? (
-                              <Badge variant="outline" className="text-[12px] bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30">Required</Badge>
+                              <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30">Required</Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">No</span>
                             )}
@@ -463,7 +480,23 @@ export default function HMOAdmin() {
         {/* ── Service Catalog Tab ────────────────────────────────────────────── */}
         <TabsContent value="services" className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{services.length} services</p>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {services.length} services
+                {unpricedCount > 0 && (
+                  <span className="ml-2 text-amber-600">· {unpricedCount} unpriced</span>
+                )}
+              </p>
+              {/* Stated plainly because it changes what the coverage engine can
+                  do: a service at ₦0 quotes to ₦0, so an unpriced row is not a
+                  cosmetic gap. */}
+              {unpricedCount > 0 && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  A service with no price quotes as ₦0 for every HMO. Prices came across
+                  from the legacy tariff where it recorded one.
+                </p>
+              )}
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => void refetchServices()}>
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -500,6 +533,21 @@ export default function HMOAdmin() {
                         <TableCell className="font-mono text-xs">{s.service_code}</TableCell>
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell className="capitalize text-xs">{s.category ?? "—"}</TableCell>
+                        <TableCell>
+                          {/* Hope priced per payer; migration 188 flattened it.
+                              Migration 198 rebuilt the grid, so a service can
+                              now carry many rates behind one list price. */}
+                          {Number((s as any).payer_rate_count ?? 0) > 0 ? (
+                            <button
+                              onClick={() => setPricesService(s)}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              {(s as any).payer_rate_count} payer rates
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">list price only</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-sm">
                           {editingServiceId === s.id ? (
                             <Input type="number" min="0" className="h-7 w-28 text-sm" autoFocus
@@ -638,16 +686,16 @@ export default function HMOAdmin() {
                           <p className="text-sm font-semibold">{label}</p>
                           {result ? (
                             result.ok ? (
-                              <p className="text-[13px] text-green-700 dark:text-green-400">
+                              <p className="text-xs text-green-700 dark:text-green-400">
                                 {result.synced ?? 0} synced · {result.at}
                               </p>
                             ) : (
-                              <p className="text-[13px] text-red-700 dark:text-red-400 truncate max-w-[120px]">
+                              <p className="text-xs text-red-700 dark:text-red-400 truncate max-w-[120px]">
                                 Error: {result.error}
                               </p>
                             )
                           ) : (
-                            <p className="text-[13px] text-muted-foreground">Not synced yet</p>
+                            <p className="text-xs text-muted-foreground">Not synced yet</p>
                           )}
                         </div>
                       </div>
@@ -698,6 +746,10 @@ export default function HMOAdmin() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {pricesService && (
+        <ServicePayerPricesPanel service={pricesService} onClose={() => setPricesService(null)} />
+      )}
 
       {/* ── Resolve Authorization Dialog ──────────────────────────────────── */}
       <Dialog open={resolveOpen} onOpenChange={setResolveOpen}>

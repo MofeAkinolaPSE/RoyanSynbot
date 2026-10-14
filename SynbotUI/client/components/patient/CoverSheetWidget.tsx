@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { HelpHint } from "@/components/help/HelpHint";
 
 interface CoverSheetWidgetProps {
   title: string;
@@ -15,6 +16,8 @@ interface CoverSheetWidgetProps {
   addLabel?: string;
   onViewAll?: () => void;
   viewAllLabel?: string;
+  /** Id from lib/help-hints — renders a "?" beside the title explaining this card. */
+  helpHintId?: string;
   children?: React.ReactNode;
   className?: string;
 }
@@ -37,6 +40,7 @@ export function CoverSheetWidget({
   addLabel = "Add",
   onViewAll,
   viewAllLabel = "View all",
+  helpHintId,
   children,
   className,
 }: CoverSheetWidgetProps) {
@@ -47,8 +51,9 @@ export function CoverSheetWidget({
         <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </CardTitle>
+        {helpHintId && <HelpHint id={helpHintId} />}
         {typeof count === "number" && (
-          <Badge variant="outline" className="text-[12px] px-1.5 py-0 h-4 font-normal">
+          <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 font-normal">
             {count}
           </Badge>
         )}
@@ -66,7 +71,10 @@ export function CoverSheetWidget({
         )}
       </CardHeader>
       <CardContent className="px-3 pb-2 flex-1 flex flex-col min-h-0">
-        <div className="max-h-44 overflow-y-auto pr-0.5 flex-1">
+        {/* Raised alongside the type-scale bump: at 14px, max-h-44 showed only
+            about four of the six preview rows, so a third of each widget sat
+            behind a scrollbar nobody would notice. */}
+        <div className="max-h-56 overflow-y-auto pr-0.5 flex-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-6 text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -81,7 +89,7 @@ export function CoverSheetWidget({
           <button
             type="button"
             onClick={onViewAll}
-            className="mt-1.5 text-[13px] text-primary hover:underline self-start shrink-0"
+            className="mt-1.5 text-xs text-primary hover:underline self-start shrink-0"
           >
             {viewAllLabel}
           </button>

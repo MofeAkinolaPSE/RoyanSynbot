@@ -47,9 +47,9 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
         ws.onopen = () => {
           retriesRef.current = 0;
           if (heartbeatMs) {
-            heartbeatTimer = setInterval(() => {
-              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
-            }, heartbeatMs);
+            const ping = () => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" })); };
+            ping();
+            heartbeatTimer = setInterval(ping, heartbeatMs);
           }
         };
 
@@ -92,7 +92,18 @@ export function useRealtimeChannel(channel: string, onMessage: MessageHandler, e
 
     void connect();
 
+    // A tab coming back into view says so at once (its timers may have been throttled while hidden),
+    // and a socket the browser dropped while asleep is reopened straight away.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !heartbeatMs) return;
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+      else if (!ws || ws.readyState === WebSocket.CLOSED) { if (reconnectTimer) clearTimeout(reconnectTimer); void connect(); }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
       stopped = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);

@@ -401,7 +401,7 @@ class NoteAmend(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/templates", status_code=201)
-async def create_template(payload: TemplateCreate, user=Depends(require_role(*SPECIALIST_ROLES))):
+def create_template(payload: TemplateCreate, user=Depends(require_role(*SPECIALIST_ROLES))):
     if payload.specialty not in SPECIALTY_ALLOWED:
         raise HTTPException(status_code=422, detail=f"specialty must be one of {sorted(SPECIALTY_ALLOWED)}")
     data = payload.model_dump()
@@ -421,7 +421,7 @@ async def create_template(payload: TemplateCreate, user=Depends(require_role(*SP
 
 
 @router.get("/templates")
-async def list_templates(
+def list_templates(
     specialty: Optional[str] = Query(None),
     active_only: bool        = Query(True),
     user=Depends(require_role(*SPECIALIST_ROLES)),
@@ -436,7 +436,7 @@ async def list_templates(
 
 
 @router.get("/templates/{template_id}")
-async def get_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
+def get_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     r = db.table(TABLE_CLINIC_TEMPLATES).select("*").eq("id", template_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -444,7 +444,7 @@ async def get_template(template_id: str, user=Depends(require_role(*SPECIALIST_R
 
 
 @router.patch("/templates/{template_id}")
-async def update_template(template_id: str, payload: TemplateUpdate, user=Depends(require_role(*SPECIALIST_ROLES))):
+def update_template(template_id: str, payload: TemplateUpdate, user=Depends(require_role(*SPECIALIST_ROLES))):
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
@@ -458,7 +458,7 @@ async def update_template(template_id: str, payload: TemplateUpdate, user=Depend
 
 
 @router.delete("/templates/{template_id}")
-async def delete_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
+def delete_template(template_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     db.table(TABLE_CLINIC_TEMPLATES).update({"active": False}).eq("id", template_id).execute()
     return {"ok": True, "template_id": template_id}
 
@@ -468,7 +468,7 @@ async def delete_template(template_id: str, user=Depends(require_role(*SPECIALIS
 # ---------------------------------------------------------------------------
 
 @router.post("/notes", status_code=201)
-async def submit_note(payload: SpecialistNote, user=Depends(require_role(*SPECIALIST_ROLES))):
+def submit_note(payload: SpecialistNote, user=Depends(require_role(*SPECIALIST_ROLES))):
     if payload.specialty not in SPECIALTY_ALLOWED:
         raise HTTPException(status_code=422, detail=f"specialty must be one of {sorted(SPECIALTY_ALLOWED)}")
     data = payload.model_dump(exclude_none=True)
@@ -489,7 +489,7 @@ async def submit_note(payload: SpecialistNote, user=Depends(require_role(*SPECIA
 
 
 @router.get("/notes")
-async def list_notes(
+def list_notes(
     patient_id:   Optional[int] = Query(None),
     encounter_id: Optional[int] = Query(None),
     specialty:    Optional[str] = Query(None),
@@ -507,7 +507,7 @@ async def list_notes(
 
 
 @router.get("/notes/{note_id}")
-async def get_note(note_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
+def get_note(note_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
     r = db.table(TABLE_SPECIALIST_NOTES).select("*").eq("id", note_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -515,7 +515,7 @@ async def get_note(note_id: str, user=Depends(require_role(*SPECIALIST_ROLES))):
 
 
 @router.patch("/notes/{note_id}")
-async def amend_note(note_id: str, payload: NoteAmend, user=Depends(require_role(*SPECIALIST_ROLES))):
+def amend_note(note_id: str, payload: NoteAmend, user=Depends(require_role(*SPECIALIST_ROLES))):
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
@@ -534,7 +534,7 @@ async def amend_note(note_id: str, payload: NoteAmend, user=Depends(require_role
 # ---------------------------------------------------------------------------
 
 @router.post("/seed", status_code=201)
-async def seed_templates(user=Depends(require_role(*SPECIALIST_ROLES))):
+def seed_templates(user=Depends(require_role(*SPECIALIST_ROLES))):
     """
     Idempotent: inserts the 14 built-in specialty templates.
     Skips any specialty that already has an active template.

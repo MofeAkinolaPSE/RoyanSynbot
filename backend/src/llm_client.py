@@ -47,12 +47,15 @@ class LLMClient:
             h["Authorization"] = f"Bearer {self.api_key}"
         return h
 
-    def generate_response(self, context: str, question: str, instruction: str | None = None) -> str:
+    def generate_response(self, context: str, question: str, instruction: str | None = None,
+                          max_tokens: int | None = None) -> str:
         instruction = instruction or f"You are {BOT_NAME} for {BOT_BRAND}. Use the context succinctly."
 
         # Prefer HTTP microservice if defined
         if self.base_url:
             payload = {"context": context or "", "question": question, "instruction": instruction}
+            if max_tokens:
+                payload["max_tokens"] = int(max_tokens)
             try:
                 resp = requests.post(
                     self.base_url.rstrip("/") + "/generate",

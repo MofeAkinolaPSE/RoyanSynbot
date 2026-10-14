@@ -62,6 +62,40 @@ class ReportResponse(BaseModel):
 
 # ── DOCX builder ─────────────────────────────────────────────────────────────
 
+def _add_markdown_runs(paragraph, text: str, size_pt: int = 10) -> None:
+    """Render inline **bold** / *italic* into an existing paragraph.
+
+    THE BUG THIS FIXES, reported as "the Word export was mumbled, it's just a
+    straight line of text": only the body-text branch parsed inline markup. The
+    numbered-list and bullet branches called add_run() on the raw string, so
+    every list item rendered its asterisks literally --
+
+        **Chronic Data Completeness Failure**: Across all **7 patient records**...
+
+    -- and since the report is mostly numbered findings, most of the document
+    came out full of asterisks instead of bold text.
+
+    Import from docx is done by the caller; this only needs Pt/RGBColor.
+    """
+    from docx.shared import Pt, RGBColor
+
+    for part in re.split(r"(\*\*.*?\*\*|\*.*?\*)", text):
+        if not part:
+            continue
+        if part.startswith("**") and part.endswith("**") and len(part) > 4:
+            run = paragraph.add_run(part[2:-2])
+            run.bold = True
+            run.font.size = Pt(size_pt)
+        elif part.startswith("*") and part.endswith("*") and len(part) > 2:
+            run = paragraph.add_run(part[1:-1])
+            run.italic = True
+            run.font.size = Pt(max(size_pt - 1, 7))
+            run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+        else:
+            run = paragraph.add_run(part)
+            run.font.size = Pt(size_pt)
+
+
 def _build_report_docx(full_report: str, section_title: str, report_type: str) -> bytes:
     """
     Convert a markdown-style report text to a branded .docx file.
@@ -124,12 +158,12 @@ def _build_report_docx(full_report: str, section_title: str, report_type: str) -
         elif re.match(r"^\d+\.", stripped):
             # Numbered list item
             p = doc.add_paragraph(style="List Number")
-            p.add_run(stripped[stripped.index(".") + 1:].strip()).font.size = Pt(10)
+            _add_markdown_runs(p, stripped[stripped.index(".") + 1:].strip())
 
         elif stripped.startswith("* ") or stripped.startswith("- "):
             # Bullet list
             p = doc.add_paragraph(style="List Bullet")
-            p.add_run(stripped[2:]).font.size = Pt(10)
+            _add_markdown_runs(p, stripped[2:])
 
         elif stripped == "":
             doc.add_paragraph("")
@@ -138,21 +172,7 @@ def _build_report_docx(full_report: str, section_title: str, report_type: str) -
             # Body paragraph — handle inline **bold** and *italic*
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(4)
-            # Simple inline bold/italic detection
-            parts = re.split(r"(\*\*.*?\*\*|\*.*?\*)", stripped)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                    run.font.size = Pt(10)
-                elif part.startswith("*") and part.endswith("*"):
-                    run = p.add_run(part[1:-1])
-                    run.italic = True
-                    run.font.size = Pt(9)
-                    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
-                else:
-                    run = p.add_run(part)
-                    run.font.size = Pt(10)
+            _add_markdown_runs(p, stripped)
 
     # ── Footer ───────────────────────────────────────────────────────────────
     doc.add_paragraph("")
@@ -174,7 +194,7 @@ def _build_report_docx(full_report: str, section_title: str, report_type: str) -
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/generate", response_model=ReportResponse)
-async def generate_report(
+def generate_report(
     body: ReportRequest,
     _user: Dict[str, Any] = Depends(verify_jwt),
 ) -> ReportResponse:
@@ -258,7 +278,7 @@ def _run_agent(body: ReportRequest) -> tuple[str, str, str]:
 
 
 @router.post("/generate/docx")
-async def generate_report_docx(
+def generate_report_docx(
     body: ReportRequest,
     _user: Dict[str, Any] = Depends(verify_jwt),
 ) -> StreamingResponse:
@@ -282,7 +302,7 @@ async def generate_report_docx(
 
 
 @router.get("/history/{report_id}/docx")
-async def report_detail_docx(
+def report_detail_docx(
     report_id: str,
     _user: Dict[str, Any] = Depends(verify_jwt),
 ) -> StreamingResponse:
@@ -346,7 +366,7 @@ async def report_history(
 
 
 @router.get("/history/{report_id}")
-async def report_detail(
+def report_detail(
     report_id: str,
     _user: Dict[str, Any] = Depends(verify_jwt),
 ) -> Dict[str, Any]:

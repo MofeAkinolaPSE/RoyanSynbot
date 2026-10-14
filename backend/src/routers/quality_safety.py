@@ -249,7 +249,7 @@ def _nest_domain_scores(checklist: HEFAMAAChecklist) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/incidents", status_code=201)
-async def report_incident(payload: IncidentCreate, user=Depends(require_role(*QUALITY_ROLES))):
+def report_incident(payload: IncidentCreate, user=Depends(require_role(*QUALITY_ROLES))):
     """Report a new clinical incident or near-miss."""
     if payload.severity not in SEVERITIES:
         raise HTTPException(status_code=422, detail=f"severity must be one of {sorted(SEVERITIES)}")
@@ -283,7 +283,7 @@ async def report_incident(payload: IncidentCreate, user=Depends(require_role(*QU
 
 
 @router.get("/incidents")
-async def list_incidents(
+def list_incidents(
     status: Optional[str]   = Query(None),
     severity: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -303,12 +303,12 @@ async def list_incidents(
 
 
 @router.get("/incidents/{incident_id}")
-async def get_incident(incident_id: str, user=Depends(require_role(*QUALITY_ROLES))):
+def get_incident(incident_id: str, user=Depends(require_role(*QUALITY_ROLES))):
     return {"incident": _get_incident(incident_id)}
 
 
 @router.patch("/incidents/{incident_id}/status")
-async def update_incident_status(incident_id: str, payload: IncidentStatusUpdate, user=Depends(require_role(*QUALITY_ROLES))):
+def update_incident_status(incident_id: str, payload: IncidentStatusUpdate, user=Depends(require_role(*QUALITY_ROLES))):
     incident = _get_incident(incident_id)
     current = incident["status"]
     if payload.status not in STATUSES:
@@ -330,7 +330,7 @@ async def update_incident_status(incident_id: str, payload: IncidentStatusUpdate
 
 
 @router.patch("/incidents/{incident_id}/investigation")
-async def submit_investigation(incident_id: str, payload: InvestigationUpdate, user=Depends(require_role(*QUALITY_ROLES))):
+def submit_investigation(incident_id: str, payload: InvestigationUpdate, user=Depends(require_role(*QUALITY_ROLES))):
     _get_incident(incident_id)
     updates = _clean(payload.model_dump(exclude_none=True))
     if not updates:
@@ -356,7 +356,7 @@ async def submit_investigation(incident_id: str, payload: InvestigationUpdate, u
 # ---------------------------------------------------------------------------
 
 @router.post("/infection-control", status_code=201)
-async def log_infection_event(payload: InfectionEvent, user=Depends(require_role(*QUALITY_ROLES))):
+def log_infection_event(payload: InfectionEvent, user=Depends(require_role(*QUALITY_ROLES))):
     data = _clean(payload.model_dump(exclude_none=True))
     resolved = _resolve_staff_id_for_user(user)
     if resolved:
@@ -375,7 +375,7 @@ async def log_infection_event(payload: InfectionEvent, user=Depends(require_role
 
 
 @router.get("/infection-control")
-async def list_infection_events(
+def list_infection_events(
     ward: Optional[str] = Query(None),
     event_type: Optional[str] = Query(None),
     healthcare_associated: Optional[bool] = Query(None),
@@ -392,7 +392,7 @@ async def list_infection_events(
 
 
 @router.get("/infection-control/stats")
-async def infection_stats(user=Depends(require_role(*QUALITY_ROLES))):
+def infection_stats(user=Depends(require_role(*QUALITY_ROLES))):
     result = db.table(TABLE_INFECTION_CONTROL).select(
         "event_type,ward,healthcare_associated,antibiotic_resistant,outcome"
     ).execute()
@@ -426,7 +426,7 @@ async def infection_stats(user=Depends(require_role(*QUALITY_ROLES))):
 # ---------------------------------------------------------------------------
 
 @router.post("/hefamaa", status_code=201)
-async def submit_hefamaa(payload: HEFAMAAChecklist, user=Depends(require_role(*QUALITY_ROLES))):
+def submit_hefamaa(payload: HEFAMAAChecklist, user=Depends(require_role(*QUALITY_ROLES))):
     score = payload.overall_score if payload.overall_score is not None else _auto_score(payload)
     data = _clean({
         "overall_score": score,
@@ -450,7 +450,7 @@ async def submit_hefamaa(payload: HEFAMAAChecklist, user=Depends(require_role(*Q
 
 
 @router.get("/hefamaa")
-async def list_hefamaa(
+def list_hefamaa(
     department: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(require_role(*QUALITY_ROLES)),
@@ -466,7 +466,7 @@ async def list_hefamaa(
 
 
 @router.get("/hefamaa/{checklist_id}")
-async def get_hefamaa(checklist_id: str, user=Depends(require_role(*QUALITY_ROLES))):
+def get_hefamaa(checklist_id: str, user=Depends(require_role(*QUALITY_ROLES))):
     r = db.table(TABLE_HEFAMAA_CHECKLIST).select("*").eq("id", checklist_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="HEFAMAA checklist not found")
@@ -478,7 +478,7 @@ async def get_hefamaa(checklist_id: str, user=Depends(require_role(*QUALITY_ROLE
 # ---------------------------------------------------------------------------
 
 @router.get("/stats")
-async def quality_stats(user=Depends(require_role(*QUALITY_ROLES))):
+def quality_stats(user=Depends(require_role(*QUALITY_ROLES))):
     inc_result = db.table(TABLE_INCIDENT_REPORTS).select("severity,status,category").execute()
     incidents = inc_result.data or []
 

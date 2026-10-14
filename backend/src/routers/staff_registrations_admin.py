@@ -29,6 +29,9 @@ _SAFE_COLUMNS = (
 
 class ApproveRequest(BaseModel):
     department_id_override: Optional[int] = None
+    # the person's existing HR record to attach the login to (see GET /{id}/hr-matches), or create_new
+    link_staff_id: Optional[str] = None
+    create_new: bool = False
     approval_reason: str = Field(..., min_length=1, max_length=1000)
     attestation_text: str = Field(..., min_length=1, max_length=1000)
 
@@ -76,64 +79,38 @@ def _load_pending(registration_id: str) -> dict:
     return reg
 
 
+@router.get("/{registration_id}/hr-matches")
+def registration_hr_matches(registration_id: str, user=Depends(require_role("admin"))):
+    """HR records this person may already have - same email (certain) or same name (likely)."""
+    from src.services.staff_onboarding import hr_matches
+    reg = _load_pending(registration_id)
+    return {"data": hr_matches(reg)}
+
+
 @router.post("/{registration_id}/approve")
 def approve_registration(registration_id: str, body: ApproveRequest, user=Depends(require_role("admin"))):
+    """Create the login and attach it to the person's HR record (or create one) - in one transaction,
+    so HR never holds the same person twice (services/staff_onboarding.py)."""
+    from src.services.staff_onboarding import OnboardingError, approve
     reg = _load_pending(registration_id)
     admin_id = user.get("sub") or user.get("user_id")
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
-
     try:
-        user_resp = db.table(TABLE_USERS).insert({
-            "email": reg["email"],
-            "hashed_password": reg["hashed_password"],
-            "roles": [reg["role"]],
-            "is_active": True,
-        }).execute()
-        new_user = user_resp.data[0] if user_resp.data else None
-        if not new_user:
-            raise RuntimeError("no row returned from royan_users insert")
-
-        department_id = body.department_id_override if body.department_id_override is not None else reg.get("department_id")
-        kyc = reg.get("kyc_details") or {}
-        staff_resp = db.table(TABLE_STAFF).insert({
-            "staff_number": f"REG-{reg['id'][:8].upper()}",
-            "full_name": reg["full_name"],
-            "department": reg.get("department") or "Unassigned",
-            "department_id": department_id,
-            "designation": reg.get("designation") or "Staff",
-            "role": reg["role"],
-            "email": reg["email"],
-            "phone": reg.get("phone"),
-            "metadata": kyc,
-            "specialty": kyc.get("specialty"),
-            "license_number": kyc.get("medical_council_number"),
-            "user_id": new_user["id"],
-        }).execute()
-        new_staff = staff_resp.data[0] if staff_resp.data else None
-        if not new_staff:
-            raise RuntimeError("no row returned from royan_staff insert")
-
-        db.table(TABLE_STAFF_REGISTRATIONS).update({
-            "status": "approved",
-            "reviewed_by": admin_id,
-            "reviewed_at": now,
-            "created_staff_id": new_staff["id"],
-            "created_user_id": new_user["id"],
-        }).eq("id", registration_id).execute()
+        out = approve(reg, str(admin_id), body.link_staff_id, body.create_new, body.department_id_override)
+    except OnboardingError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as exc:
         logger.error(f"approve_registration failed for {registration_id}: {exc}")
         raise HTTPException(status_code=500, detail="Could not approve registration")
-
     audit_event(
         "staff_registration_approved",
-        {"email": reg["email"], "role": reg["role"]},
+        {"email": reg["email"], "role": reg["role"], "hr_record": out["mode"], "staff_id": out["staff_id"], "filled": out["filled"]},
         actor_id=admin_id,
         subject_type="staff_registration",
         subject_id=registration_id,
         approval_reason=body.approval_reason,
         attestation_text=body.attestation_text,
     )
-    return {"status": "approved", "staff_id": new_staff["id"], "user_id": new_user["id"]}
+    return out
 
 
 @router.post("/{registration_id}/reject")

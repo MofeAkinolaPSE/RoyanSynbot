@@ -23,11 +23,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
+from src.cache import invalidate_cache_tags
 from src.db import db, audit_event
 from src.middleware import verify_jwt, require_role
 from src.services.event_service import emit_clinical_event
 from src.services.realtime import realtime_hub
-from src.services.clinical_shared import get_patient_allergies
+from src.services.clinical_shared import get_patient_allergies, attach_staff_names
 from src.services import pharmacy_inventory_service as inv
 from src.constants import (
     PRESCRIPTION_ROUTES_ALLOWED, PRESCRIPTION_STATUS_ALLOWED,
@@ -113,7 +114,7 @@ def _get_prescription(prescription_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/prescriptions", status_code=201)
-async def create_prescription(payload: PrescriptionCreate, user=Depends(verify_jwt)):
+def create_prescription(payload: PrescriptionCreate, user=Depends(verify_jwt)):
     """Write a new prescription (called by doctor or system)."""
     if payload.route not in ROUTES:
         raise HTTPException(status_code=422, detail=f"route must be one of {ROUTES}")
@@ -171,10 +172,11 @@ async def create_prescription(payload: PrescriptionCreate, user=Depends(verify_j
 
 
 @router.get("/prescriptions")
-async def list_prescriptions(
+def list_prescriptions(
     encounter_id: Optional[int] = Query(None),
     patient_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
+    view: Optional[str] = Query(None, pattern="^(active|done)$", description="active: still to dispense (any day); done: dispensed today"),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
 ):
@@ -190,6 +192,8 @@ async def list_prescriptions(
         .order("prescribed_at", desc=True)
         .limit(limit)
     )
+    from src.services.worklist import apply_view
+    query = apply_view(query, view, {"pending", "partially_dispensed"}, {"dispensed"}, "dispensed_at")
     if encounter_id:
         query = query.eq("encounter_id", encounter_id)
     if patient_id:
@@ -222,7 +226,7 @@ async def list_prescriptions(
 
 
 @router.get("/stats")
-async def pharmacy_stats(user=Depends(verify_jwt)):
+def pharmacy_stats(user=Depends(verify_jwt)):
     """Aggregate counts for the Dispensing KPI cards — server-computed so
     they're never capped by whatever status filter/pagination the worklist
     happens to have active. Inventory-specific counts (low stock, expiring,
@@ -239,8 +243,8 @@ async def pharmacy_stats(user=Depends(verify_jwt)):
     }
 
 
-@router.get("/prescriptions/{prescription_id}")
-async def get_prescription(prescription_id: int, user=Depends(verify_jwt)):
+@router.get("/prescriptions/{prescription_id:int}")
+def get_prescription(prescription_id: int, user=Depends(verify_jwt)):
     """Enriched detail — patient info, dispensing history, MAR history,
     returns, and cumulative dispensed/remaining quantity. This is the
     PharmacyWorkspacePanel's single self-fetch source."""
@@ -295,6 +299,25 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
 
     if rx["status"] in ("cancelled", "returned"):
         raise HTTPException(status_code=409, detail=f"Prescription is '{rx['status']}'; cannot dispense")
+
+    # Front-desk authorisation gate. "once they approve that drug, pharmacy can
+    # dispense" — so the reverse must hold, and it is enforced here rather than
+    # by hiding the button, because a hidden button is not a rule.
+    approval = rx.get("approval_status") or "not_required"
+    if approval == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="This prescription is waiting for front-desk approval and cannot be dispensed yet.",
+        )
+    if approval == "rejected":
+        note = rx.get("approval_note")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Front desk rejected this prescription{f': {note}' if note else ''}.",
+        )
+
+    from src.services.stage_billing import require_clearance   # pay before drugs leave the shelf (private outpatients)
+    require_clearance("prescription", prescription_id)
 
     drug_name_lower = rx["drug_name"].lower()
     patient_id = rx["patient_id"]
@@ -424,6 +447,11 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     }).eq("id", prescription_id).execute()
 
     disp = disp_rows_written[0]
+    # Roy Books: the cost of each batch dispensed (own transaction, never blocks the pharmacy).
+    from src.fin.integrations import after_commit as post_to_books
+    for row in disp_rows_written:
+        if row.get("id"):
+            post_to_books("DISPENSING", row["id"], user.get("sub"))
     audit_event(
         "prescription_dispensed",
         {"qty": dispensed_qty, "cumulative": cumulative_dispensed, "status": new_status, "batches_touched": len(disp_rows_written)},
@@ -447,13 +475,14 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
         event_data={"drug_name": rx["drug_name"], "qty": dispensed_qty, "status": new_status},
     )
     if rx.get("encounter_id"):
-        asyncio.create_task(realtime_hub.broadcast("encounter_updates", {
+        realtime_hub.publish("encounter_updates", {
             "event": "prescription_dispensed",
             "encounter_id": rx.get("encounter_id"),
             "prescription_id": prescription_id,
             "drug_name": rx["drug_name"],
             "status": new_status,
-        }))
+        })
+        _advance_after_pharmacy(rx["encounter_id"])
 
     return {
         "ok": True,
@@ -465,14 +494,36 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     }
 
 
+def _advance_after_pharmacy(encounter_id) -> None:
+    """The visit's last prescription is out: the patient moves on to pay & discharge (the queue's "Done" column).
+    Without this the visit stayed at "Pharmacy" for good and could never be discharged."""
+    try:
+        enc = db.table("royan_encounters").select("status").eq("id", encounter_id).limit(1).execute().data
+        if not enc or enc[0].get("status") != "pharmacy_dispensing":
+            return
+        waiting = (db.table(TABLE_PRESCRIPTIONS).select("id").eq("encounter_id", encounter_id)
+                   .in_("status", ["pending", "partially_dispensed"]).limit(1).execute().data)
+        if waiting:
+            return
+        db.table("royan_encounters").update({"status": "billing_pending",
+                                             "updated_at": dt.datetime.now(dt.timezone.utc).isoformat()}).eq("id", encounter_id).execute()
+        invalidate_cache_tags("hospital", "queue", "encounters", "patient_flow")
+        realtime_hub.publish("encounter_updates", {"event": "pharmacy_done", "encounter_id": encounter_id,
+                                                   "status": "billing_pending"})
+    except Exception as exc:   # never fail a dispense over the queue status
+        logger.warning("Could not move encounter %s on after dispensing: %s", encounter_id, exc)
+
+
 @router.post("/prescriptions/{prescription_id}/cancel")
-async def cancel_prescription(prescription_id: int, user=Depends(verify_jwt)):
+def cancel_prescription(prescription_id: int, user=Depends(verify_jwt)):
     rx = _get_prescription(prescription_id)
     if rx["status"] in ("dispensed", "cancelled"):
         raise HTTPException(status_code=409, detail=f"Cannot cancel prescription with status '{rx['status']}'")
 
     db.table(TABLE_PRESCRIPTIONS).update({"status": "cancelled"}).eq("id", prescription_id).execute()
     audit_event("prescription_cancelled", {}, actor_id=user.get("sub"), subject_type="prescription", subject_id=str(prescription_id))
+    if rx.get("encounter_id"):
+        _advance_after_pharmacy(rx["encounter_id"])
     return {"ok": True, "prescription_id": prescription_id, "status": "cancelled"}
 
 
@@ -493,7 +544,7 @@ class MARAdminRequest(BaseModel):
 
 @router.post("/prescriptions/{prescription_id}/administer", status_code=201,
              dependencies=[Depends(require_role("nurse", "doctor", "pharmacist", "admin"))])
-async def administer_medication(
+def administer_medication(
     prescription_id: int,
     payload: MARAdminRequest,
     user=Depends(verify_jwt),
@@ -566,7 +617,7 @@ async def administer_medication(
 
 
 @router.get("/prescriptions/{prescription_id}/mar")
-async def get_prescription_mar(prescription_id: int, user=Depends(verify_jwt)):
+def get_prescription_mar(prescription_id: int, user=Depends(verify_jwt)):
     """Return the full administration history for a single prescription."""
     _get_prescription(prescription_id)   # 404 guard
     result = (
@@ -580,7 +631,7 @@ async def get_prescription_mar(prescription_id: int, user=Depends(verify_jwt)):
 
 
 @router.get("/encounters/{encounter_id}/mar")
-async def get_encounter_mar(encounter_id: int, user=Depends(verify_jwt)):
+def get_encounter_mar(encounter_id: int, user=Depends(verify_jwt)):
     """Full MAR for all prescriptions in an encounter (nursing ward view)."""
     rxs = (
         db.table(TABLE_PRESCRIPTIONS)
@@ -613,7 +664,7 @@ async def get_encounter_mar(encounter_id: int, user=Depends(verify_jwt)):
 
 
 @router.get("/administration-queue")
-async def administration_queue(
+def administration_queue(
     encounter_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     user=Depends(verify_jwt),
@@ -672,14 +723,14 @@ class AllergyCreate(BaseModel):
 
 
 @router.get("/allergies/{patient_id}")
-async def list_allergies(patient_id: int, user=Depends(verify_jwt)):
+def list_allergies(patient_id: int, user=Depends(verify_jwt)):
     """List documented allergies for a patient."""
     result = db.table(TABLE_ALLERGIES).select("*").eq("patient_id", patient_id).eq("status", "active").order("created_at", desc=True).execute()
     return {"allergies": result.data or [], "count": len(result.data or [])}
 
 
 @router.post("/allergies/{patient_id}", status_code=201)
-async def add_allergy(patient_id: int, payload: AllergyCreate, user=Depends(verify_jwt)):
+def add_allergy(patient_id: int, payload: AllergyCreate, user=Depends(verify_jwt)):
     """Record a new allergy for a patient."""
     data = {
         "patient_id": patient_id,
@@ -700,7 +751,7 @@ async def add_allergy(patient_id: int, payload: AllergyCreate, user=Depends(veri
 
 
 @router.delete("/allergies/record/{allergy_id}")
-async def remove_allergy(allergy_id: int, user=Depends(verify_jwt)):
+def remove_allergy(allergy_id: int, user=Depends(verify_jwt)):
     r = db.table(TABLE_ALLERGIES).select("id").eq("id", allergy_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Allergy record {allergy_id} not found")
@@ -751,7 +802,7 @@ def _tag_stock_status(item: dict) -> dict:
 
 
 @router.get("/inventory")
-async def list_inventory(
+def list_inventory(
     drug_name: Optional[str] = Query(None),
     low_stock: bool = Query(False),
     limit: int = Query(100, ge=1, le=500),
@@ -769,7 +820,7 @@ async def list_inventory(
 
 
 @router.get("/inventory/expiring")
-async def list_expiring_inventory(
+def list_expiring_inventory(
     within_days: int = Query(30, ge=1, le=365),
     user=Depends(verify_jwt),
 ):
@@ -788,23 +839,13 @@ async def list_expiring_inventory(
     return {"inventory": items, "count": len(items), "within_days": within_days}
 
 
-@router.get("/inventory/expired")
-async def list_expired_inventory(user=Depends(verify_jwt)):
-    """Drugs whose expiry_date has already passed."""
-    today = dt.date.today().isoformat()
-    result = (
-        db.table(TABLE_DRUG_INVENTORY)
-        .select("*")
-        .lt("expiry_date", today)
-        .order("expiry_date", desc=True)
-        .execute()
-    )
-    items = [_tag_stock_status(i) for i in (result.data or [])]
-    return {"inventory": items, "count": len(items)}
+# /inventory/expired lives in pharmacy_inventory.py, on the live batches (royan_inventory_batches). The old route
+# here read royan_drug_inventory (0 rows) and, being registered first, shadowed it: the pharmacy's "Expired stock"
+# list was always empty while 17 expired products sat on the shelf (found Oct 2026).
 
 
 @router.post("/inventory", status_code=201)
-async def create_inventory_item(payload: DrugInventoryCreate, user=Depends(verify_jwt)):
+def create_inventory_item(payload: DrugInventoryCreate, user=Depends(verify_jwt)):
     """Add a new drug to inventory."""
     data = payload.model_dump(exclude_none=True)
     data["created_by"] = user.get("sub") or "system"
@@ -819,7 +860,7 @@ async def create_inventory_item(payload: DrugInventoryCreate, user=Depends(verif
 
 
 @router.patch("/inventory/{item_id}")
-async def update_inventory_item(item_id: int, payload: DrugInventoryCreate, user=Depends(verify_jwt)):
+def update_inventory_item(item_id: int, payload: DrugInventoryCreate, user=Depends(verify_jwt)):
     r = db.table(TABLE_DRUG_INVENTORY).select("id").eq("id", item_id).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail=f"Inventory item {item_id} not found")
@@ -829,7 +870,7 @@ async def update_inventory_item(item_id: int, payload: DrugInventoryCreate, user
 
 
 @router.post("/inventory/{item_id}/adjust")
-async def adjust_stock(item_id: int, payload: StockAdjustRequest, user=Depends(verify_jwt)):
+def adjust_stock(item_id: int, payload: StockAdjustRequest, user=Depends(verify_jwt)):
     """Adjust stock quantity (positive = receipt, negative = issue/loss)."""
     r = db.table(TABLE_DRUG_INVENTORY).select("id,stock_quantity,drug_name").eq("id", item_id).execute()
     if not r.data:
@@ -860,7 +901,7 @@ class SalesReturnCreate(BaseModel):
 
 
 @router.post("/returns", status_code=201)
-async def create_sales_return(payload: SalesReturnCreate, user=Depends(verify_jwt)):
+def create_sales_return(payload: SalesReturnCreate, user=Depends(verify_jwt)):
     """Record a drug return. If restock is set, the quantity is added back
     to the matching royan_drug_inventory row (matched by drug_name)."""
     dispensing = db.table(TABLE_DISPENSING).select("id,patient_id,drug_name,quantity_dispensed").eq("id", payload.dispensing_id).execute()
@@ -907,6 +948,9 @@ async def create_sales_return(payload: SalesReturnCreate, user=Depends(verify_jw
             db.table(TABLE_DRUG_INVENTORY).update({"stock_quantity": new_qty}).eq("id", item["id"]).execute()
 
     ret = result.data[0] if result.data else data
+    if ret.get("id") and payload.restock:
+        from src.fin.integrations import after_commit as post_to_books
+        post_to_books("DISPENSE_RETURN", ret["id"], user.get("sub"))
     audit_event(
         "sales_return_recorded",
         {"dispensing_id": payload.dispensing_id, "quantity": payload.quantity_returned, "restocked": payload.restock},
@@ -918,7 +962,7 @@ async def create_sales_return(payload: SalesReturnCreate, user=Depends(verify_jw
 
 
 @router.get("/returns")
-async def list_sales_returns(
+def list_sales_returns(
     patient_id: Optional[int] = Query(None),
     dispensing_id: Optional[int] = Query(None),
     limit: int = Query(100, ge=1, le=500),
@@ -939,8 +983,7 @@ async def list_sales_returns(
 # POSTs the resulting image here — same file-storage pattern as lab.py's
 # report-upload endpoint.
 
-SIGNATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "signatures")
-ALLOWED_SIGNATURE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+from src.signatures import ALLOWED_SIGNATURE_TYPES, MAX_SIGNATURE_BYTES, load_signature, save_signature
 
 
 @router.post("/dispensing/{dispensing_id}/signature")
@@ -949,8 +992,9 @@ async def upload_dispensing_signature(
     file: UploadFile = File(...),
     user=Depends(verify_jwt),
 ):
-    """Attach a captured signature image to a dispensing record."""
-    dispensing = db.table(TABLE_DISPENSING).select("id").eq("id", dispensing_id).execute()
+    """Attach a captured signature image to a dispensing record. For an HMO visit the same signature goes on the
+    visit's claims form, unless the patient has already signed one at the HMO desk."""
+    dispensing = db.table(TABLE_DISPENSING).select("id,prescription_id").eq("id", dispensing_id).execute()
     if not dispensing.data:
         raise HTTPException(status_code=404, detail=f"Dispensing record {dispensing_id} not found")
 
@@ -958,18 +1002,24 @@ async def upload_dispensing_signature(
         raise HTTPException(status_code=422, detail=f"File type '{file.content_type}' not allowed. Use PNG/JPEG/WEBP.")
 
     contents = await file.read()
-    if len(contents) > 5 * 1024 * 1024:  # 5 MB limit — a signature image is small
+    if len(contents) > MAX_SIGNATURE_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
 
-    os.makedirs(SIGNATURES_DIR, exist_ok=True)
-    safe_name = f"{dispensing_id}_{uuid.uuid4().hex[:8]}_{file.filename or 'signature'}"
-    safe_name = safe_name.replace("/", "_").replace("\\", "_")
-    storage_path = os.path.join(SIGNATURES_DIR, safe_name)
-    with open(storage_path, "wb") as fh:
-        fh.write(contents)
-
-    signature_url = f"/pharmacy/signatures/{safe_name}"
+    signature_url = save_signature(contents, str(dispensing_id), file.filename, file.content_type)
     db.table(TABLE_DISPENSING).update({"signature_url": signature_url}).eq("id", dispensing_id).execute()
+
+    rx_id = dispensing.data[0].get("prescription_id")
+    if rx_id:
+        rx = db.table(TABLE_PRESCRIPTIONS).select("encounter_id").eq("id", rx_id).limit(1).execute().data
+        enc_id = (rx or [{}])[0].get("encounter_id")
+        if enc_id:
+            enc = db.table("royan_encounters").select("claim_signature_url").eq("id", enc_id).limit(1).execute().data
+            if enc and not enc[0].get("claim_signature_url"):
+                from datetime import datetime as _dt, timezone as _tz
+                db.table("royan_encounters").update({
+                    "claim_signature_url": signature_url, "claim_signed_at": _dt.now(_tz.utc).isoformat(),
+                    "claim_signed_by": user.get("email") or user.get("sub"),
+                }).eq("id", enc_id).execute()
 
     audit_event(
         "dispensing_signature_captured",
@@ -982,14 +1032,402 @@ async def upload_dispensing_signature(
 
 
 @router.get("/signatures/{filename}")
-async def serve_signature(filename: str, user=Depends(verify_jwt)):
+def serve_signature(filename: str, user=Depends(verify_jwt)):
     """Serve a stored signature image to authenticated users."""
-    safe_filename = os.path.basename(filename)
-    file_path = os.path.join(SIGNATURES_DIR, safe_filename)
-    if not os.path.isfile(file_path):
+    got = load_signature(filename)
+    if not got:
         raise HTTPException(status_code=404, detail="Signature file not found")
-    return FileResponse(file_path)
+    from fastapi.responses import Response
+    return Response(content=got[0], media_type=got[1])
 
 # Ward Replenishment Requests moved to pharmacy_inventory.py — conceptually
 # inventory, not dispensing, and now on real formulary_id/ward/urgency/unit
 # columns instead of the old sku/notes-folding workaround.
+
+
+# ── Front-desk approval ──────────────────────────────────────────────────────
+#
+# Some drugs need a payment/authorisation decision before they leave the shelf.
+# Pharmacy raises the request; front desk clears it. Kept on its own axis from
+# `status` so "partially dispensed AND awaiting approval" stays representable.
+
+class ApprovalRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class ApprovalDecision(BaseModel):
+    approved: bool
+    note: Optional[str] = None
+
+
+@router.post("/prescriptions/{prescription_id}/request-approval")
+def request_frontdesk_approval(
+    prescription_id: int, payload: ApprovalRequest, user=Depends(verify_jwt)
+):
+    """Pharmacy pushes a prescription to the front desk for authorisation."""
+    rx = _get_prescription(prescription_id)
+    if (rx.get("approval_status") or "not_required") == "approved":
+        return {"ok": True, "approval_status": "approved", "note": "Already approved"}
+
+    db.table(TABLE_PRESCRIPTIONS).update({
+        "approval_status": "pending",
+        "approval_requested_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "approval_requested_by": user.get("sub"),
+        "approval_note": payload.reason,
+    }).eq("id", prescription_id).execute()
+
+    audit_event(
+        "prescription_approval_requested",
+        {"drug": rx.get("drug_name"), "reason": payload.reason},
+        actor_id=user.get("sub"), subject_type="prescription", subject_id=str(prescription_id),
+    )
+    invalidate_cache_tags("pharmacy", "queue")
+    return {"ok": True, "approval_status": "pending"}
+
+
+@router.get("/prescriptions/pending-approval")
+def list_pending_approvals(user=Depends(verify_jwt)):
+    """The front-desk worklist: everything waiting on a decision."""
+    try:
+        rows = (
+            db.table(TABLE_PRESCRIPTIONS)
+            .select("id,patient_id,encounter_id,drug_name,dosage,frequency,quantity,unit,"
+                    "prescribed_by,prescribed_at,approval_status,approval_requested_at,approval_note")
+            .eq("approval_status", "pending")
+            .order("approval_requested_at", desc=False)
+            .limit(100).execute().data or []
+        )
+    except Exception:
+        return {"prescriptions": [], "count": 0}
+
+    patient_ids = list({r["patient_id"] for r in rows if r.get("patient_id")})
+    names: dict = {}
+    if patient_ids:
+        try:
+            pts = db.table(TABLE_PATIENTS).select("id,mrn,first_name,last_name").in_("id", patient_ids).execute()
+            names = {
+                x["id"]: {"mrn": x.get("mrn"),
+                          "name": f"{x.get('first_name','')} {x.get('last_name','')}".strip()}
+                for x in pts.data or []
+            }
+        except Exception:
+            names = {}
+    for r in rows:
+        info = names.get(r.get("patient_id")) or {}
+        r["patient_name"] = info.get("name")
+        r["patient_mrn"] = info.get("mrn")
+    return {"prescriptions": rows, "count": len(rows)}
+
+
+@router.post("/prescriptions/{prescription_id}/approval-decision")
+def decide_frontdesk_approval(
+    prescription_id: int, payload: ApprovalDecision, user=Depends(verify_jwt)
+):
+    """Front desk approves or rejects. A rejection carries its reason forward so
+    the pharmacist can tell the patient something useful."""
+    rx = _get_prescription(prescription_id)
+    if (rx.get("approval_status") or "not_required") != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"This prescription is not awaiting approval (it is '{rx.get('approval_status')}').",
+        )
+
+    decision = "approved" if payload.approved else "rejected"
+    db.table(TABLE_PRESCRIPTIONS).update({
+        "approval_status": decision,
+        "approval_decided_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "approval_decided_by": user.get("sub"),
+        "approval_note": payload.note,
+    }).eq("id", prescription_id).execute()
+
+    audit_event(
+        f"prescription_approval_{decision}",
+        {"drug": rx.get("drug_name"), "note": payload.note},
+        actor_id=user.get("sub"), subject_type="prescription", subject_id=str(prescription_id),
+    )
+    invalidate_cache_tags("pharmacy", "queue")
+    return {"ok": True, "approval_status": decision}
+
+
+# -- Discounts ----------------------------------------------------------------
+#
+# "they also need to add patients discount for internal staff... we're going to
+# have a column for discounts, just like we did in billing."
+#
+# Same two-step shape as the billing discount (migration 205): a pharmacist
+# REQUESTS, an admin DECIDES. Nothing is deducted in between. A pharmacist
+# approving their own staff discount would defeat the point of routing it
+# through approval at all.
+
+class DispensingDiscountRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+    discount_type: str = Field("staff", max_length=40)
+    reason: Optional[str] = Field(None, max_length=500)
+
+    model_config = {"extra": "ignore"}
+
+
+class DispensingDiscountDecision(BaseModel):
+    approve: bool
+    note: Optional[str] = Field(None, max_length=500)
+
+    model_config = {"extra": "ignore"}
+
+
+@router.post("/dispensing/{dispensing_id}/request-discount")
+def request_dispensing_discount(
+    dispensing_id: int,
+    payload: DispensingDiscountRequest,
+    user=Depends(verify_jwt),
+):
+    """Ask an admin to approve a discount on a dispensed item."""
+    found = (
+        db.table(TABLE_DISPENSING)
+        .select("id,drug_name,total_cost,discount_status")
+        .eq("id", dispensing_id).limit(1).execute().data
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Dispensing record {dispensing_id} not found")
+    row = found[0]
+
+    if row.get("discount_status") == "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="A discount has already been approved on this item.",
+        )
+
+    total = float(row.get("total_cost") or 0)
+    if total <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="This item has no charge, so there is nothing to discount.",
+        )
+    if payload.amount > total:
+        # Caught here as well as by the CHECK constraint, so the pharmacist gets
+        # a sentence rather than a database error.
+        raise HTTPException(
+            status_code=422,
+            detail=f"Discount of {payload.amount:,.2f} exceeds the {total:,.2f} charged.",
+        )
+
+    try:
+        db.table(TABLE_DISPENSING).update({
+            "discount": payload.amount,
+            "discount_type": payload.discount_type,
+            "discount_reason": (payload.reason or "").strip() or None,
+            "discount_status": "pending",
+            "discount_requested_by": user.get("sub"),
+            "discount_requested_at": "now()",
+            "discount_decided_by": None,
+            "discount_decided_at": None,
+            "discount_decision_note": None,
+        }).eq("id", dispensing_id).execute()
+    except Exception as exc:
+        logger.error("Discount request failed: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=500, detail="Could not record the request")
+
+    audit_event(
+        "pharmacy_discount_requested",
+        {"dispensing_id": dispensing_id, "drug": row.get("drug_name"),
+         "amount": payload.amount, "type": payload.discount_type},
+        actor_id=user.get("sub"), subject_type="dispensing", subject_id=str(dispensing_id),
+    )
+    return {"ok": True, "dispensing_id": dispensing_id, "status": "pending",
+            "amount": payload.amount, "charged": total}
+
+
+@router.post("/dispensing/{dispensing_id}/discount-decision",
+             dependencies=[Depends(require_role("admin", "management"))])
+def decide_dispensing_discount(
+    dispensing_id: int,
+    payload: DispensingDiscountDecision,
+    user=Depends(verify_jwt),
+):
+    """Approve or reject a requested discount. Admin only."""
+    found = (
+        db.table(TABLE_DISPENSING)
+        .select("id,drug_name,discount,discount_status,discount_requested_by")
+        .eq("id", dispensing_id).limit(1).execute().data
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Dispensing record {dispensing_id} not found")
+    row = found[0]
+    if row.get("discount_status") != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"That discount is '{row.get('discount_status')}', not awaiting a decision.",
+        )
+
+    updates = {
+        "discount_status": "approved" if payload.approve else "rejected",
+        "discount_decided_by": user.get("sub"),
+        "discount_decided_at": "now()",
+        "discount_decision_note": (payload.note or "").strip() or None,
+    }
+    # A rejected discount returns to zero rather than lingering as an amount
+    # that was never granted -- otherwise a later reader sees a discount that
+    # was refused and assumes it applied.
+    if not payload.approve:
+        updates["discount"] = 0
+
+    try:
+        db.table(TABLE_DISPENSING).update(updates).eq("id", dispensing_id).execute()
+    except Exception as exc:
+        logger.error("Discount decision failed: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=500, detail="Could not record the decision")
+
+    audit_event(
+        "pharmacy_discount_" + ("approved" if payload.approve else "rejected"),
+        {"dispensing_id": dispensing_id, "drug": row.get("drug_name"),
+         "amount": row.get("discount"), "requested_by": row.get("discount_requested_by")},
+        actor_id=user.get("sub"), subject_type="dispensing", subject_id=str(dispensing_id),
+    )
+    invalidate_cache_tags("pharmacy", "billing", "hospital")
+    return {"ok": True, "dispensing_id": dispensing_id, "status": updates["discount_status"]}
+
+
+@router.get("/dispensing/pending-discounts",
+            dependencies=[Depends(require_role("admin", "management"))])
+def list_pending_dispensing_discounts(
+    limit: int = Query(100, ge=1, le=500),
+    user=Depends(verify_jwt),
+):
+    """Discounts awaiting an admin decision, for the approval queue."""
+    try:
+        rows = (
+            db.table(TABLE_DISPENSING)
+            .select("id,patient_id,drug_name,quantity_dispensed,total_cost,discount,"
+                    "discount_type,discount_reason,discount_requested_by,discount_requested_at")
+            .eq("discount_status", "pending")
+            .order("discount_requested_at", desc=False)
+            .limit(limit).execute().data or []
+        )
+    except Exception as exc:
+        logger.warning("Pending discount listing failed: %s: %s", type(exc).__name__, exc)
+        return {"discounts": [], "count": 0, "total_value": 0}
+
+    attach_staff_names(rows, {"discount_requested_by": "requested_by_name"})
+    return {
+        "discounts": rows,
+        "count": len(rows),
+        "total_value": round(sum(float(r.get("discount") or 0) for r in rows), 2),
+    }
+
+
+@router.get("/patients/{patient_id}/medication-history")
+def patient_medication_history(
+    patient_id: int,
+    limit: int = Query(200, ge=1, le=500),
+    user=Depends(verify_jwt),
+):
+    """Everything this patient has been prescribed and everything actually given.
+
+    "pharmacy can view the complete dosage regimen. So for a particular patient,
+    you can see the entire history just by clicking on that patient."
+
+    PRESCRIBED AND DISPENSED ARE REPORTED SEPARATELY, ON PURPOSE
+    -----------------------------------------------------------
+    They are not the same fact and the gap between them is clinically
+    interesting: a drug prescribed but never collected is a patient who did not
+    take it. Merging the two into one "medication" list would hide exactly that.
+    Each prescription therefore carries how much of it was dispensed, and
+    anything never collected is counted.
+
+    Includes migrated history: 258,621 prescriptions and 618,452 dispensing
+    records came from Hope, so most patients' regimens predate go-live entirely.
+    """
+    try:
+        rx = (
+            db.table(TABLE_PRESCRIPTIONS)
+            .select("id,drug_name,dosage,frequency,route,duration,quantity,status,"
+                    "prescribed_at,prescribed_by,encounter_id,special_instructions,"
+                    "external_source")
+            .eq("patient_id", patient_id)
+            .order("prescribed_at", desc=True)
+            .limit(limit).execute().data or []
+        )
+    except Exception as exc:
+        logger.warning("Prescription history failed for %s: %s: %s", patient_id, type(exc).__name__, exc)
+        rx = []
+
+    try:
+        disp = (
+            db.table(TABLE_DISPENSING)
+            .select("id,prescription_id,drug_name,quantity_dispensed,unit,batch_number,"
+                    "dispensed_at,dispensed_by,total_cost,discount,discount_status,"
+                    "external_source")
+            .eq("patient_id", patient_id)
+            .order("dispensed_at", desc=True)
+            .limit(limit).execute().data or []
+        )
+    except Exception as exc:
+        logger.warning("Dispensing history failed for %s: %s: %s", patient_id, type(exc).__name__, exc)
+        disp = []
+
+    # Attach what was actually collected against each prescription.
+    by_rx = {}
+    for d in disp:
+        by_rx.setdefault(d.get("prescription_id"), []).append(d)
+
+    never_collected = 0
+    for r in rx:
+        events = by_rx.get(r["id"], [])
+        r["dispensed_count"] = len(events)
+        r["quantity_dispensed"] = sum(float(e.get("quantity_dispensed") or 0) for e in events)
+        r["last_dispensed_at"] = events[0].get("dispensed_at") if events else None
+        # A prescription with no dispensing is a drug the patient did not
+        # receive -- flagged rather than left for the reader to notice.
+        r["collected"] = bool(events)
+        if not events and r.get("status") not in ("cancelled",):
+            never_collected += 1
+
+    attach_staff_names(rx, {"prescribed_by": "prescribed_by_name"})
+    attach_staff_names(disp, {"dispensed_by": "dispensed_by_name"})
+
+    # A regimen view wants the DRUG, and the drug only exists cleanly on the
+    # dispensing side.
+    #
+    # royan_prescriptions.drug_name concatenates a whole prescription into one
+    # string -- 62.8% of rows contain commas, and 20.5% are truncated with
+    # "+ 2 more", so the drugs beyond the cut are simply not in that column.
+    # Grouping on it would report combinations as if they were drugs and would
+    # silently lose a fifth of everything prescribed.
+    #
+    # royan_dispensing carries one drug per row across all 618,452 records, and
+    # is what the patient actually received rather than what was written down.
+    regimen = {}
+    for d in disp:
+        key = (d.get("drug_name") or "").strip().upper()
+        if not key:
+            continue
+        entry = regimen.setdefault(key, {
+            "drug_name": d.get("drug_name"), "times_dispensed": 0,
+            "total_quantity": 0.0, "first_dispensed": None, "last_dispensed": None,
+        })
+        entry["times_dispensed"] += 1
+        entry["total_quantity"] += float(d.get("quantity_dispensed") or 0)
+        ts = d.get("dispensed_at")
+        if ts:
+            if not entry["last_dispensed"] or str(ts) > str(entry["last_dispensed"]):
+                entry["last_dispensed"] = ts
+            if not entry["first_dispensed"] or str(ts) < str(entry["first_dispensed"]):
+                entry["first_dispensed"] = ts
+
+    regimen_list = list(regimen.values())
+    regimen_list.sort(key=lambda x: str(x.get("last_dispensed") or ""), reverse=True)
+
+    return {
+        "prescriptions": rx,
+        "dispensing": disp,
+        "regimen": regimen_list,
+        "counts": {
+            "prescriptions": len(rx),
+            "dispensing": len(disp),
+            "distinct_drugs": len(regimen_list),
+            "prescriptions_truncated": sum(
+                1 for r in rx if "more" in (r.get("drug_name") or "") and "+" in (r.get("drug_name") or "")
+            ),
+            "never_collected": never_collected,
+            "migrated": sum(1 for r in rx if r.get("external_source")),
+        },
+    }

@@ -75,9 +75,25 @@ def decode_jwt_token(token: str, required_role: str | None = None) -> dict:
     return payload
 
 
+# An auditor sees everything and changes nothing: an account whose only role is "auditor" may not write, apart from
+# its own session, chat, workspace and notifications, and the read-style POSTs (price quotes).
+_READ_ONLY_ROLES = {"auditor", "viewer"}
+_AUDITOR_WRITE_OK = ("/auth", "/token", "/refresh", "/logout", "/chat", "/threads", "/workspace", "/notifications",
+                     "/realtime", "/coverage/quote", "/coverage/estimate-bill")
+
+
+def _assert_not_read_only(request: Request, payload: dict) -> None:
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    roles = {str(r).lower() for r in (payload.get("roles") or [])}
+    if "auditor" in roles and roles <= _READ_ONLY_ROLES and not request.url.path.startswith(_AUDITOR_WRITE_OK):
+        raise HTTPException(status_code=403, detail="Auditor accounts are read-only")
+
+
 def verify_jwt(request: Request, required_role: Optional[str] = None) -> dict:
     token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
     payload = decode_jwt_token(token, required_role=required_role)
+    _assert_not_read_only(request, payload)
     try:
         request.state.user = payload
     except Exception:

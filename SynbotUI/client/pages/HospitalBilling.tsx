@@ -19,6 +19,10 @@ import { cn } from "@/lib/utils";
 import { BillingWorkspacePanel } from "@/components/billing/BillingWorkspacePanel";
 import { GenerateBillPanel } from "@/components/billing/GenerateBillPanel";
 import { BillBadge, ClaimBadge, naira, fmtDate, BILL_STATUSES, CLAIM_STATUSES } from "@/components/billing/billing-shared";
+import { PatientBillingHistory } from "@/components/billing/PatientBillingHistory";
+import { WardRatesCard } from "@/components/billing/WardRatesCard";
+import { RoomRatesCard } from "@/components/billing/RoomRatesCard";
+import { DiscountApprovalsCard } from "@/components/billing/DiscountApprovalsCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Bill {
@@ -66,16 +70,34 @@ export default function HospitalBilling() {
   const [searchParams] = useSearchParams();
   const patientIdFilter = Number(searchParams.get("patient_id") ?? 0) || undefined;
 
+  // Identity comes from the patient record, not from the first bill. A patient
+  // with no bills yet still has a name, and a cashier reading
+  // "Patient ID 94398" cannot confirm they have the right person.
+  const { data: patientData } = useQuery({
+    queryKey: ["billing-patient", patientIdFilter],
+    queryFn: () => api.hospital.patients.getById(patientIdFilter!),
+    enabled: !!patientIdFilter,
+  });
+  const billingPatient = patientData?.patient;
+
   const [tab, setTab] = useState("bills");
   const [billFilter, setBillFilter]     = useState("all");
+  // Royan and Scancare are separate companies: the hospital's bills by default, Scancare's on request
+  const [company, setCompany]           = useState("ROYAN");
+  // HMO patients' bills apart from private ones (the HMO desk opens this page on ?payer=hmo)
+  const [payer, setPayer]               = useState<string>(() => (["hmo", "private"].includes(searchParams.get("payer") ?? "") ? searchParams.get("payer")! : "all"));
   const [claimFilter, setClaimFilter]   = useState("all");
   const [panelBill, setPanelBill]       = useState<Bill | null>(null);
+  const [panelReceive, setPanelReceive] = useState(false);
+  const [panelTab, setPanelTab]         = useState<string | undefined>(undefined);
   const [generateEncounter, setGenerateEncounter] = useState<UnbilledEncounter | null>(null);
 
   // Queries
   const { data: billsData, isLoading: billsLoading, refetch: refetchBills, isFetching: billingFetching } = useQuery({
-    queryKey: ["hospital-bills", billFilter, patientIdFilter],
+    queryKey: ["hospital-bills", billFilter, patientIdFilter, company, payer],
     queryFn: () => api.hospital.billing.listBills({
+      ...(company !== "ALL" && { entity: company }),
+      ...(payer !== "all" && { payer }),
       ...(billFilter !== "all" && { status: billFilter }),
       ...(patientIdFilter && { patient_id: patientIdFilter }),
     }),
@@ -117,16 +139,28 @@ export default function HospitalBilling() {
         <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5">
           <User className="h-4 w-4 text-blue-400 shrink-0" />
           <span className="text-sm text-blue-700 dark:text-blue-300 flex-1">
-            {billsLoading ? (
-              "Loading patient billing…"
-            ) : bills[0]?.patient_name ? (
-              <>
-                Showing bills for <span className="font-semibold">{bills[0].patient_name}</span>
-                {bills[0].patient_mrn && <span className="font-mono ml-1.5 opacity-80">({bills[0].patient_mrn})</span>}
-              </>
-            ) : (
-              <>Showing bills for Patient ID <span className="font-mono font-semibold">{patientIdFilter}</span> — no bills on file yet</>
-            )}
+            {(() => {
+              const name = billingPatient?.full_name ?? bills[0]?.patient_name;
+              const mrn  = billingPatient?.mrn ?? bills[0]?.patient_mrn;
+              if (billsLoading && !name) return "Loading patient billing…";
+              if (!name) {
+                return (
+                  <>Showing bills for Patient ID <span className="font-mono font-semibold">{patientIdFilter}</span></>
+                );
+              }
+              return (
+                <>
+                  Showing bills for <span className="font-semibold">{name}</span>
+                  {mrn && <span className="ml-1.5 font-mono opacity-80">({mrn})</span>}
+                  {billingPatient?.patient_type && (
+                    <span className="ml-1.5 capitalize opacity-80">· {billingPatient.patient_type}</span>
+                  )}
+                  {bills.length === 0 && !billsLoading && (
+                    <span className="ml-1.5 opacity-80">— no bills on file yet</span>
+                  )}
+                </>
+              );
+            })()}
           </span>
           <BackButton fallback="/hospital/billing" className="h-7 text-xs text-muted-foreground hover:text-foreground">All Bills</BackButton>
         </div>
@@ -146,6 +180,9 @@ export default function HospitalBilling() {
           <RefreshCw className={cn("h-3.5 w-3.5", billingFetching && "animate-spin")} /> Refresh
         </Button>
       </div>
+
+      {/* Discounts a cashier applied, waiting for finance / an admin (the workspace links here) */}
+      {!patientIdFilter && <DiscountApprovalsCard />}
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -174,10 +211,13 @@ export default function HospitalBilling() {
         <TabsList>
           <TabsTrigger value="bills">Bills</TabsTrigger>
           <TabsTrigger value="claims">HMO Claims</TabsTrigger>
+          <TabsTrigger value="history" className="gap-1.5">
+            Patient Account
+          </TabsTrigger>
           <TabsTrigger value="unbilled" className="gap-1.5">
             Awaiting Generation
             {unbilled.length > 0 && (
-              <span className="rounded-full bg-red-500/20 text-red-700 dark:text-red-400 text-[12px] font-semibold px-1.5 py-0.5">{unbilled.length}</span>
+              <span className="rounded-full bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-semibold px-1.5 py-0.5">{unbilled.length}</span>
             )}
           </TabsTrigger>
         </TabsList>
@@ -192,6 +232,12 @@ export default function HospitalBilling() {
                 {s === "all" ? "All" : s.replace(/_/g, " ")}
               </button>
             ))}
+            <select className="ml-auto h-8 rounded-md border bg-background px-2 text-xs" value={payer} onChange={(e) => setPayer(e.target.value)}>
+              <option value="all">All patients</option><option value="hmo">HMO patients</option><option value="private">Private patients</option>
+            </select>
+            <select className="h-8 rounded-md border bg-background px-2 text-xs" value={company} onChange={(e) => setCompany(e.target.value)}>
+              <option value="ROYAN">Royan Hospital bills</option><option value="SCANCARE">Scancare bills</option><option value="ALL">Both companies</option>
+            </select>
           </div>
           <Card>
             <CardContent className="p-0">
@@ -209,23 +255,31 @@ export default function HospitalBilling() {
                       <TableHead className="text-right">Patient Due</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {bills.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
                           <ReceiptText className="mx-auto mb-2 h-6 w-6 opacity-30" />No bills found
                         </TableCell>
                       </TableRow>
                     ) : bills.map(b => (
-                      <TableRow key={b.id} className="cursor-pointer hover:bg-muted" onClick={() => setPanelBill(b)}>
+                      <TableRow key={b.id} className="cursor-pointer hover:bg-muted" onClick={() => { setPanelReceive(false); setPanelTab(undefined); setPanelBill(b); }}>
                         <TableCell className="font-mono text-xs">{b.bill_number ?? String(b.id).slice(0, 8)}</TableCell>
                         <TableCell className="text-xs">
                           {b.patient_name ? (
                             <div className="flex flex-col">
                               <span className="font-medium">{b.patient_name}</span>
-                              {b.patient_mrn && <span className="font-mono text-[12px] text-muted-foreground">{b.patient_mrn}</span>}
+                              {b.patient_mrn && <span className="font-mono text-xs text-muted-foreground">{b.patient_mrn}</span>}
+                              {(b as any).payer_type === "hmo" ? (
+                                <span className="mt-0.5 inline-flex w-fit items-center rounded border border-violet-400 bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-500/15 dark:text-violet-300">
+                                  HMO · {(b as any).hmo_name ?? "insured"}{(b as any).membership_id ? ` · ${(b as any).membership_id}` : ""}
+                                </span>
+                              ) : (b as any).payer_type === "private" ? (
+                                <span className="mt-0.5 w-fit text-xs font-medium text-foreground/70">Private</span>
+                              ) : null}
                             </div>
                           ) : (
                             <span className="font-mono">{b.patient_id != null ? String(b.patient_id) : "—"}</span>
@@ -240,12 +294,30 @@ export default function HospitalBilling() {
                         <TableCell className="text-right text-xs text-muted-foreground">
                           {b.discount != null && b.discount > 0 ? naira(b.discount) : "—"}
                         </TableCell>
-                        <TableCell className={cn("text-right text-sm font-semibold", (b.patient_balance ?? 0) > 0 ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
+                        <TableCell className={cn("text-right text-sm font-semibold", ((b as any).outstanding ?? b.patient_balance ?? 0) > 0 ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                           {naira(b.patient_balance)}
+                          {(b as any).amount_paid > 0 && ((b as any).outstanding ?? 0) > 0 && (
+                            <span className="block text-xs font-normal text-muted-foreground">{naira((b as any).outstanding)} owing</span>
+                          )}
                         </TableCell>
                         <TableCell><BillBadge status={b.status} /></TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {b.billed_at ? new Date(b.billed_at).toLocaleDateString() : "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                          {["pending", "partial"].includes(String(b.status)) && ((b as any).outstanding ?? 0) > 0 && (
+                            <Button size="sm" className="h-7 px-2 text-xs" onClick={() => { setPanelTab(undefined); setPanelReceive(true); setPanelBill(b); }}>
+                              Receive
+                            </Button>
+                          )}
+                          {(b as any).payer_type === "hmo" && (
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => window.open(`#/hospital/billing/${b.id}/invoice?claims=1`, "_blank")}>
+                              Claims form
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => window.open(`#/hospital/billing/${b.id}/invoice`, "_blank")}>
+                            Invoice
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -292,7 +364,8 @@ export default function HospitalBilling() {
                         </TableCell>
                       </TableRow>
                     ) : claims.map(c => (
-                      <TableRow key={c.id}>
+                      <TableRow key={c.id} className={c.billing_id ? "cursor-pointer hover:bg-muted" : ""}
+                        onClick={() => { if (c.billing_id) { setPanelReceive(false); setPanelTab("claims"); setPanelBill({ id: c.billing_id } as any); } }}>
                         <TableCell className="font-mono text-xs">{String(c.id).slice(0, 8)}</TableCell>
                         <TableCell className="text-sm">{c.insurer_name ?? c.hmo_provider ?? "—"}</TableCell>
                         <TableCell className="text-right text-sm">{naira(c.claim_amount)}</TableCell>
@@ -342,7 +415,7 @@ export default function HospitalBilling() {
                       <TableCell className="font-mono text-xs text-primary font-semibold">{e.queue_number ?? String(e.id).slice(0, 6)}</TableCell>
                       <TableCell>
                         <div className="text-sm font-medium">{e.patient_name ?? "Unknown"}</div>
-                        {e.patient_mrn && <div className="text-[12px] font-mono text-muted-foreground">{e.patient_mrn}</div>}
+                        {e.patient_mrn && <div className="text-xs font-mono text-muted-foreground">{e.patient_mrn}</div>}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{e.department ?? "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">{e.chief_complaint ?? "—"}</TableCell>
@@ -354,14 +427,35 @@ export default function HospitalBilling() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* Search any patient and read their whole account, including bills
+            from before go-live. The Bills worklist deliberately hides those. */}
+        <TabsContent value="history" className="space-y-4">
+          <PatientBillingHistory initialPatientId={patientIdFilter} />
+        </TabsContent>
       </Tabs>
 
       {panelBill && (
-        <BillingWorkspacePanel bill={panelBill} onClose={() => setPanelBill(null)} />
+        <BillingWorkspacePanel key={`${panelBill.id}:${panelReceive}:${panelTab}`} bill={panelBill} receive={panelReceive} initialTab={panelTab}
+          onClose={() => setPanelBill(null)} />
       )}
       {generateEncounter && (
-        <GenerateBillPanel encounter={generateEncounter} onClose={() => setGenerateEncounter(null)} />
+        <GenerateBillPanel encounter={{ ...generateEncounter, patient_id: generateEncounter.patient_id ?? "" }} onClose={() => setGenerateEncounter(null)} />
       )}
+
+      {/* Rate configuration, at the bottom and folded away.
+          These are two long lists of rooms and wards that get set once and
+          rarely revisited, and sitting above the bills they pushed the actual
+          billing work off the screen. Rooms first: the charge resolves
+          bed -> room -> ward, so the room rate is what almost every bed bills
+          at, and the ward card sets the fallback for rooms with none. */}
+      <div className="space-y-3 pt-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Rate configuration
+        </p>
+        <RoomRatesCard />
+        <WardRatesCard />
+      </div>
+
     </motion.div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { askText } from "@/lib/ask";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -20,8 +21,15 @@ import {
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { FREQUENCY_OPTIONS, ROUTE_OPTIONS } from "@/lib/clinical-options";
-import { ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
+import {
+  FREQUENCY_OPTIONS, ROUTE_OPTIONS, DURATION_OPTIONS, UNIT_OPTIONS, unitForDoseForm,
+} from "@/lib/clinical-options";
+import { encounterStatusLabel, ENCOUNTER_STATUS_COLORS } from "@/lib/encounter-status";
+import { SoapNoteComposer } from "@/components/soap/SoapNoteComposer";
+import { EncounterResults } from "@/components/opd/EncounterResults";
+import { SignedNoteList } from "@/components/soap/SignedNoteList";
+import { CatalogCombobox } from "@/components/shared/CatalogCombobox";
+import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
 
 interface OpdEncounterPanelProps {
   encounter: {
@@ -50,7 +58,39 @@ const FREE_TEXT_TITLE = "__free_text__";
 const emptyVitals = { bp_systolic: "", bp_diastolic: "", temperature: "", pulse: "", spo2: "", respiratory_rate: "", weight: "" };
 const emptyNote = { note_title_id: "", note_type: "general", content: "" };
 const emptyLab = { test_name: "", urgency: "routine", specimen_type: "", notes: "" };
-const emptyRad = { modality: "xray", body_part: "", clinical_indication: "", urgency: "routine", notes: "" };
+const emptyRad = { test_name: "", modality: "xray", body_part: "", clinical_indication: "", urgency: "routine", notes: "" };
+
+// Maps a catalog study name onto the modality enum the worklist filters by, so
+// picking "CT SCAN CHEST" sets modality=ct without the clinician restating it.
+//
+// ORDER IS LOAD-BEARING: the explicit modality prefixes (CT / MRI / MAMMO)
+// must be tested before anything looser. An earlier version listed ultrasound
+// first with a `SCAN ABDOMEN` alternative, which silently classified
+// "CT SCAN ABDOMEN" as an ultrasound — a wrong modality on a real order.
+// Nothing generic enough to swallow another modality's name belongs here;
+// where no pattern matches, the clinician's current selection is left alone.
+const MODALITY_HINTS: [string, RegExp][] = [
+  // An explicit modality token wins over everything else: "CT SCAN GUIDED
+  // BIOPSY" is a CT procedure, not a pathology specimen, so these are tested
+  // before the histopathology rule below.
+  ["ct", /\bCT\b|CAT SCAN/],
+  ["mri", /\bMRI\b|MAGNETIC RESONANCE/],
+  ["mammography", /MAMMO/],
+  ["ultrasound", /ULTRASOUND|\bUSS\b|DOPPLER|SONOGRA/],
+  ["echo", /\bECHO\b|ECHOCARDIO/],
+  ["ecg", /E\.?C\.?G\b|E\.?K\.?G\b|ELECTROCARDIO/],
+  ["endoscopy", /ENDOSCOP|GASTROSCOP|COLONOSCOP/],
+  // 11 of the 211 entries in Hope's RADIOLOGY catalog are actually pathology
+  // (pap smear, FNA cytology, immunohistochemistry). They are not an imaging
+  // modality, so they map to "other" rather than being forced into one. Placed
+  // before the -GRAM/-GRAPHY rule, which would otherwise catch
+  // IMMUNOHISTOCHEMISTRY.
+  ["other", /HISTOPATHOLOG|CYTOLOG|PAP SMEAR|IMMUNOHISTOCHEM|\bHPV\b|BIOPSY/],
+  // Contrast studies are fluoroscopic: cystourethrogram, fistulogram,
+  // cholangiogram, myelogram, sialogram, sinogram, barium/gastrografin enema.
+  ["fluoroscopy", /FLUORO|BARIUM|GASTROGRAFFIN|GASTROGRAPHIN|ENEMA|\bIVU\b|\bHSG\b|[A-Z]OGRAM\b|[A-Z]OGRAPHY\b/],
+  ["xray", /X-?RAY|\bXR\b|\bCXR\b|RADIOGRAPH|SKELETAL SURVEY/],
+];
 const emptyTheatre = { procedure_name: "", urgency: "elective", case_type: "", theatre_name: "", scheduled_date: "", start_time: "", surgeon_id: "", notes: "" };
 const emptyRx = { drug_name: "", dosage: "", frequency: "twice daily", duration: "5 days", route: "oral", quantity: "1", unit: "tablet" };
 const emptyReferral = { referring_to: "", reason: "", urgency: "routine", additional_notes: "", referring_doctor: "" };
@@ -59,10 +99,14 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [tab, setTab] = useState(initialTab ?? "summary");
+  // The doctor starts on the note; summary, orders and prescribing are a click away.
+  const [tab, setTab] = useState(initialTab ?? "notes");
 
   const [vitalsForm, setVitalsForm] = useState({ ...emptyVitals });
   const [noteForm, setNoteForm] = useState({ ...emptyNote });
+  // "soap" = the gated SOAP composer; "quick" = the legacy free-text path,
+  // kept for nursing/handover/referral types and as the emergency escape hatch.
+  const [noteMode, setNoteMode] = useState<"soap" | "quick">("soap");
   const [labForm, setLabForm] = useState({ ...emptyLab });
   const [labSearch, setLabSearch] = useState("");
   const [radForm, setRadForm] = useState({ ...emptyRad });
@@ -190,6 +234,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
     mutationFn: () => api.hospital.radiology.createOrder({
       patient_id: Number(initialEncounter.patient_id),
       encounter_id: Number(encounterId),
+      test_name: radForm.test_name || undefined,
       modality: radForm.modality,
       body_part: radForm.body_part || undefined,
       clinical_indication: radForm.clinical_indication || undefined,
@@ -233,7 +278,11 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
     onError: (e: any) => toast({ title: "Failed to book surgery", description: e.message, variant: "destructive" }),
   });
 
-  const rxMut = useMutation({
+  // Explicit generics: with only a defaulted parameter TypeScript infers the
+  // mutation variable as `void`, so the duplicate-override retry below
+  // (rxMut.mutate(true)) failed to typecheck. It worked at runtime, which is
+  // why it went unnoticed while tsc was disabled by an invalid tsconfig value.
+  const rxMut = useMutation<any, any, boolean | undefined>({
     mutationFn: (overrideDuplicate = false) => api.hospital.pharmacy.createRx({
       encounter_id: Number(encounterId),
       patient_id: Number(initialEncounter.patient_id),
@@ -290,9 +339,20 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
   });
 
   const endConsultMut = useMutation({
-    mutationFn: () => api.hospital.queue.endConsultation(encounterId),
+    // review: "see the patient again when the results are back" (the visit returns for review when the last result
+    // arrives); otherwise the consultation is over and the visit moves on to pharmacy / payment.
+    mutationFn: (review: boolean = false) => api.hospital.queue.endConsultation(encounterId, { review_results: review }),
     onSuccess: (res: any) => {
-      toast({ title: `Routed to ${String(res.routed_to).replace(/_/g, " ")}`, description: res.routing_reason });
+      // The orders are billed now (Royan lab + drugs, Scancare scans) so the patient pays at the cashier first.
+      const bills: any[] = res.billing?.bills ?? [];
+      const billed = bills.map((b: any) => `${b.bill?.bill_number ?? "bill"} ₦${Number(b.bill?.patient_balance ?? 0).toLocaleString()}${b.bill?.entity === "SCANCARE" ? " (Scancare)" : ""}`).join(", ");
+      const unpriced: string[] = res.billing?.unpriced ?? [];
+      toast({
+        title: `Consultation ended: ${encounterStatusLabel(res.routed_to)}`,
+        description: [res.routing_reason, billed && `Sent to the cashier: ${billed}.`,
+          unpriced.length ? `No price for: ${unpriced.join(", ")} - the cashier must add it.` : "",
+          res.billing?.error].filter(Boolean).join(" "),
+      });
       invalidateAll();
     },
     onError: (e: any) => toast({ title: "Cannot end consultation", description: e.message, variant: "destructive" }),
@@ -304,11 +364,29 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
     onError: (e: any) => toast({ title: "Cannot discharge", description: e.message, variant: "destructive" }),
   });
 
+  /**
+   * Raise an admission request for the nursing board.
+   *
+   * This used to call queue.open() with encounter_type "inpatient" and
+   * department "IPD" — which was broken twice over. "IPD" is not in the
+   * royan_encounters department CHECK constraint, and it never got that far
+   * anyway: _find_active_encounter returns the patient's CURRENT encounter, so
+   * the call was a no-op that still reported "Admission requested — inpatient
+   * encounter opened". A doctor pressing it got a success toast and no
+   * admission, and nurses were never told anything.
+   *
+   * Now it creates a real request that appears on the nursing dashboard.
+   */
   const admitMut = useMutation({
-    mutationFn: () => api.hospital.queue.open({
-      patient_id: initialEncounter.patient_id, encounter_type: "inpatient", department: "IPD",
-    }),
-    onSuccess: () => { toast({ title: "Admission requested — inpatient encounter opened" }); invalidateAll(); },
+    mutationFn: () => api.hospital.queue.requestAdmission(encounterId, { urgency: "routine" }),
+    onSuccess: (r: any) => {
+      toast({
+        title: r?.already_requested
+          ? "Already requested — nursing has this patient on their board"
+          : "Admission requested — nursing has been notified",
+      });
+      invalidateAll();
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -317,12 +395,12 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
   const canCall = status === "nurse_assessment";
   const canPause = status === "consulting" && !isPaused;
   const canResume = status === "consulting" && isPaused;
-  const canEndConsult = ["consulting", "lab_ordered", "pharmacy_dispensing"].includes(status);
+  const canEndConsult = ["consulting", "lab_ordered", "pharmacy_dispensing", "awaiting_results"].includes(status);
   const canDischarge = status === "billing_pending";
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-[560px] sm:w-[640px] overflow-y-auto p-0 flex flex-col" side="right">
+      <SheetContent className={cn(PANEL_WIDTH.wide, "overflow-y-auto p-0 flex flex-col")} side="right">
         {profileLoading || encLoading ? (
           <LoadingSkeleton />
         ) : !patient ? (
@@ -332,11 +410,16 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
             {/* Header */}
             <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                {/* Blue throughout, matching the "Doctor note" button. */}
+                <div className="h-10 w-10 rounded-full bg-blue-500/15 flex items-center justify-center shrink-0">
                   <User className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <SheetTitle className="text-base leading-tight">{patient.first_name} {patient.last_name}</SheetTitle>
+                  {/* Named explicitly. The nursing panel says "Nursing record"
+                      in teal; this says "Consultation record" in blue, so the
+                      two are never mistaken for each other mid-shift. */}
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Consultation record</p>
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <Badge variant="outline" className="text-xs font-mono">{patient.mrn}</Badge>
                     <span className="text-xs text-muted-foreground">{ageFromDob(patient.date_of_birth)} · {patient.gender ?? "—"}</span>
@@ -358,6 +441,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
               <TabsList className="mx-5 mt-3 bg-muted border border-border shrink-0 flex-wrap h-auto">
                 <TabsTrigger value="summary">Summary</TabsTrigger>
                 <TabsTrigger value="vitals">Vitals</TabsTrigger>
+                <TabsTrigger value="results">Results</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
                 <TabsTrigger value="orders">Orders</TabsTrigger>
                 <TabsTrigger value="prescribe">Prescribe</TabsTrigger>
@@ -365,6 +449,11 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
               </TabsList>
 
               <div className="flex-1 overflow-y-auto px-5 py-4">
+                {/* ── Results: read first on a results review, then on to the note ── */}
+                <TabsContent value="results" className="mt-0">
+                  <EncounterResults encounterId={encounterId} onWriteNotes={() => setTab("notes")} />
+                </TabsContent>
+
                 {/* ── Summary ── */}
                 <TabsContent value="summary" className="mt-0 space-y-4">
                   <section>
@@ -437,17 +526,51 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
 
                 {/* ── Notes ── */}
                 <TabsContent value="notes" className="mt-0 space-y-3">
-                  {notes.length > 0 && (
-                    <div className="space-y-2 max-h-32 overflow-y-auto rounded-md border p-2">
-                      {notes.map((n: any) => (
-                        <div key={n.id} className="text-xs border-b border-border/50 pb-1 last:border-0">
-                          <span className="font-medium">{n.note_title || n.note_type}</span>
-                          <span className="text-muted-foreground"> — {new Date(n.created_at).toLocaleString()}</span>
-                          <p className="text-foreground line-clamp-2">{n.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <SignedNoteList
+                    notes={notes}
+                    encounterId={encounterId}
+                    onChanged={invalidateAll}
+                    maxHeight="max-h-40"
+                  />
+
+                  {/* Two modes against one endpoint. The free-text path below is
+                      deliberately preserved: it is the only consumer of the
+                      note-title catalog, the route for nursing / handover /
+                      referral / discharge note types, and the sanctioned escape
+                      hatch when a patient is crashing and the SOAP gate would
+                      be an obstacle. */}
+                  <div className="flex gap-1 rounded-md border p-1">
+                    {(["soap", "quick"] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setNoteMode(m)}
+                        className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+                          noteMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {m === "soap" ? "SOAP note" : "Quick note"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {noteMode === "soap" ? (
+                    <SoapNoteComposer
+                      encounterId={encounterId}
+                      patientId={patient?.id}
+                      patientSex={patient?.gender}
+                      patientName={patient?.full_name ?? patient?.name}
+                      patientMeta={[patient?.gender, patient?.mrn && `MRN ${patient.mrn}`]
+                        .filter(Boolean).join(" · ")}
+                      allergies={patient?.allergies}
+                      bloodGroup={patient?.blood_group}
+                      genotype={patient?.genotype}
+                      latestVitalsId={latestVitals?.id ?? null}
+                      department={encounter?.department}
+                      onSigned={() => { invalidateAll(); setTab("orders"); }}
+                    />
+                  ) : (
+                  <>
                   <div className="space-y-1">
                     <Label>Note Title</Label>
                     {noteTitles.length > 0 ? (
@@ -492,6 +615,8 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                   <Button className="w-full" disabled={!noteForm.content.trim() || noteMut.isPending} onClick={() => noteMut.mutate()}>
                     {noteMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Note
                   </Button>
+                  </>
+                  )}
                 </TabsContent>
 
                 {/* ── Orders (Lab + Radiology) ── */}
@@ -536,6 +661,26 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                   <Separator />
                   <section className="space-y-2">
                     <SectionLabel icon={<ScanLine className="h-3.5 w-3.5" />} label="Order Radiology" />
+                    {/* Catalog-backed: 211 real studies migrated from Hope.
+                        Until now this form had no catalog at all — a modality
+                        dropdown and a free-text body part, so "CT SCAN CHEST"
+                        had to be reconstructed from two fields by hand. */}
+                    <CatalogCombobox
+                      value={radForm.test_name ?? ""}
+                      onChange={v => setRadForm(f => ({ ...f, test_name: v }))}
+                      onSelect={(o) => {
+                        const name: string = o.label.toUpperCase();
+                        // Infer modality from the study name so the existing
+                        // modality field stays populated and the worklist keeps
+                        // filtering correctly.
+                        const guess = MODALITY_HINTS.find(([, re]) => re.test(name));
+                        setRadForm(f => ({ ...f, test_name: o.label, modality: guess ? guess[0] : f.modality }));
+                      }}
+                      queryKey="opd-radiology-catalog"
+                      fetcher={(q) => api.hospital.clinical.searchRadiologyCatalog(q)}
+                      mapResults={(d) => (d?.tests ?? []).map((t: any) => ({ id: t.id, label: t.name }))}
+                      placeholder="Search radiology studies…"
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <Select value={radForm.modality} onValueChange={v => setRadForm(f => ({ ...f, modality: v }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -563,8 +708,20 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                   <Separator />
                   <section className="space-y-2">
                     <SectionLabel icon={<Scissors className="h-3.5 w-3.5" />} label="Book Surgery" />
-                    <Input placeholder="Procedure name *" value={theatreForm.procedure_name}
-                      onChange={e => setTheatreForm(f => ({ ...f, procedure_name: e.target.value }))} />
+                    {/* Catalog-backed: 112 named procedures with surgeon fees,
+                        migrated from Hope. Was free text. */}
+                    <CatalogCombobox
+                      value={theatreForm.procedure_name}
+                      onChange={v => setTheatreForm(f => ({ ...f, procedure_name: v }))}
+                      queryKey="opd-surgery-catalog"
+                      fetcher={(q) => api.hospital.clinical.searchSurgeryCatalog(q)}
+                      mapResults={(d) => (d?.procedures ?? []).map((p: any) => ({
+                        id: p.id,
+                        label: p.name,
+                        sublabel: p.surgeon_fee ? `Surgeon fee ₦${Number(p.surgeon_fee).toLocaleString()}` : p.category_name,
+                      }))}
+                      placeholder="Search procedures…"
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <Select value={theatreForm.urgency} onValueChange={v => setTheatreForm(f => ({ ...f, urgency: v }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -622,7 +779,15 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                       <div className="rounded-md border max-h-28 overflow-y-auto">
                         {drugResults.map((d: any) => (
                           <button key={d.id} className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
-                            onClick={() => { setRxForm(f => ({ ...f, drug_name: `${d.generic_name}${d.strength ? " " + d.strength + (d.unit ?? "") : ""}`, dosage: d.strength ? `${d.strength}${d.unit ?? ""}` : f.dosage })); setDrugSearch(""); }}>
+                            onClick={() => { setRxForm(f => ({
+                              ...f,
+                              drug_name: `${d.generic_name}${d.strength ? " " + d.strength : ""}`,
+                              dosage: f.dosage || (d.strength ?? ""),
+                              // A single licensed route can be filled in; more
+                              // than one is the prescriber's choice to make.
+                              route: f.route || (Array.isArray(d.route) && d.route.length === 1 ? d.route[0] : ""),
+                              unit: f.unit || (d.unit ?? unitForDoseForm(d.form) ?? ""),
+                            })); setDrugSearch(""); }}>
                             {d.generic_name} {d.strength}{d.unit} {d.brand_name ? `(${d.brand_name})` : ""}
                           </button>
                         ))}
@@ -640,7 +805,15 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1"><Label>Duration</Label><Input value={rxForm.duration} onChange={e => setRxForm(f => ({ ...f, duration: e.target.value }))} /></div>
+                    <div className="space-y-1">
+                      <Label>Duration</Label>
+                      <Select value={rxForm.duration} onValueChange={v => setRxForm(f => ({ ...f, duration: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {DURATION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-1">
                       <Label>Route</Label>
                       <Select value={rxForm.route} onValueChange={v => setRxForm(f => ({ ...f, route: v }))}>
@@ -651,9 +824,17 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                       </Select>
                     </div>
                     <div className="space-y-1"><Label>Quantity</Label><Input type="number" value={rxForm.quantity} onChange={e => setRxForm(f => ({ ...f, quantity: e.target.value }))} /></div>
-                    <div className="space-y-1"><Label>Unit</Label><Input value={rxForm.unit} onChange={e => setRxForm(f => ({ ...f, unit: e.target.value }))} /></div>
+                    <div className="space-y-1">
+                      <Label>Unit</Label>
+                      <Select value={rxForm.unit} onValueChange={v => setRxForm(f => ({ ...f, unit: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {UNIT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <Button className="w-full" disabled={!rxForm.drug_name.trim() || !rxForm.dosage.trim() || !rxForm.frequency.trim() || rxMut.isPending} onClick={() => rxMut.mutate()}>
+                  <Button className="w-full" disabled={!rxForm.drug_name.trim() || !rxForm.dosage.trim() || !rxForm.frequency.trim() || rxMut.isPending} onClick={() => rxMut.mutate(false)}>
                     {rxMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Write Prescription
                   </Button>
                 </TabsContent>
@@ -712,9 +893,17 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                 </Button>
               )}
               {canEndConsult && (
-                <Button size="sm" className="gap-1.5 bg-blue-700 hover:bg-blue-800" disabled={endConsultMut.isPending} onClick={() => endConsultMut.mutate()}>
-                  {endConsultMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />} End Consultation
-                </Button>
+                <>
+                  <Button size="sm" className="gap-1.5 bg-blue-700 hover:bg-blue-800" disabled={endConsultMut.isPending} onClick={() => endConsultMut.mutate(false)}
+                          title="The visit moves on: the patient pays, collects drugs and goes home (results go to the record)">
+                    {endConsultMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />} End consultation
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1.5 border-teal-600/50 text-teal-800 hover:bg-teal-500/10 dark:text-teal-300"
+                          disabled={endConsultMut.isPending} onClick={() => endConsultMut.mutate(true)}
+                          title="The patient keeps their place and comes back to you when the results are ready">
+                    <ChevronRight className="h-3.5 w-3.5" /> End – see again with results
+                  </Button>
+                </>
               )}
               <Button size="sm" variant="outline" className="gap-1.5" disabled={admitMut.isPending} onClick={() => admitMut.mutate()}>
                 <BedDouble className="h-3.5 w-3.5" /> Request Admission
@@ -722,7 +911,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
               {canDischarge && (
                 <Button size="sm" variant="outline" className="gap-1.5 border-green-500/40 text-green-600 hover:bg-green-500/10"
                   disabled={dischargeMut.isPending}
-                  onClick={() => dischargeMut.mutate(window.prompt("Discharge summary:") || "Discharged from OPD.")}>
+                  onClick={async () => { const t = await askText("Discharge summary", "Discharged from OPD."); if (t !== null) dischargeMut.mutate(t || "Discharged from OPD."); }}>
                   <LogOut className="h-3.5 w-3.5" /> Discharge
                 </Button>
               )}
@@ -738,19 +927,10 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
   );
 }
 
-function SectionLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-    </div>
-  );
-}
-
 function VitalCell({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-md border border-border/60 px-2 py-1.5">
-      <p className="text-[12px] text-muted-foreground uppercase">{label}</p>
+      <p className="text-xs text-muted-foreground uppercase">{label}</p>
       <p className="font-medium">{value}</p>
     </div>
   );

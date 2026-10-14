@@ -77,7 +77,7 @@ export default function AuditLog() {
           <Card key={cls}>
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground capitalize">{cls.replace(/_/g, " ")}</p>
-              <p className="text-2xl font-bold">{count}</p>
+              <p className="text-2xl font-bold">{String(count)}</p>
             </CardContent>
           </Card>
         ))}
@@ -140,7 +140,7 @@ export default function AuditLog() {
                     </TableCell>
                     <TableCell className="font-mono text-xs">{log.event_type ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[12px] capitalize", EVENT_CLASS_COLORS[log.event_class ?? "system"] ?? "")}>
+                      <Badge variant="outline" className={cn("text-xs capitalize", EVENT_CLASS_COLORS[log.event_class ?? "system"] ?? "")}>
                         {(log.event_class ?? "system").replace(/_/g, " ")}
                       </Badge>
                     </TableCell>
@@ -151,7 +151,7 @@ export default function AuditLog() {
                       {!log.subject_type && "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn("text-[12px]",
+                      <Badge variant="outline" className={cn("text-xs",
                         log.outcome === "success" ? "border-green-500/30 text-green-700 dark:text-green-400 bg-green-500/10" :
                         log.outcome === "failure" ? "border-red-500/30 text-red-700 dark:text-red-400 bg-red-500/10" :
                         "border-slate-500/30 text-slate-700 dark:text-slate-400"

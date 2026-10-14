@@ -19,7 +19,15 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { apiUrl } from "@/lib/api-base";
 
-export type ApiErrorKind = "session" | "permission" | "validation" | "not_found" | "transport" | "server" | "unknown";
+/** A doctor-authored note template: each phrase belongs to one SOAP section. */
+export type NoteTemplateWrite = {
+  name: string;
+  category?: string | null;
+  is_shared: boolean;
+  phrases: { context_type: string; text: string }[];
+};
+
+export type ApiErrorKind ="session" | "permission" | "validation" | "not_found" | "transport" | "server" | "unknown";
 
 export class ApiError extends Error {
   status: number;
@@ -167,7 +175,11 @@ async function fetchRaw<T = any>(endpoint: string): Promise<T> {
 
 async function sendJson<T>(
   endpoint: string,
-  method: "POST" | "PUT" | "PATCH",
+  // DELETE was omitted from this union even though seven call sites use it
+  // (soft-deletes for problems, allergies, care plans, templates…). The calls
+  // worked — the method string is passed straight through to fetch — but the
+  // mismatch surfaced only once tsc was re-enabled.
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body: Record<string, any>,
 ): Promise<T> {
   let token = await getBearerToken();
@@ -245,6 +257,25 @@ async function sendJsonForDownload(
   const filename = match ? match[1] : "download";
   const blob = await res.blob();
   return { blob, filename };
+}
+
+/** GET a file (e.g. a .docx) with the session token and save it in the browser. */
+async function downloadGet(endpoint: string): Promise<void> {
+  let token = await getBearerToken();
+  const doFetch = () => fetch(apiUrl(endpoint), { headers: { Authorization: `Bearer ${token}` } });
+  let res = await doFetch();
+  if (res.status === 401) {
+    const refreshed = await authClient.refresh();
+    if (!refreshed) {
+      redirectToLoginIfNeeded();
+      throw new ApiError("Session expired", 401, "session");
+    }
+    token = await getBearerToken();
+    res = await doFetch();
+  }
+  if (!res.ok) throw await toApiError(res, `Download failed for ${endpoint}`);
+  const match = (res.headers.get("Content-Disposition") || "").match(/filename="?([^"]+)"?/);
+  triggerBlobDownload(await res.blob(), match ? match[1] : "download");
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -367,6 +398,8 @@ export const api = {
     briefing: () => fetchJson<ExecutiveBriefing>("/dashboard/executive-briefing"),
     finance: () => fetchJson<any>("/dashboard/finance"),
     hospitalStatus: () => fetchJson<any>("/dashboard/hospital-status"),
+    /** Executive overview, composed from each module's hub service (services/executive.py). */
+    executive: (refresh = false) => fetchRaw<any>(`/dashboard/executive${refresh ? "?refresh=true" : ""}`),
   },
   mdm: {
     departments: () =>
@@ -416,8 +449,10 @@ export const api = {
     // list always resolve to []. See the same landmine fixed in staff.getMe().
     list: (status: string = "pending") => fetchRaw<{ data: any[] }>(`/staff/registrations?status=${status}`),
     detail: (id: string) => fetchRaw<{ data: any }>(`/staff/registrations/${encodeURIComponent(id)}`),
-    approve: (id: string, payload: { department_id_override?: number; approval_reason: string; attestation_text: string }) =>
-      sendJson<{ status: string; staff_id: string; user_id: string }>(`/staff/registrations/${encodeURIComponent(id)}/approve`, "POST", payload),
+    /** HR records this person may already have (same email / same name), so approval links rather than duplicates. */
+    hrMatches: (id: string) => fetchRaw<{ data: any[] }>(`/staff/registrations/${encodeURIComponent(id)}/hr-matches`),
+    approve: (id: string, payload: { department_id_override?: number; approval_reason: string; attestation_text: string; link_staff_id?: string; create_new?: boolean }) =>
+      sendJson<{ status: string; mode: string; staff_id: string; user_id: string; filled: string[] }>(`/staff/registrations/${encodeURIComponent(id)}/approve`, "POST", payload),
     reject: (id: string, payload: { reason: string }) =>
       sendJson<{ status: string }>(`/staff/registrations/${encodeURIComponent(id)}/reject`, "POST", payload),
   },
@@ -438,6 +473,12 @@ export const api = {
       sendJson<{ data: any }>("/staff/me/tour", "PATCH", payload),
     list: (dept?: string) => fetchJson<StaffMember[]>(`/staff${dept ? `?department=${dept}` : ""}`),
     snapshot: () => fetchJson<StaffMember[]>(`/staff/snapshot`),
+    // Server-side shift state, so a shift survives a device change and can
+    // legitimately span days.
+    clockStatus: () => fetchRaw<any>('/staff/clock/status'),
+    clockIn: (note?: string) => sendJson<any>('/staff/clock/in', 'POST', { note }),
+    clockOut: (note?: string) => sendJson<any>('/staff/clock/out', 'POST', { note }),
+    clockCancel: () => sendJson<any>('/staff/clock/cancel', 'POST', {}),
     timesheets: (department?: string, limit: number = 50) =>
       fetchJson<any[]>(`/timesheets${department ? `?department=${encodeURIComponent(department)}&limit=${limit}` : `?limit=${limit}`}`),
     submitTimesheet: (payload: {
@@ -494,12 +535,17 @@ export const api = {
     /** Lightweight user list for task/project assignment dropdowns.
      *  Accessible by admin, management, manager, hr, finance. */
     directory: () => fetchRaw<Array<{ id: string; email: string; display_name?: string; roles: string[] }>>("/users/directory"),
+    /** The role catalogue (what each role opens) and the HR units, for User Access. */
+    roles: () => fetchRaw<{ roles: Array<{ key: string; label: string; team: string; about: string }>; units: string[] }>("/users/roles"),
     create: (payload: {
       email: string;
       password: string;
       roles: string[];
       approval_reason: string;
       attestation_text: string;
+      full_name?: string;
+      unit?: string;
+      job_title?: string;
     }) => sendJson<any>("/users", "POST", payload),
     resetPassword: (
       userId: string,
@@ -517,8 +563,8 @@ export const api = {
         attestation_text: string;
       },
     ) => sendJson<any>(`/users/${userId}/status`, "PATCH", payload),
-    setRoles: (userId: string, roles: string[]) =>
-      sendJson<any>(`/users/${userId}/roles`, "PATCH", { roles }),
+    setRoles: (userId: string, roles: string[], reason: string) =>
+      sendJson<any>(`/users/${userId}/roles`, "PATCH", { roles, reason }),
   },
   imports: {
     sage: (payload: FormData, asyncMode: boolean = false) =>
@@ -919,9 +965,12 @@ export const api = {
       fetchRaw<any>(`/suppliers/${encodeURIComponent(supplierName)}/metrics`),
   },
   calendar: {
-    list: (month?: string) => {
-      const q = month ? `?month=${month}` : "";
-      return fetchRaw<{ events: any[] }>(`/calendar/events${q}`);
+    /** mine: only events I attend or created (My Schedule). */
+    list: (month?: string, mine = false) => {
+      const qs = new URLSearchParams();
+      if (month) qs.set("month", month);
+      if (mine) qs.set("mine", "true");
+      return fetchRaw<{ events: any[] }>(`/calendar/events${qs.toString() ? `?${qs}` : ""}`);
     },
     create: (payload: {
       title: string;
@@ -956,9 +1005,12 @@ export const api = {
       }>(`/calendar/logistics/alerts?window_days=${windowDays}`),
   },
   tasks: {
-    list: (status?: string) => {
-      const q = status ? `?status=${status}` : "";
-      return fetchRaw<{ tasks: any[] }>(`/tasks${q}`);
+    /** mine: only tasks assigned to me or created by me (My Schedule). */
+    list: (status?: string, mine = false) => {
+      const qs = new URLSearchParams();
+      if (status) qs.set("status", status);
+      if (mine) qs.set("mine", "true");
+      return fetchRaw<{ tasks: any[] }>(`/tasks${qs.toString() ? `?${qs}` : ""}`);
     },
     create: (payload: {
       title: string;
@@ -991,83 +1043,6 @@ export const api = {
       fetchRaw<{ key: string; value: any }>(`/cache/get/${agentName}`),
     cacheTtl: (agentName: string) =>
       fetchRaw<{ key: string; ttl_seconds: number | null }>(`/cache/ttl/${agentName}`),
-  },
-  compliance: {
-    status: () => fetchRaw<any>("/compliance/status"),
-    audits: (status?: string) => {
-      const q = status ? `?status=${status}` : "";
-      return fetchRaw<{ data: any[] }>(`/compliance/audits${q}`);
-    },
-    startAudit: (auditId: string) =>
-      sendJson<any>(`/compliance/audits/${auditId}/start`, "POST", {}),
-    completeAudit: (auditId: string, payload: { findings?: string; recommendations?: string; score?: number }) =>
-      sendJson<any>(`/compliance/audits/${auditId}/complete`, "POST", payload),
-    generateAuditReport: (auditId: string, payload: {
-      auditor_name?: string;
-      summary?: string;
-      findings?: string[];
-      observations?: string[];
-      recommendations?: string[];
-      score?: number;
-    }) => sendJson<any>(`/compliance/audits/${auditId}/generate-report`, "POST", payload),
-    deviations: (status?: string) => {
-      const q = status ? `?status=${status}` : "";
-      return fetchRaw<{ data: any[] }>(`/compliance/deviations${q}`);
-    },
-    createDeviation: (payload: {
-      title: string;
-      severity: string;
-      category: string;
-      description: string;
-      detected_by: string;
-      product_batch?: string;
-      sop_reference?: string;
-    }) => sendJson<any>("/compliance/deviations", "POST", payload),
-    updateDeviation: (devId: string, payload: Record<string, any>) =>
-      sendJson<any>(`/compliance/deviations/${devId}`, "PUT", payload),
-    generateDeviationReport: (devId: string) =>
-      sendJson<any>(`/compliance/deviations/${devId}/generate-report`, "POST", {}),
-    equipment: () => fetchRaw<{ data: any[] }>("/compliance/equipment"),
-    maintenance: (filter?: "overdue" | "upcoming" | "all") => {
-      const q = filter && filter !== "all" ? `?filter=${filter}` : "";
-      return fetchRaw<{ data: any[] }>(`/compliance/maintenance${q}`);
-    },
-    completeMaintenance: (maintenanceId: string, payload: {
-      completed_by: string;
-      notes?: string;
-      next_due_date?: string;
-    }) => sendJson<any>(`/compliance/maintenance/${maintenanceId}/complete`, "POST", payload),
-    generateMaintenanceCertificate: (maintenanceId: string, payload: {
-      performed_by: string;
-      maintenance_type?: string;
-      completion_notes?: string;
-      next_maintenance_date?: string;
-    }) => sendJson<any>(`/compliance/maintenance/${maintenanceId}/generate-certificate`, "POST", payload),
-    recalls: (status?: string) => {
-      const q = status ? `?status=${status}` : "";
-      return fetchRaw<{ data: any[] }>(`/compliance/recalls${q}`);
-    },
-    initiateRecall: (payload: {
-      product_name: string;
-      batch_number: string;
-      recall_reason: string;
-      severity: string;
-      nafdac_notified?: boolean;
-    }) => sendJson<any>("/compliance/recalls", "POST", payload),
-    updateRecall: (recallId: string, payload: Record<string, any>) =>
-      sendJson<any>(`/compliance/recalls/${recallId}`, "PUT", payload),
-    generateRecallDocuments: (recallId: string) =>
-      sendJson<any>(`/compliance/recalls/${recallId}/generate-documents`, "POST", {}),
-    sopList: (category?: string) => {
-      const q = category ? `?category=${category}` : "";
-      return fetchRaw<{ data: any[] }>(`/compliance/sop${q}`);
-    },
-    ingestSopDocx: (formData: FormData) =>
-      sendFormData<any>("/compliance/sop/ingest-docx", "POST", formData),
-    documentArchive: (docType?: string) => {
-      const q = docType ? `?doc_type=${docType}` : "";
-      return fetchRaw<{ data: any[] }>(`/documents/archive${q}`);
-    },
   },
   // ── Phase 12 — Facility Audits & Equipment Maintenance (hospital-native;
   // distinct from the pharma `compliance` namespace above) ─────────────────
@@ -1243,289 +1218,11 @@ export const api = {
       fetchRaw<any>(`/crm/sales/targets/vs-actuals?period=${encodeURIComponent(period)}`),
   },
 
-  frontdesk: {
-    registerWalkIn: (payload: {
-      customer_name: string;
-      company_name?: string;
-      contact_phone?: string;
-      email?: string;
-      has_appointment?: boolean;
-      purpose: string;
-      products_requested?: string[];
-      notes?: string;
-    }) => sendJson<any>("/frontdesk/walk-ins", "POST", payload),
-
-    listWalkIns: (date?: string, status?: string) => {
-      const q = new URLSearchParams();
-      if (date) q.set("date", date);
-      if (status) q.set("status", status);
-      return fetchRaw<any>(`/frontdesk/walk-ins${q.toString() ? `?${q.toString()}` : ""}`);
-    },
-
-    getWalkIn: (id: string) => fetchRaw<any>(`/frontdesk/walk-ins/${id}`),
-
-    createInvoice: (walkInId: string, payload: {
-      items: { product: string; quantity: number; unit_price: number }[];
-      payment_method?: string;
-      notes?: string;
-    }) => sendJson<any>(`/frontdesk/walk-ins/${walkInId}/invoice`, "POST", payload),
-
-    submitQc: (invoiceId: string, payload: {
-      passed: boolean;
-      inspector_name: string;
-      notes?: string;
-      batch_numbers?: string[];
-    }) => sendJson<any>(`/frontdesk/invoices/${invoiceId}/qc`, "POST", payload),
-
-    financeApproval: (invoiceId: string, payload: {
-      approved: boolean;
-      approver_name: string;
-      reason?: string;
-    }) => sendJson<any>(`/frontdesk/invoices/${invoiceId}/finance`, "POST", payload),
-
-    notifyExecutive: (invoiceId: string, message?: string) =>
-      sendJson<any>(`/frontdesk/invoices/${invoiceId}/notify`, "POST", { message }),
-
-    // --- New endpoints ---
-
-    searchClients: (q: string, limit?: number) => {
-      const params = new URLSearchParams({ q });
-      if (limit) params.set("limit", String(limit));
-      return fetchRaw<any>(`/frontdesk/clients/search?${params.toString()}`);
-    },
-
-    clientHistory: (walkInId: string) =>
-      fetchRaw<any>(`/frontdesk/clients/${walkInId}/history`),
-
-    listInvoices: (params?: {
-      status?: string;
-      date_from?: string;
-      date_to?: string;
-      q?: string;
-      limit?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.status)    qs.set("status", params.status);
-      if (params?.date_from) qs.set("date_from", params.date_from);
-      if (params?.date_to)   qs.set("date_to", params.date_to);
-      if (params?.q)         qs.set("q", params.q);
-      if (params?.limit)     qs.set("limit", String(params.limit));
-      return fetchRaw<any>(`/frontdesk/invoices${qs.toString() ? `?${qs.toString()}` : ""}`);
-    },
-
-    getInvoice: (invoiceId: string) =>
-      fetchRaw<any>(`/frontdesk/invoices/${invoiceId}`),
-
-    stockCheck: (products: string[]) => {
-      const qs = new URLSearchParams({ products: products.join(",") });
-      return fetchRaw<any>(`/frontdesk/stock-check?${qs.toString()}`);
-    },
-
-    dailyReport: (date?: string) => {
-      const qs = new URLSearchParams();
-      if (date) qs.set("date", date);
-      return fetchRaw<any>(`/frontdesk/reports/daily${qs.toString() ? `?${qs.toString()}` : ""}`);
-    },
-
-    cancelWalkIn: (id: string, reason?: string) =>
-      sendJson<any>(`/frontdesk/walk-ins/${id}/cancel`, "POST", reason ? { reason } : {}),
-  },
 
   // -------------------------------------------------------------------------
   // Quality Control
   // -------------------------------------------------------------------------
-  qc: {
-    /** Unified KPI dashboard: expiring count, open deviations, temp alerts, NAFDAC pending, recalls */
-    dashboard: () =>
-      fetchRaw<any>("/qc/dashboard"),
 
-    /** Expiring stock grouped into expired/critical(≤30d)/high(≤60d)/medium(≤90d) buckets */
-    expiryAlerts: (days?: number) => {
-      const qs = new URLSearchParams();
-      if (days) qs.set("days", String(days));
-      return fetchRaw<any>(`/qc/expiry-alerts${qs.toString() ? `?${qs}` : ""}`);
-    },
-
-    // --- Temperature logs ---
-    logTemperature: (payload: {
-      location: string;
-      reading_celsius: number;
-      min_threshold?: number;
-      max_threshold?: number;
-      log_session?: "morning" | "midday" | "evening" | "ad_hoc";
-      logged_by: string;
-      logged_at?: string;
-      equipment_id?: string;
-      notes?: string;
-    }) => sendJson<any>("/qc/temperature-logs", "POST", payload),
-
-    listTemperatureLogs: (params?: {
-      location?: string;
-      date_from?: string;
-      date_to?: string;
-      deviations_only?: boolean;
-      limit?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.location)        qs.set("location", params.location);
-      if (params?.date_from)       qs.set("date_from", params.date_from);
-      if (params?.date_to)         qs.set("date_to", params.date_to);
-      if (params?.deviations_only) qs.set("deviations_only", "true");
-      if (params?.limit)           qs.set("limit", String(params.limit));
-      return fetchRaw<any>(`/qc/temperature-logs${qs.toString() ? `?${qs}` : ""}`);
-    },
-
-    activeDeviations: () =>
-      fetchRaw<any>("/qc/temperature-logs/deviations"),
-
-    escalateDeviation: (logId: string, payload: { escalated_to: string; escalation_notes?: string }) =>
-      sendJson<any>(`/qc/temperature-logs/${logId}/escalate`, "POST", payload),
-
-    // --- CAPA Deviation reports ---
-    createDeviation: (payload: {
-      classification?: "minor" | "major" | "critical";
-      trigger_type: string;
-      trigger_ref?: string;
-      observation: string;
-      impact_assessment?: string;
-      recommendations?: string;
-      responsible_department: string;
-      responsible_person?: string;
-      capa_actions?: object[];
-    }) => sendJson<any>("/qc/deviations", "POST", payload),
-
-    listDeviations: (params?: {
-      status?: string;
-      classification?: string;
-      department?: string;
-      limit?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.status)         qs.set("status", params.status);
-      if (params?.classification) qs.set("classification", params.classification);
-      if (params?.department)     qs.set("department", params.department);
-      if (params?.limit)          qs.set("limit", String(params.limit));
-      return fetchRaw<any>(`/qc/deviations${qs.toString() ? `?${qs}` : ""}`);
-    },
-
-    updateDeviation: (id: string, payload: {
-      status?: string;
-      impact_assessment?: string;
-      recommendations?: string;
-      responsible_person?: string;
-      capa_actions?: object[];
-    }) => sendJson<any>(`/qc/deviations/${id}`, "PATCH", payload),
-
-    closeDeviation: (id: string, payload: { resolution: string; capa_actions?: object[] }) =>
-      sendJson<any>(`/qc/deviations/${id}/close`, "POST", payload),
-
-    // --- NAFDAC batch registry ---
-    registerBatch: (payload: {
-      batch_number: string;
-      product_name: string;
-      nafdac_reg_number?: string;
-      supplier?: string;
-      valid_from?: string;
-      valid_to?: string;
-      certificate_ref?: string;
-      notes?: string;
-    }) => sendJson<any>("/qc/nafdac/batches", "POST", payload),
-
-    listBatches: (params?: {
-      status?: string;
-      product?: string;
-      blocked?: boolean;
-      limit?: number;
-    }) => {
-      const qs = new URLSearchParams();
-      if (params?.status)            qs.set("status", params.status);
-      if (params?.product)           qs.set("product", params.product);
-      if (params?.blocked !== undefined) qs.set("blocked", String(params.blocked));
-      if (params?.limit)             qs.set("limit", String(params.limit));
-      return fetchRaw<any>(`/qc/nafdac/batches${qs.toString() ? `?${qs}` : ""}`);
-    },
-
-    approveBatch: (id: string, payload?: {
-      valid_from?: string;
-      valid_to?: string;
-      certificate_ref?: string;
-      nafdac_reg_number?: string;
-      notes?: string;
-    }) => sendJson<any>(`/qc/nafdac/batches/${id}/approve`, "PATCH", payload ?? {}),
-
-    rejectBatch: (id: string, payload: { rejection_reason: string; notes?: string }) =>
-      sendJson<any>(`/qc/nafdac/batches/${id}/reject`, "PATCH", payload),
-
-    // --- Product recalls ---
-    initiateRecall: (payload: {
-      batch_number: string;
-      product_name: string;
-      recall_reason: string;
-      scope?: "voluntary" | "mandatory";
-      regulatory_authority?: string;
-      distribution_data?: object[];
-    }) => sendJson<any>("/qc/recalls", "POST", payload),
-
-    listRecalls: (params?: { status?: string; product?: string; limit?: number }) => {
-      const qs = new URLSearchParams();
-      if (params?.status)  qs.set("status", params.status);
-      if (params?.product) qs.set("product", params.product);
-      if (params?.limit)   qs.set("limit", String(params.limit));
-      return fetchRaw<any>(`/qc/recalls${qs.toString() ? `?${qs}` : ""}`);
-    },
-
-    updateRecallStatus: (id: string, payload: {
-      status: "initiated" | "in_progress" | "completed" | "closed";
-      distribution_data?: object[];
-      notes?: string;
-    }) => sendJson<any>(`/qc/recalls/${id}/status`, "PATCH", payload),
-  },
-
-  logistics: {
-    createRider: (payload: { name: string; phone?: string; vehicle?: string }) =>
-      sendJson<any>("/logistics/riders", "POST", payload),
-
-    createDelivery: (payload: {
-      destination: string;
-      recipient_name?: string;
-      recipient_phone?: string;
-      dest_lat?: number;
-      dest_lng?: number;
-    }) => sendJson<any>("/logistics/deliveries", "POST", payload),
-
-    assignRoutes: () => sendJson<any>("/logistics/assign", "POST", {}),
-
-    getRiderRoute: (riderId: string) =>
-      fetchRaw<any>(`/logistics/riders/${encodeURIComponent(riderId)}/route`),
-
-    updateDeliveryStatus: (deliveryId: string, status: string) =>
-      sendJson<any>(`/logistics/deliveries/${encodeURIComponent(deliveryId)}/status`, "POST", { status }),
-
-    computeRoute: (payload: { origin: string; destinations: string[]; optimize?: boolean }) =>
-      sendJson<any>("/logistics/compute-route", "POST", payload),
-
-    // ---- Live tracking (Migration 084) ----
-
-    /** Start a delivery → mints tracking_token, returns PWA URL */
-    startDelivery: (deliveryId: string) =>
-      sendJson<any>(`/logistics/deliveries/${encodeURIComponent(deliveryId)}/start`, "POST", {}),
-
-    /** Rider PWA: resolve delivery info by token (no JWT) */
-    getDeliveryByToken: (token: string) =>
-      fetchRaw<any>(`/logistics/track/${encodeURIComponent(token)}`),
-
-    /** Latest rider positions snapshot (dashboard poll fallback) */
-    livePositions: () =>
-      fetchRaw<any>("/logistics/live-positions"),
-
-    /** All in-transit/assigned deliveries with rider location */
-    activeDeliveries: () =>
-      fetchRaw<any>("/logistics/active-deliveries"),
-
-    /** GPS ping history / route replay for a delivery */
-    deliveryPings: (deliveryId: string) =>
-      fetchRaw<any>(`/logistics/deliveries/${encodeURIComponent(deliveryId)}/pings`),
-  },
 
   // ── Report Intelligence API ────────────────────────────────────────────────
   reports: {
@@ -1567,6 +1264,56 @@ export const api = {
     /** Download a stored report as .docx by ID — returns the fetch URL (caller adds auth). */
     detailDocxUrl: (reportId: string) =>
       `/reports/history/${encodeURIComponent(reportId)}/docx`,
+
+    // Reports about one record (reportGUide.md s12): type -> record -> review -> report
+    catalog: () => fetchRaw<{ types: any[]; kind_labels: Record<string, string> }>("/reports/catalog"),
+    subjects: (kind: string, search = "") =>
+      fetchRaw<{ items: any[] }>(`/reports/subjects/${encodeURIComponent(kind)}?search=${encodeURIComponent(search)}`),
+    dossier: (report_type: string, kind: string, id: string) =>
+      fetchRaw<any>(`/reports/dossier?${new URLSearchParams({ report_type, kind, id })}`),
+    fromRecord: (payload: { report_type: string; kind: string; id: string; notes?: string }) =>
+      sendJson<any>("/reports/from-record", "POST", payload),
+    library: (kind?: string, subjectId?: string) => {
+      const p = new URLSearchParams();
+      if (kind) p.set("kind", kind);
+      if (subjectId) p.set("subject_id", subjectId);
+      return fetchRaw<{ reports: any[] }>(`/reports/library?${p}`);
+    },
+    record: (id: string) => fetchRaw<any>(`/reports/record/${encodeURIComponent(id)}`),
+    approveRecord: (id: string) => sendJson<any>(`/reports/record/${encodeURIComponent(id)}/approve`, "POST", {}),
+    downloadRecord: (id: string) => downloadGet(`/reports/record/${encodeURIComponent(id)}/docx`),
+  },
+
+  // Procurement & Stores (reportGUide.md s6)
+  stores: {
+    overview: () => fetchRaw<any>("/procurement/overview"),
+    plan: (refresh = false) => fetchRaw<any>(`/procurement/reorder-plan${refresh ? "?refresh=true" : ""}`),
+    orders: (status?: string) => fetchRaw<{ orders: any[] }>(`/procurement/orders${status ? `?status=${status}` : ""}`),
+    raise: (p: { formulary_id: number; quantity: number; urgency?: string; notes?: string; supplier_id?: string }) =>
+      sendJson<any>("/procurement/orders", "POST", p),
+    approve: (id: number) => sendJson<any>(`/procurement/orders/${id}/approve`, "POST", {}),
+    place: (id: number, p: { supplier_id: string; expected_date: string; quantity?: number }) =>
+      sendJson<any>(`/procurement/orders/${id}/place`, "POST", p),
+    cancel: (id: number, reason: string) => sendJson<any>(`/procurement/orders/${id}/cancel`, "POST", { reason }),
+    suppliers: () => fetchRaw<any>("/procurement/suppliers"),
+  },
+
+  // Patient Relations - HMO & corporate accounts (reportGUide.md s7)
+  relations: {
+    overview: () => fetchRaw<any>("/relations/overview"),
+    payers: () => fetchRaw<any>("/relations/payers"),
+    payer: (id: number | string) => fetchRaw<any>(`/relations/payers/${id}`),
+    logContact: (id: number | string, p: { kind: string; summary: string; follow_up_on?: string }) =>
+      sendJson<any>(`/relations/payers/${id}/contacts`, "POST", p),
+    done: (contactId: string) => sendJson<any>(`/relations/contacts/${contactId}/done`, "POST", {}),
+  },
+
+  // The calendar over the records (reportGUide.md s10)
+  hospitalCalendar: {
+    feed: (from: string, to: string, sources?: string[]) =>
+      fetchRaw<any>(`/calendar/hospital?${new URLSearchParams({ from, to, ...(sources?.length ? { sources: sources.join(",") } : {}) })}`),
+    reschedule: (source: string, id: string, date: string) =>
+      sendJson<any>("/calendar/hospital/reschedule", "POST", { source, id, date }),
   },
 
   // -------------------------------------------------------------------------
@@ -1581,6 +1328,11 @@ export const api = {
         }),
       search: (q: string) =>
         fetchRaw<any>('/patients/search?q=' + encodeURIComponent(q)),
+      /** The patient list A-Z (first name, then surname), a page at a time. */
+      listAz: (offset = 0, limit = 50) =>
+        fetchRaw<any>(`/patients/search?sort=name&limit=${limit}&offset=${offset}`),
+      // Billing, encounters and the ledger all hold the numeric id, not the MRN.
+      getById: (id: number | string) => fetchRaw<any>('/patients/by-id/' + id),
       get: (mrn: string) =>
         fetchRaw<any>('/patients/' + encodeURIComponent(mrn)),
       profile: (mrn: string) =>
@@ -1605,6 +1357,21 @@ export const api = {
     queue: {
       open: (payload: Record<string, any>) =>
         sendJson<any>('/queue/encounters', 'POST', payload),
+      requestAdmission: (encounterId: number | string, p?: { ward_preference?: string; reason?: string; urgency?: string }) =>
+        sendJson<any>('/queue/encounters/' + encounterId + '/request-admission', 'POST', p ?? {}),
+      listAdmissionRequests: (status = 'pending') =>
+        fetchRaw<any>('/queue/admission-requests?status=' + encodeURIComponent(status)),
+      decideAdmission: (requestId: number | string, p: { accept: boolean; bed_id?: number; note?: string }) =>
+        sendJson<any>('/queue/admission-requests/' + requestId + '/decision', 'POST', p),
+      listInpatients: () => fetchRaw<any>('/queue/inpatients'),
+        /** Doctors on seat today (room, clock, roster, leave) for the front desk's check-in picker. */
+        doctorsToday: () => fetchRaw<any>('/queue/doctors-today'),
+      listRoomAssignments: (day?: string) =>
+        fetchRaw<any>('/queue/room-assignments' + (day ? '?assigned_on=' + encodeURIComponent(day) : '')),
+      assignRoom: (p: { doctor_id: string; room: string; assigned_on?: string; notes?: string }) =>
+        sendJson<any>('/queue/room-assignments', 'POST', p),
+      clearRoomAssignment: (id: number | string) =>
+        sendJson<any>('/queue/room-assignments/' + id, 'DELETE', {}),
       getActiveEncounter: (patientId: string | number) =>
         fetchRaw<{ active_encounter: any | null }>('/queue/patients/' + patientId + '/active-encounter'),
       list: (params?: { status?: string; department?: string; doctor?: string; patient_id?: number; active_only?: boolean }) => {
@@ -1641,6 +1408,7 @@ export const api = {
       list: () => fetchRaw<any>('/wards'),
       create: (p: Record<string, any>) => sendJson<any>('/wards', 'POST', p),
       beds: (wardId: string) => fetchRaw<any>('/wards/' + wardId + '/beds'),
+      availableBeds: () => fetchRaw<any>('/wards/beds/available'),
       addBed: (wardId: string, p: Record<string, any>) => sendJson<any>('/wards/' + wardId + '/beds', 'POST', p),
       admitBed: (wardId: string, bedId: string, p: Record<string, any>) =>
         sendJson<any>('/wards/' + wardId + '/beds/' + bedId + '/admit', 'POST', p),
@@ -1651,9 +1419,52 @@ export const api = {
     },
     billing: {
       createBill: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills', 'POST', p),
-      createBillFromEncounter: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills/from-encounter', 'POST', p),
-      listBills: (params?: { status?: string; patient_id?: number; encounter_id?: number }) => {
+      revenueSplit: (p?: { date_from?: string; date_to?: string }) => {
         const qs = new URLSearchParams();
+        if (p?.date_from) qs.set('date_from', p.date_from);
+        if (p?.date_to) qs.set('date_to', p.date_to);
+        const s = qs.toString();
+        return fetchRaw<any>('/billing_hospital/revenue-split' + (s ? '?' + s : ''));
+      },
+      encounterCharges: (encounterId: number | string) =>
+        fetchRaw<any>('/billing_hospital/encounters/' + encounterId + '/charges'),
+      addEncounterCharge: (encounterId: number | string, p: Record<string, any>) =>
+        sendJson<any>('/billing_hospital/encounters/' + encounterId + '/charges', 'POST', p),
+      removeEncounterCharge: (encounterId: number | string, chargeId: number | string) =>
+        sendJson<any>('/billing_hospital/encounters/' + encounterId + '/charges/' + chargeId, 'DELETE', {}),
+      listAdjustments: (billId: number | string) =>
+        fetchRaw<any>('/billing_hospital/bills/' + billId + '/adjustments'),
+      adjustBill: (billId: number | string, p: Record<string, any>) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/adjust', 'POST', p),
+      reverseAdjustment: (billId: number | string, adjustmentId: number | string, reason: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/adjustments/' + adjustmentId + '/reverse',
+          'POST', { adjustment_type: 'reversal', amount: 1, reason }),
+      wardRates: () => fetchRaw<any>('/billing_hospital/ward-rates'),
+      // Room rates, which are what actually bills: the charge resolves
+      // bed -> room -> ward, so with 19 of 21 rooms priced, editing a ward rate
+      // changes nothing for those beds.
+      listRooms: () => fetchRaw<any>('/wards/rooms'),
+      setRoomRate: (roomId: number | string, daily_rate: number) =>
+        sendJson<any>('/wards/rooms/' + roomId + '/rate', 'PATCH', { daily_rate }),
+      setWardRate: (wardId: number | string, daily_rate: number) =>
+        sendJson<any>('/billing_hospital/ward-rates/' + wardId, 'PATCH', { daily_rate }),
+      requestDiscount: (billId: number | string, amount: number, reason?: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/request-discount', 'POST', { amount, reason }),
+      pendingDiscounts: () => fetchRaw<any>('/billing_hospital/bills/pending-discounts'),
+      // NOTE the field name: this endpoint takes `approve`, while the pharmacy
+      // APPROVAL endpoint takes `approved`. Normalised here so callers pass a
+      // plain boolean and cannot get it wrong — sending the other spelling
+      // fails validation with a 422 rather than doing nothing visible.
+      discountDecision: (billId: number | string, approved: boolean, note?: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/discount-decision', 'POST', { approve: approved, note }),
+      decideDiscount: (billId: number | string, approve: boolean, note?: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/discount-decision', 'POST', { approve, note }),
+      createBillFromEncounter: (p: Record<string, any>) => sendJson<any>('/billing_hospital/bills/from-encounter', 'POST', p),
+      listBills: (params?: { status?: string; patient_id?: number; encounter_id?: number; entity?: string; limit?: number; payer?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.payer)       qs.set('payer', params.payer);
+        if (params?.entity)      qs.set('entity', params.entity);
+        if (params?.limit)       qs.set('limit', String(params.limit));
         if (params?.status)      qs.set('status', params.status);
         if (params?.patient_id)  qs.set('patient_id', String(params.patient_id));
         if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
@@ -1685,18 +1496,59 @@ export const api = {
         sendJson<any>('/billing_hospital/bills/' + id + '/write-off', 'POST', p),
       listUnbilledEncounters: (limit?: number) =>
         fetchRaw<any>('/billing_hospital/unbilled-encounters' + (limit ? '?limit=' + limit : '')),
+      // Stage billing (front desk -> doctor -> cashier -> services), corrections and printed documents.
+      voidPayment: (paymentId: number | string, reason: string) =>
+        sendJson<any>('/billing_hospital/payments/' + paymentId + '/void', 'POST', { reason }),
+      voidBill: (billId: number | string, reason: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/void', 'POST', { reason }),
+      releaseBill: (billId: number | string, reason: string) =>
+        sendJson<any>('/billing_hospital/bills/' + billId + '/release', 'POST', { reason }),
+      releaseOrder: (source: string, source_id: number | string, reason: string) =>
+        sendJson<any>('/billing_hospital/releases', 'POST', { source, source_id: String(source_id), reason }),
+      clearance: (source: string, source_id: number | string) =>
+        fetchRaw<any>('/billing_hospital/clearance?source=' + encodeURIComponent(source) + '&source_id=' + encodeURIComponent(String(source_id))),
+      claimsForm: (billId: number | string) => fetchRaw<any>('/billing_hospital/bills/' + billId + '/claims-form'),
+      patientAccount: (patientId: number | string) => fetchRaw<any>('/billing_hospital/patients/' + patientId + '/account'),
+      sendToCashier: (encounterId: number | string) =>
+        sendJson<any>('/queue/encounters/' + encounterId + '/send-to-cashier', 'POST', {}),
+      frontDeskQuote: (encounterId: number | string) =>
+        fetchRaw<any>('/billing_hospital/encounters/' + encounterId + '/front-desk-quote'),
+      consultationQuote: (p: { patient_id: number | string; department?: string; doctor_id?: string; specialty?: string; kind?: string }) => {
+        const qs = new URLSearchParams();
+        Object.entries(p).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.set(k, String(v)); });
+        return fetchRaw<any>('/billing_hospital/consultation-quote?' + qs.toString());
+      },
+      consultationTariffs: () => fetchRaw<any>('/billing_hospital/consultation-tariffs'),
+      saveConsultationTariff: (id: number | string | 'new', p: Record<string, any>) =>
+        sendJson<any>('/billing_hospital/consultation-tariffs/' + id, 'PUT', p),
+      saveDoctorFee: (doctorId: string, p: Record<string, any>) =>
+        sendJson<any>('/billing_hospital/doctor-fees/' + doctorId, 'PUT', p),
+      saveBillingSettings: (p: Record<string, any>) => sendJson<any>('/billing_hospital/billing-settings', 'PUT', p),
+      importConsultationTariffs: (rows: Record<string, any>[]) =>
+        sendJson<any>('/billing_hospital/consultation-tariffs/import', 'POST', { rows }),
+    },
+    // Department stores (Immunisation, Lab, Urology...) run by the departments themselves.
+    stores: {
+      get: (path: string, params?: Record<string, any>) => {
+        const qs = new URLSearchParams();
+        Object.entries(params ?? {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.set(k, String(v)); });
+        return fetchRaw<any>('/stock/stores' + path + (qs.toString() ? '?' + qs : ''));
+      },
+      post: (path: string, body: Record<string, any>) => sendJson<any>('/stock/stores' + path, 'POST', body),
     },
     appointments: {
       createSlot: (p: Record<string, any>) => sendJson<any>('/appointments/slots', 'POST', {
         ...p,
+        doctor_id: p.doctor_id || undefined,
         doctor_name: p.doctor_name ?? p.provider_name,
         slot_date: p.slot_date ?? p.date,
         slot_time: p.slot_time ?? p.start_time,
         max_patients: p.max_patients ?? p.capacity,
         department: p.department === 'General OPD' ? 'OPD' : p.department,
       }),
-      listSlots: (params?: { date?: string; provider?: string; availableOnly?: boolean }) => {
+      listSlots: (params?: { date?: string; provider?: string; availableOnly?: boolean; mine?: boolean }) => {
         const qs = new URLSearchParams();
+        if (params?.mine)     qs.set('mine', 'true');
         if (params?.date)     qs.set('slot_date', params.date);
         if (params?.provider) qs.set('doctor_name', params.provider);
         if (params?.availableOnly === false) qs.set('available_only', 'false');
@@ -1704,8 +1556,9 @@ export const api = {
       },
       deleteSlot: (id: string) => sendDelete<any>('/appointments/slots/' + id),
       book: (p: Record<string, any>) => sendJson<any>('/appointments/book', 'POST', p),
-      list: (params?: { date?: string; date_to?: string; status?: string }) => {
+      list: (params?: { date?: string; date_to?: string; status?: string; mine?: boolean }) => {
         const qs = new URLSearchParams();
+        if (params?.mine)    qs.set('mine',    'true');
         if (params?.date)    qs.set('date',    params.date);
         if (params?.date_to) qs.set('date_to', params.date_to);
         if (params?.status)  qs.set('status',  params.status === 'scheduled' ? 'booked' : params.status);
@@ -1716,8 +1569,9 @@ export const api = {
       cancel:   (id: string, p: Record<string, any>) => sendJson<any>('/appointments/' + id + '/cancel', 'PATCH', p),
       noShow:   (id: string) => sendJson<any>('/appointments/' + id + '/no-show', 'PATCH', {}),
       // Scheduling Control Center additions
-      calendar: (params?: { date_from?: string; date_to?: string; doctor_name?: string; doctor_id?: string; department?: string }) => {
+      calendar: (params?: { date_from?: string; date_to?: string; doctor_name?: string; doctor_id?: string; department?: string; mine?: boolean }) => {
         const qs = new URLSearchParams();
+        if (params?.mine)        qs.set('mine',        'true');
         if (params?.date_from)   qs.set('date_from',   params.date_from);
         if (params?.date_to)     qs.set('date_to',     params.date_to);
         if (params?.doctor_id)   qs.set('doctor_id',   params.doctor_id);
@@ -1750,12 +1604,31 @@ export const api = {
         fetchRaw<any>('/coverage/hmos/' + hmo_id + '/plans' + (activeOnly ? '' : '?active_only=false')),
       createPlan: (hmo_id: number | string, p: Record<string, any>) =>
         sendJson<any>('/coverage/hmos/' + hmo_id + '/plans', 'POST', p),
-      services: (category?: string) => fetchRaw<any>('/coverage/services' + (category ? '?category=' + encodeURIComponent(category) : '')),
+      services: (params?: { category?: string; q?: string; limit?: number } | string) => {
+        // Legacy call sites passed a bare category string.
+        const p = typeof params === 'string' ? { category: params } : (params ?? {});
+        const qs = new URLSearchParams();
+        if (p.category) qs.set('category', p.category);
+        if (p.q) qs.set('q', p.q);
+        if (p.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return fetchRaw<any>('/coverage/services' + (s ? '?' + s : ''));
+      },
+      /** Every HMO's negotiated price for one service (migration 198). */
+      servicePayerPrices: (serviceId: number | string) =>
+        fetchRaw<any>('/coverage/services/' + serviceId + '/payer-prices'),
       createService: (p: Record<string, any>) => sendJson<any>('/coverage/services', 'POST', p),
       updateService: (id: string | number, p: Record<string, any>) => sendJson<any>('/coverage/services/' + id, 'PATCH', p),
       listRules: (hmo_id?: string) => fetchRaw<any>('/coverage/rules' + (hmo_id ? '?hmo_id=' + encodeURIComponent(hmo_id) : '')),
       createRule: (p: Record<string, any>) => sendJson<any>('/coverage/rules', 'POST', p),
       updateRule: (id: number | string, p: Record<string, any>) => sendJson<any>('/coverage/rules/' + id, 'PATCH', p),
+      previewTariffImport: (hmoId: number | string, file: File) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        return sendFormData<any>('/coverage/hmos/' + hmoId + '/tariff-import/preview', 'POST', fd);
+      },
+      commitTariffImport: (hmoId: number | string, rows: any[]) =>
+        sendJson<any>('/coverage/hmos/' + hmoId + '/tariff-import/commit', 'POST', { rows }),
       listPatientInsurance: (patientId: number | string) =>
         fetchRaw<any>('/coverage/patient-insurance?patient_id=' + patientId),
       createPatientInsurance: (p: Record<string, any>) => sendJson<any>('/coverage/patient-insurance', 'POST', p),
@@ -1773,6 +1646,22 @@ export const api = {
       requestAuthorization: (p: Record<string, any>) => sendJson<any>('/coverage/authorizations', 'POST', p),
       listAuthorizations: (status?: string) => fetchRaw<any>('/coverage/authorizations' + (status ? '?status=' + encodeURIComponent(status) : '')),
       resolveAuthorization: (id: number, p: Record<string, any>) => sendJson<any>('/coverage/authorizations/' + id, 'PATCH', p),
+      /** HMO desk: the HMO patients on the queue now (and discharged in the last `days` days). */
+      hmoDesk: (days = 0) => fetchRaw<any>('/coverage/hmo-desk?days=' + days),
+      hmoDeskPatient: (encounterId: number | string) => fetchRaw<any>('/coverage/hmo-desk/' + encounterId),
+      hmoDeskVerify: (encounterId: number | string, verified: boolean, note?: string) =>
+        sendJson<any>('/coverage/hmo-desk/' + encounterId + '/verify', 'POST', { verified, note }),
+      /** The patient's signature for the visit's claims form, from the signature pad. */
+      hmoDeskSignature: async (encounterId: number | string, file: File): Promise<{ signature_url: string }> => {
+        const token = await getBearerToken();
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(apiUrl('/coverage/hmo-desk/' + encounterId + '/signature'), {
+          method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form,
+        });
+        if (!res.ok) throw new ApiError('Signature upload failed', res.status, 'server');
+        return res.json();
+      },
     },
     hope: {
       sync: (entity: 'patients' | 'appointments' | 'admissions' | 'lab' | 'pharmacy' | 'billing', limit = 200) =>
@@ -1780,9 +1669,123 @@ export const api = {
     },
     clinical: {
       searchIcd10: (q: string) => fetchRaw<any>('/clinical/icd10?q=' + encodeURIComponent(q)),
+      /** ICD-10 diagnoses suggested from what the doctor has written (complaint, history, examination, assessment). */
+      suggestIcd10: (text: string) => fetchRaw<any>('/clinical/icd10/suggest?text=' + encodeURIComponent(text.slice(0, 1500))),
       listNoteTitles: (department?: string) =>
         fetchRaw<any>('/clinical/note-titles' + (department ? '?department=' + encodeURIComponent(department) : '')),
       searchDrugs: (q: string) => fetchRaw<any>('/clinical/drugs?q=' + encodeURIComponent(q)),
+
+      // ── Phase B0: migrated Hope reference data (migrations 179-195) ──────
+      // NOTE: listNoteTitles above serves royan_note_titles (5 seed rows, the
+      // note-type catalog). listNoteTemplates below serves royan_note_templates
+      // (528 migrated phrase bundles). Different tables, different purposes.
+      listNoteTemplates: (p?: { context_type?: string; scope?: string; q?: string }) => {
+        const qs = new URLSearchParams();
+        if (p?.context_type) qs.set('context_type', p.context_type);
+        if (p?.scope) qs.set('scope', p.scope);
+        if (p?.q) qs.set('q', p.q);
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/note-templates' + (s ? '?' + s : ''));
+      },
+      listNoteTemplateTexts: (templateId: number | string, contextType?: string) =>
+        fetchRaw<any>('/clinical/note-templates/' + templateId + '/texts' +
+          (contextType ? '?context_type=' + encodeURIComponent(contextType) : '')),
+      // A doctor's own templates. Only the owner can update or delete one.
+      createNoteTemplate: (body: NoteTemplateWrite) =>
+        sendJson<any>('/clinical/note-templates', 'POST', body),
+      updateNoteTemplate: (templateId: number | string, body: NoteTemplateWrite) =>
+        sendJson<any>('/clinical/note-templates/' + templateId, 'PUT', body),
+      deleteNoteTemplate: (templateId: number | string) =>
+        sendJson<any>('/clinical/note-templates/' + templateId, 'DELETE', {}),
+
+      listExamTemplates: (p?: { category?: string; patient_sex?: string | null }) => {
+        const qs = new URLSearchParams();
+        if (p?.category) qs.set('category', p.category);
+        if (p?.patient_sex) qs.set('patient_sex', p.patient_sex);
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/exam-templates' + (s ? '?' + s : ''));
+      },
+      // Capped server-side: 44,405 findings exist, ~2,760 per ROS organ system.
+      listExamFindings: (templateId: number | string, p?: { q?: string; defaults_only?: boolean; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.q) qs.set('q', p.q);
+        if (p?.defaults_only) qs.set('defaults_only', 'true');
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/exam-templates/' + templateId + '/findings' + (s ? '?' + s : ''));
+      },
+
+      searchSmartPhrases: (q?: string, isNursing?: boolean) => {
+        const qs = new URLSearchParams();
+        if (q) qs.set('q', q);
+        if (isNursing !== undefined) qs.set('is_nursing', String(isNursing));
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/smart-phrases' + (s ? '?' + s : ''));
+      },
+      listSmartPhraseOptions: (tokenId: string) =>
+        fetchRaw<any>('/clinical/smart-phrase-options?token_id=' + encodeURIComponent(tokenId)),
+
+      listOrderSets: () => fetchRaw<any>('/clinical/order-sets'),
+      listOrderSetItems: (orderSetId: number | string) =>
+        fetchRaw<any>('/clinical/order-sets/' + orderSetId + '/items'),
+
+      searchRadiologyCatalog: (q?: string) =>
+        fetchRaw<any>('/clinical/radiology-catalog' + (q ? '?q=' + encodeURIComponent(q) : '')),
+      searchSurgeryCatalog: (q?: string) =>
+        fetchRaw<any>('/clinical/surgery-catalog' + (q ? '?q=' + encodeURIComponent(q) : '')),
+      searchAllergens: (q: string) =>
+        fetchRaw<any>('/clinical/allergens?q=' + encodeURIComponent(q)),
+      searchDiagnosisCatalog: (q?: string) =>
+        fetchRaw<any>('/clinical/diagnosis-catalog' + (q ? '?q=' + encodeURIComponent(q) : '')),
+      searchTariffCatalog: (q?: string) =>
+        fetchRaw<any>('/clinical/tariff-catalog' + (q ? '?q=' + encodeURIComponent(q) : '')),
+
+      // Patient-scoped note listing across ALL encounters. The only other note
+      // listing is encounter-scoped (queue.listNotes), which is right for a
+      // consultation but wrong for the Nurse Station.
+      listPatientNotes: (patientId: number | string, p?: { note_type?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.note_type) qs.set('note_type', p.note_type);
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/patients/' + patientId + '/notes' + (s ? '?' + s : ''));
+      },
+
+      /**
+       * Recent notes across every patient — the ward's activity rather than one
+       * chart's. Backs the Nursing Station, where the question is "what has been
+       * written since my last shift", not "what is on this patient".
+       */
+      listRecentNotes: (p?: { note_type?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.note_type) qs.set('note_type', p.note_type);
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return fetchRaw<any>('/clinical/notes/recent' + (s ? '?' + s : ''));
+      },
+
+      // Patient-scoped migrated history (backs the new chart cards in B2)
+      listFlowsheet: (patientId: number | string, limit = 200) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/flowsheet?limit=' + limit),
+      listWardStays: (patientId: number | string) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/ward-stays'),
+      listPatientDocuments: (patientId: number | string) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/documents'),
+      listMedicationAdministration: (patientId: number | string) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/medication-administration'),
+      listPatientEncounters: (patientId: number | string, limit = 100) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/encounters?limit=' + limit),
+      financialLedger: (patientId: number | string, limit = 100) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/financial-ledger?limit=' + limit),
+      doctorSchedule: (doctorRef?: string) =>
+        fetchRaw<any>('/clinical/doctor-schedule' + (doctorRef ? '?doctor_ref=' + encodeURIComponent(doctorRef) : '')),
+      hopeArchive: (sourceTable?: string, limit = 50) =>
+        fetchRaw<any>('/clinical/hope-archive?limit=' + limit + (sourceTable ? '&source_table=' + encodeURIComponent(sourceTable) : '')),
+      listBillingHistory: (patientId: number | string, limit = 100) =>
+        fetchRaw<any>('/clinical/patients/' + patientId + '/billing-history?limit=' + limit),
+
+      addNoteAddendum: (encounterId: number | string, noteId: number | string, p: { content: string; reason?: string }) =>
+        sendJson<any>('/queue/encounters/' + encounterId + '/notes/' + noteId + '/addendum', 'POST', p),
       listProblems: (patientId: number | string, status?: string) =>
         fetchRaw<any>('/clinical/patients/' + patientId + '/problems' + (status ? '?status=' + encodeURIComponent(status) : '')),
       addProblem: (patientId: number | string, p: Record<string, any>) =>
@@ -1824,8 +1827,15 @@ export const api = {
         const qs = params?.encounter_id ? '?encounter_id=' + params.encounter_id : '';
         return fetchRaw<any>('/pharmacy/administration-queue' + qs);
       },
+      pendingApprovals: () => fetchRaw<any>('/pharmacy/prescriptions/pending-approval'),
+      approvalDecision: (rxId: number | string, approved: boolean, note?: string) =>
+        sendJson<any>('/pharmacy/prescriptions/' + rxId + '/approval-decision', 'POST', { approved, note }),
+      requestApproval: (rxId: number | string, reason?: string) =>
+        sendJson<any>('/pharmacy/prescriptions/' + rxId + '/request-approval', 'POST', { reason }),
+      decideApproval: (rxId: number | string, approved: boolean, note?: string) =>
+        sendJson<any>('/pharmacy/prescriptions/' + rxId + '/approval-decision', 'POST', { approved, note }),
       createRx: (p: Record<string, any>) => sendJson<any>('/pharmacy/prescriptions', 'POST', p),
-      listRx: (params?: { status?: string; encounter_id?: string | number; patient_id?: string | number }) => {
+      listRx: (params?: { status?: string; encounter_id?: string | number; patient_id?: string | number; view?: "active" | "done" }) => {
         // Real backend status values only (pending|partially_dispensed|
         // dispensed|cancelled|returned) — the old active/partial alias-remap
         // shim is gone now that the panel replaces the pill-filtered page.
@@ -1833,6 +1843,7 @@ export const api = {
         if (params?.status) qs.set('status', params.status);
         if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
         if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
+        if (params?.view) qs.set('view', params.view);
         return fetchRaw<any>('/pharmacy/prescriptions' + (qs.toString() ? '?' + qs : ''));
       },
       getRx: (id: string | number) => fetchRaw<any>('/pharmacy/prescriptions/' + id),
@@ -1864,6 +1875,16 @@ export const api = {
         fetchRaw<any>('/pharmacy/inventory/expiring' + (withinDays ? '?within_days=' + withinDays : '')),
       listExpired: () => fetchRaw<any>('/pharmacy/inventory/expired'),
       // Pharmacy Inventory workspace — batch/lot-aware stock, risk tiers, trends
+      medicationHistory: (patientId: number | string) =>
+        fetchRaw<any>('/pharmacy/patients/' + patientId + '/medication-history'),
+      requestDispensingDiscount: (dispensingId: number | string, body: Record<string, any>) =>
+        sendJson<any>('/pharmacy/dispensing/' + dispensingId + '/request-discount', 'POST', body),
+      decideDispensingDiscount: (dispensingId: number | string, approved: boolean, note?: string) =>
+        // `approve`, like the billing one — unlike approvalDecision below.
+        sendJson<any>('/pharmacy/dispensing/' + dispensingId + '/discount-decision', 'POST',
+                      { approve: approved, note }),
+      pendingDispensingDiscounts: () =>
+        fetchRaw<any>('/pharmacy/dispensing/pending-discounts'),
       inventory: {
         cards: (params?: { category?: string; risk_tier?: string; search?: string }) => {
           const qs = new URLSearchParams();
@@ -1882,11 +1903,23 @@ export const api = {
           return fetchRaw<any>('/pharmacy/inventory/drugs' + (q ? '?' + q : ''));
         },
         drug: (formularyId: number | string) => fetchRaw<any>('/pharmacy/inventory/drugs/' + formularyId),
+        // Migrated per-batch pricing (mrp / purchase / cost / sale + margin).
+        // royan_inventory_batches carries only a single unit_cost, so this is
+        // the only view of actual margin per batch.
+        drugRates: (formularyId: number | string) =>
+          fetchRaw<any>('/pharmacy/inventory/drugs/' + formularyId + '/rates'),
         addDrug: (p: Record<string, any>) => sendJson<any>('/pharmacy/inventory/drugs', 'POST', p),
         receiveBatch: (formularyId: number | string, p: Record<string, any>) =>
           sendJson<any>('/pharmacy/inventory/drugs/' + formularyId + '/receive', 'POST', p),
         adjustBatch: (batchId: number | string, p: { adjustment: number; reason?: string; notes?: string }) =>
           sendJson<any>('/pharmacy/inventory/batches/' + batchId + '/adjust', 'POST', p),
+        report: () => fetchRaw<any>('/pharmacy/inventory/report'),
+        restockSuggestion: (formularyId: number | string) =>
+          fetchRaw<any>('/pharmacy/inventory/restock-suggestion/' + formularyId),
+        expired: (p?: { include_empty?: boolean }) =>
+          fetchRaw<any>('/pharmacy/inventory/expired' + (p?.include_empty ? '?include_empty=true' : '')),
+        disposeBatch: (batchId: number | string, body: Record<string, any>) =>
+          sendJson<any>('/pharmacy/inventory/batches/' + batchId + '/dispose', 'POST', body),
         summary: () => fetchRaw<any>('/pharmacy/inventory/summary'),
         trendsMostPrescribed: (params?: { window_days?: number; limit?: number }) => {
           const qs = new URLSearchParams();
@@ -1962,8 +1995,10 @@ export const api = {
       // Core lab methods (consolidated here to avoid duplicate key override)
       stats: () => fetchRaw<any>('/lab/stats'),
       placeOrder: (p: Record<string, any>) => sendJson<any>('/lab/orders', 'POST', p),
-      listOrders: (params?: { status?: string; urgency?: string; patient_id?: number; ordered_by?: string }) => {
+      listOrders: (params?: { status?: string; urgency?: string; patient_id?: number; ordered_by?: string; encounter_id?: number; view?: "active" | "done" }) => {
         const qs = new URLSearchParams();
+        if (params?.view) qs.set('view', params.view);
+        if (params?.encounter_id) qs.set('encounter_id', String(params.encounter_id));
         if (params?.status)     qs.set('status',     params.status);
         if (params?.urgency)    qs.set('urgency',    params.urgency);
         if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
@@ -1978,6 +2013,18 @@ export const api = {
       verify: (id: string | number, p: Record<string, any> = {}) => sendJson<any>('/lab/orders/' + id + '/verify', 'POST', p),
       amendResult: (id: string | number, p: Record<string, any>) => sendJson<any>('/lab/orders/' + id + '/result/amend', 'POST', p),
       getResultVersions: (id: string | number) => fetchRaw<any>('/lab/orders/' + id + '/results'),
+      listCatalog: (p?: { q?: string; category?: string; include_inactive?: boolean }) => {
+        const qs = new URLSearchParams();
+        if (p?.q) qs.set('q', p.q);
+        if (p?.category) qs.set('category', p.category);
+        if (p?.include_inactive) qs.set('include_inactive', 'true');
+        const s = qs.toString();
+        return fetchRaw<any>('/lab/catalog' + (s ? '?' + s : ''));
+      },
+      testDetail: (id: number | string) => fetchRaw<any>('/lab/catalog/' + id + '/detail'),
+      createCatalogEntry: (p: Record<string, any>) => sendJson<any>('/lab/catalog', 'POST', p),
+      updateCatalogEntry: (id: number | string, p: Record<string, any>) =>
+        sendJson<any>('/lab/catalog/' + id, 'PATCH', p),
       searchCatalog: (q: string, limit = 20) =>
         fetchRaw<any>('/lab/catalog/search?q=' + encodeURIComponent(q) + '&limit=' + limit),
       turnaround: () => fetchRaw<any>('/lab/turnaround'),
@@ -2025,8 +2072,21 @@ export const api = {
     // ── Phase 3 — Radiology ───────────────────────────────────────────────
     radiology: {
       createOrder: (p: Record<string, any>) => sendJson<any>('/radiology/orders', 'POST', p),
-      listOrders: (params?: { status?: string; modality?: string; patient_id?: number; encounter_id?: number; urgency?: string; date?: string; ordered_by?: string }) => {
+      scancareOverview: (p: { date_from?: string; date_to?: string; include_history?: boolean } = {}) => {
         const qs = new URLSearchParams();
+        if (p.date_from) qs.set('date_from', p.date_from);
+        if (p.date_to) qs.set('date_to', p.date_to);
+        if (p.include_history) qs.set('include_history', 'true');
+        return fetchRaw<any>('/radiology/scancare/overview' + (qs.toString() ? '?' + qs : ''));
+      },
+      billStudy: (orderId: number | string) => sendJson<any>('/radiology/orders/' + orderId + '/bill', 'POST', {}),
+      scancareWalkIn: (p: { patient_id: number; studies: number[]; urgency?: string; clinical_indication?: string; referred_by?: string }) =>
+        sendJson<any>('/radiology/scancare/walk-in', 'POST', p),
+      chargePreview: (orderId: number | string) =>
+        fetchRaw<any>('/radiology/orders/' + orderId + '/charge-preview'),
+      listOrders: (params?: { status?: string; modality?: string; patient_id?: number; encounter_id?: number; urgency?: string; date?: string; ordered_by?: string; view?: "active" | "done" }) => {
+        const qs = new URLSearchParams();
+        if (params?.view) qs.set('view', params.view);
         if (params?.status) qs.set('status', params.status);
         if (params?.modality) qs.set('modality', params.modality);
         if (params?.patient_id) qs.set('patient_id', String(params.patient_id));
@@ -2232,6 +2292,10 @@ export const api = {
     },
     getHefamaa: (id: number | string) => fetchRaw<any>('/quality/hefamaa/' + id),
     stats: () => fetchRaw<any>('/quality/stats'),
+    /** Compliance page: score and what pulls it down, HEFAMAA, audits (services/quality_hub.compliance). */
+    complianceOverview: () => fetchRaw<any>('/quality/compliance-overview'),
+    /** Pharmacy QC page: expiry, batches missing facts, medication incidents (quality_hub.pharmacy_qc). */
+    pharmacyQc: () => fetchRaw<any>('/quality/pharmacy-qc'),
   },
   // ── Phase 7 — HR Shifts & Leave ───────────────────────────────────────────
   hr: {
@@ -2400,5 +2464,68 @@ export const api = {
     },
     generateReferral: (encounterId: number | string, p: Record<string, any>) =>
       sendJson<any>('/documents/referral-letter/' + encounterId, 'POST', p),
+  },
+  // ── Staff Workspace (backend/src/routers/staff_workspace.py) — every member of staff ──
+  workspace: {
+    day: () => fetchRaw<any>("/workspace/day"),
+    operational: () => fetchRaw<any>("/workspace/operational"),
+    take: (rule: string, id: string, assign_to?: string) => sendJson<any>("/workspace/operational/take", "POST", { rule, id, assign_to }),
+    time: () => fetchRaw<any>("/workspace/time"),
+    clockIn: (payload: Record<string, any> = {}) => sendJson<any>("/workspace/time/start", "POST", payload),
+    takeBreak: () => sendJson<any>("/workspace/time/break", "POST", {}),
+    resume: () => sendJson<any>("/workspace/time/resume", "POST", {}),
+    clockOut: (payload: Record<string, any> = {}) => sendJson<any>("/workspace/time/stop", "POST", payload),
+    clockCancel: () => sendJson<any>("/workspace/time/cancel", "POST", {}),
+    tasks: () => fetchRaw<any>("/workspace/tasks"),
+    createTask: (payload: Record<string, any>) => sendJson<any>("/workspace/tasks", "POST", payload),
+    task: (id: string) => fetchRaw<any>(`/workspace/tasks/${id}`),
+    updateTask: (id: string, payload: Record<string, any>) => sendJson<any>(`/workspace/tasks/${id}`, "PATCH", payload),
+    setStatus: (id: string, status: string, extra: Record<string, any> = {}) =>
+      sendJson<any>(`/workspace/tasks/${id}/status`, "POST", { status, ...extra }),
+    comment: (id: string, body: string) => sendJson<any>(`/workspace/tasks/${id}/comment`, "POST", { body }),
+    requests: () => fetchRaw<any>("/workspace/requests"),
+    createRequest: (payload: Record<string, any>) => sendJson<any>("/workspace/requests", "POST", payload),
+    request: (id: string) => fetchRaw<any>(`/workspace/requests/${id}`),
+    requestAction: (id: string, action: string, payload: Record<string, any> = {}) =>
+      sendJson<any>(`/workspace/requests/${id}/${action}`, "POST", payload),
+    inbox: (filter = "all") => fetchRaw<any>(`/workspace/inbox?filter=${filter}`),
+    markRead: (ids?: number[]) => sendJson<any>("/workspace/inbox/read", "POST", { ids }),
+    conversations: () => fetchRaw<any>("/workspace/conversations"),
+    messages: (other: string) => fetchRaw<any>(`/workspace/messages/${other}`),
+    send: (other: string, body: string) => sendJson<any>(`/workspace/messages/${other}`, "POST", { body }),
+    team: () => fetchRaw<any>("/workspace/team"),
+    progress: (range = "week") => fetchRaw<any>(`/workspace/progress?range=${range}`),
+    journal: (range = "today") => fetchRaw<any[]>(`/workspace/journal?range=${range}`),
+    parse: (text: string) => sendJson<any>("/workspace/parse", "POST", { text }),
+    quick: (text: string) => sendJson<any>("/workspace/quick", "POST", { text }),
+    escalationPolicy: () => fetchRaw<Record<string, { after_hours: number; to: string }[]>>("/workspace/escalation-policy"),
+    saveEscalationPolicy: (subject: string, priority: string, steps: { after_hours: number; to: string }[]) =>
+      sendJson<any>("/workspace/escalation-policy", "PUT", { subject, priority, steps }),
+    runEscalations: () => sendJson<any>("/workspace/escalations/run", "POST", {}),
+    prefs: () => fetchRaw<any>("/workspace/prefs"),
+    savePrefs: (payload: Record<string, any>) => sendJson<any>("/workspace/prefs", "PUT", payload),
+    leave: () => fetchRaw<any>("/workspace/leave"),
+    requestLeave: (payload: Record<string, any>) => sendJson<any>("/workspace/leave", "POST", payload),
+  },
+  // ── HR hub (backend/src/routers/hr_hub.py) — live overview, directory, timesheets, payroll run ──
+  hrHub: {
+    overview: (week?: string) => fetchRaw<any>(`/hr/overview${week ? `?week=${week}` : ""}`),
+    people: () => fetchRaw<any>("/hr/people"),
+    person: (key: string) => fetchRaw<any>(`/hr/people/${encodeURIComponent(key)}`),
+    addPerson: (payload: Record<string, any>) => sendJson<any>("/hr/people", "POST", payload),
+    updatePerson: (key: string, payload: Record<string, any>) => sendJson<any>(`/hr/people/${encodeURIComponent(key)}`, "PATCH", payload),
+    timesheets: (week?: string, person?: string) =>
+      fetchRaw<any>(`/hr/timesheets?${new URLSearchParams({ ...(week ? { week } : {}), ...(person ? { person } : {}) }).toString()}`),
+    timesheetsCsvUrl: (week?: string) => apiUrl(`/hr/timesheets.csv${week ? `?week=${week}` : ""}`),
+    addEntry: (payload: Record<string, any>) => sendJson<any>("/hr/timesheets", "POST", payload),
+    review: (id: string, action: string, payload: Record<string, any> = {}) => sendJson<any>(`/hr/timesheets/${id}/${action}`, "POST", payload),
+    approveWeek: (payload: Record<string, any>) => sendJson<any>("/hr/timesheets/approve-week", "POST", payload),
+    payrollRun: (period?: string) => fetchRaw<any>(`/hr/payroll-run${period ? `?period=${period}` : ""}`),
+    preparePayroll: (period?: string) => sendJson<any>("/hr/payroll-run/prepare", "POST", { period }),
+    payrollBulk: (action: "approve" | "pay", payload: Record<string, any>) => sendJson<any>(`/hr/payroll-run/${action}`, "POST", payload),
+    updatePayroll: (id: string, payload: Record<string, any>) => sendJson<any>(`/hr/payroll-records/${id}`, "PATCH", payload),
+    payrollAction: (id: string, action: "approve" | "pay" | "delete", payload: Record<string, any> = {}) =>
+      sendJson<any>(`/hr/payroll-records/${id}/${action}`, "POST", payload),
+    peopleSummary: () => fetchRaw<any>("/hr/people-summary"),
   },
 };
