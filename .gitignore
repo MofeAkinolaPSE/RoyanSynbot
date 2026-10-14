@@ -36,5 +36,3 @@ workspace-files.txt
 DrM File
 Z:
 
-# certificate DNS API token (deploy/certbot-secrets/cloudflare.ini.example shows the format)
-deploy/certbot-secrets/*.ini

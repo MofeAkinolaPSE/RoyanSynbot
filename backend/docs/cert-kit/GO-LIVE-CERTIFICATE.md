@@ -11,7 +11,7 @@ because it holds the password the app needs to open the database in the first pl
 
 | When | Steps |
 |---|---|
-| Now (while the new Hope dump is on its way) | 3 (code on the server), 5–8 (domain, firewall, router, certificate) |
+| Now (while the new Hope dump is on its way) | 3 (code on the server), 5–8 (domain, firewall, router + Placeware add-on, certificate) |
 | After the Hope refresh | 1 (refresh Hope), 2 (make the dump), 4 (swap the server's database), 9 (before the doors open) |
 
 ---
@@ -27,8 +27,8 @@ because it holds the password the app needs to open the database in the first pl
 | Server | `172.16.0.26` (on the MikroTik's network: one router between it and the internet) |
 | App folder on the server | `<APP_FOLDER>` = where the repo is cloned on the server (e.g. `C:\Royan\RoyanSynbot`) |
 | Run every command from | `<APP_FOLDER>\deploy` |
-| Ports on the server | nginx `443` (HTTPS) and `80` (only redirects; not opened on the router). Database `127.0.0.1:5433`, Redis `6379`, GlitchTip `8090` stay on the server only. |
-| Certificate | Let's Encrypt, proven through the domain's DNS (port 80 belongs to Placeware), issued by `deploy\issue-cert-dns.ps1`, renewed automatically by the `royan_certbot` container |
+| Ports on the server | nginx `443` (HTTPS, reached from the internet through 9443) and `80` (only Let's Encrypt's check, passed on by Placeware's server). Database `127.0.0.1:5433`, Redis `6379`, GlitchTip `8090` stay on the server only. |
+| Certificate | Let's Encrypt, the same method as Placeware. Its check always arrives on port 80, which goes to Placeware's server; a small add-on there (`royan-acme.conf`) passes checks for the Royan domain to the Royan server. Issued once by `deploy\issue-cert.ps1`, renewed automatically by `royan_certbot`. Each company keeps its own certificate on its own server. |
 | Database | `synbot_health` in container `royan_db` (user `postgres` unless `.env` says otherwise) |
 
 Still to collect:
@@ -37,7 +37,8 @@ Still to collect:
 |---|---|
 | A shared IT email for certificate expiry warnings (`<EMAIL>`) | Royan IT |
 | MikroTik login | Royan IT / the consultant |
-| Login to the registrar where `royanhospitalaiapp.online` was bought (it shows Namecheap's parking page today) | you |
+| Namecheap login (where `royanhospitalaiapp.online` is registered) | you |
+| Access to the Placeware server (`192.168.0.112`) for the one-time add-on in Step 7 | you |
 | The newest Hope dumps (`db_drmnigeria-<date>.sql.gz`, `hope_master_nigeria-<date>.sql.gz`) and, if Finance has it, the 2025 Sage export | Royan |
 
 ---
@@ -131,45 +132,37 @@ what you noted on the laptop. If it differs, don't go live: restore again.
 
 - [ ] Server counts match the laptop; sign-in works
 
-## Step 5: Put the domain's DNS on Cloudflare and point it at the hospital
+## Step 5: Point the domain at the hospital (Namecheap)
 
-The certificate is proven through DNS, and Cloudflare's free DNS lets the server renew it by itself every 60 days.
-Traffic does **not** go through Cloudflare: the record is "DNS only".
+Namecheap → **Domain List** → **Manage** next to `royanhospitalaiapp.online` → **Advanced DNS**:
 
-1. Create a free account at `dash.cloudflare.com` → **Add a domain** → `royanhospitalaiapp.online` → Free plan.
-   Cloudflare shows **two nameservers** (like `xxx.ns.cloudflare.com`).
-2. At the registrar (Namecheap: Domain List → Manage → **Nameservers** → Custom DNS): replace the nameservers with
-   Cloudflare's two. Save. Cloudflare emails you when the domain is **Active** (minutes to a few hours).
-3. In Cloudflare → the domain → **DNS → Records → Add record**: Type `A`, Name `@`, IPv4 `102.223.1.15`,
-   Proxy status **DNS only** (grey cloud, not orange). Delete any other `A`/`CNAME` record for `@`.
-4. In Cloudflare → **My Profile → API Tokens → Create Token → "Edit zone DNS"** template → Zone resources:
-   Include · Specific zone · `royanhospitalaiapp.online` → Create. Copy the token (shown once).
-5. On the server: copy `deploy\certbot-secrets\cloudflare.ini.example` to `deploy\certbot-secrets\cloudflare.ini`,
-   open it in Notepad and paste the token in place of `PASTE-THE-TOKEN-HERE`. (This file is never committed.)
+1. Delete the existing parking records for host `@` and `www` (the `CNAME`/`URL Redirect` records Namecheap adds).
+2. **Add New Record**: Type `A Record`, Host `@`, Value `102.223.1.15`, TTL Automatic. Click the green ✔.
 
-Check on any PC: `nslookup royanhospitalaiapp.online 8.8.8.8` must answer `102.223.1.15`.
+Check on any PC: `nslookup royanhospitalaiapp.online 8.8.8.8` must answer `102.223.1.15` (minutes to a few hours).
 
-- [ ] Cloudflare shows the domain Active; `nslookup` returns `102.223.1.15`; token saved on the server
+- [ ] `nslookup` returns `102.223.1.15`
 
-## Step 6: Open the server's firewall
+## Step 6: Open the Royan server's firewall
 
-On the server, **PowerShell as administrator**:
+On the Royan server (`172.16.0.26`), **PowerShell as administrator**:
 
 ```powershell
 New-NetFirewallRule -DisplayName "RoyanHealth HTTPS 443" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+New-NetFirewallRule -DisplayName "RoyanHealth HTTP 80 (certificate checks)" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
 ```
 
-- [ ] Firewall allows 443
+- [ ] Firewall allows 443 and 80
 
-## Step 7: Router (MikroTik)
+## Step 7: Router (MikroTik) and the Placeware add-on
 
-**First, don't lock yourself out:** on an office PC open the MikroTik's address (`http://172.16.0.1`, or ask Royan
-IT). If it doesn't load, stop and do this step with Royan IT. **Don't edit or delete Placeware's rules.**
+**First, don't lock yourself out:** on an office PC open `http://172.16.0.1` (the MikroTik). If it doesn't load,
+stop and do this step with the consultant. **Don't edit or delete Placeware's existing rules.**
 
-1. **IP → Firewall → NAT.** Check that no rule already uses **Dst. Port `9443`** with Dst. Address `102.223.1.15`
-   (or no Dst. Address). If one does, pick another free port (e.g. `9444` or `10443`) and use it wherever this
-   walkthrough says 9443, including `CORS_ALLOW_ORIGINS` in Step 3.
-2. **Add New** (the internet → RoyanHealth). Leave everything else empty; don't tick the small boxes next to the
+1. **IP → Firewall → NAT.** Check that no rule already uses **Dst. Port `9443`**. If one does, pick another free
+   port (e.g. `9444`) and use it wherever this walkthrough says 9443, including `CORS_ALLOW_ORIGINS` in Step 3 and
+   the `:9443` in the Placeware add-on (Step 7.5). The server itself always listens on 443.
+2. **Add New** (the internet → RoyanHealth). Leave every other field empty; don't tick the small boxes next to the
    fields (they mean "NOT"):
 
    | Field | Value |
@@ -183,8 +176,8 @@ IT). If it doesn't load, stop and do this step with Royan IT. **Don't edit or de
    | To Ports | `443` |
    | Comment | `royan https` |
 
-3. **Add New** again (so staff **inside** the hospital can use the same address; without it the address only works
-   from outside):
+3. **Add New** again, so staff **inside** the hospital can use the same address (without it the address only
+   works from outside):
 
    | Field | Value |
    |---|---|
@@ -196,30 +189,46 @@ IT). If it doesn't load, stop and do this step with Royan IT. **Don't edit or de
    | Action | `masquerade` |
    | Comment | `royan hairpin` |
 
-   Drag it **above** any other `srcnat` rule in the list.
-4. **IP → DHCP Server → Leases**: find `172.16.0.26` and click **Make Static**, so the server keeps its address.
+   Drag it **above** any other `srcnat` rule.
+4. **IP → DHCP Server → Leases**: find `172.16.0.26` → **Make Static**, so the server keeps its address.
+5. **The Placeware add-on** (once; passes Let's Encrypt's checks for the Royan domain to the Royan server; Placeware's
+   own traffic is untouched). On the **Placeware server**, in the Placeware folder (`...\Chat Assisant  placeware x1`):
+   - Copy `backend\nginx-extra\royan-acme.conf` from the laptop's Placeware folder to the same place on the server.
+   - In `backend\docker-compose.yml`, under the `frontend:` service's `volumes:`, add this line under the
+     `certbot_www` one (same indentation):
+     ```yaml
+           - ./nginx-extra/royan-acme.conf:/etc/nginx/conf.d/royan-acme.conf:ro
+     ```
+   - In PowerShell, in the Placeware `backend` folder:
+     ```powershell
+     docker compose up -d frontend
+     docker compose exec frontend nginx -t
+     ```
+     The second line must say `syntax is ok` / `test is successful`. Placeware is back within seconds.
 
-- [ ] Both rules saved; port 9443 confirmed free; server address made static
+- [ ] Both MikroTik rules saved; 9443 confirmed free; server address static; Placeware add-on in place
 
 ## Step 8: Test, then get the certificate
 
-1. On a phone **on mobile data**, open `https://royanhospitalaiapp.online:9443`. A certificate warning appears;
-   tap Advanced → Proceed → the **RoyanHealth login** appears. Then try it on an office PC on hospital Wi-Fi too.
-   - Placeware opens instead: the rule's port is wrong (Step 7.2 must be `9443` → `443` on `172.16.0.26`).
+1. On a phone **on mobile data**: open `https://royanhospitalaiapp.online:9443`. A certificate warning appears; tap
+   Advanced → Proceed → the **RoyanHealth login** appears. Then try it on an office PC on hospital Wi-Fi.
+   - Placeware opens instead: Step 7.2 must be `9443` → `172.16.0.26` : `443`.
    - Nothing loads from outside: recheck Step 7.2 and Step 6; on the server `docker compose ps`.
-   - Works from the phone but not inside the hospital: Step 7.3 is missing or below another `srcnat` rule.
-2. On the server, in `<APP_FOLDER>\deploy`:
+   - Works from the phone but not inside: Step 7.3 is missing or below another `srcnat` rule.
+2. Still on mobile data, open `http://royanhospitalaiapp.online`: it must jump to
+   `https://royanhospitalaiapp.online:9443` (that proves port 80 reaches the Placeware add-on).
+3. On the Royan server, in `<APP_FOLDER>\deploy`:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\issue-cert-dns.ps1 -Email <EMAIL> -Domain royanhospitalaiapp.online
+   powershell -ExecutionPolicy Bypass -File .\issue-cert.ps1 -Email <EMAIL> -Domain royanhospitalaiapp.online
    ```
 
-   Four steps, each ending in a green **OK**, then "Done": a practice run with Let's Encrypt's test servers, the real
-   certificate, installed, nginx reloaded.
-3. Close all browser windows, open `https://royanhospitalaiapp.online:9443`: padlock, no warning. Phone too.
+   Five steps, each ending in a green **OK**, then "Done": start nginx and certbot, check the local check folder, a
+   practice run with Let's Encrypt's test servers, the real certificate, install and reload.
+4. Close all browser windows, open `https://royanhospitalaiapp.online:9443`: padlock, no warning. Phone too.
 
-Renewal is automatic: `royan_certbot` checks twice a day (through the same Cloudflare token) and nginx picks up a
-renewed certificate within 6 hours. Keep `cloudflare.ini` on the server.
+Renewal is automatic: `royan_certbot` checks twice a day (through the same port-80 path) and nginx picks up a
+renewed certificate within 6 hours.
 
 - [ ] Padlock on the computer and the phone
 
@@ -241,17 +250,16 @@ renewed certificate within 6 hours. Keep `cloudflare.ini` on the server.
 
 | Problem | Fix |
 |---|---|
-| `issue-cert-dns.ps1`: "No certbot-secrets\cloudflare.ini" or "still the placeholder" | Step 5.4–5.5. |
-| `issue-cert-dns.ps1` step 2: "The DNS check failed" | Cloudflare must show the domain **Active** (nameservers changed at the registrar), and the token must be the "Edit zone DNS" type for this domain. |
+| `issue-cert.ps1` step 2: "did not return the check file" | On the Royan server: `docker compose up -d --force-recreate nginx`, run it again. |
+| `issue-cert.ps1` step 3: "could not reach this server on port 80" | Port 80 isn't getting through: Step 5 (A record), Step 7.5 (Placeware add-on in place and `docker compose up -d frontend` done), Step 6 (Royan firewall allows 80). From mobile data, `http://royanhospitalaiapp.online/.well-known/acme-challenge/cert-check` should show `cert-ok` while the script waits. |
 | "too many failed authorizations" | Let's Encrypt limits retries: wait an hour, fix the cause, try again. |
 | Padlock still missing after "Done" | Close every browser window (they remember the old certificate), or try a private window. |
-| Port 443 "already in use" when starting the app | Another program holds it (IIS, Skype, another web server). Admin PowerShell: `netstat -ano \| findstr ":443 "`, find the process ID in Task Manager → Details, stop it. |
+| Port 443 or 80 "already in use" when starting the app | Another program holds it (IIS, Skype, another web server). Admin PowerShell: `netstat -ano \| findstr ":443 "`, find the process ID in Task Manager → Details, stop it. |
 | Restore prints warnings about extensions | Harmless; what counts is that the Step 2 counts match. |
 
 ## Never
 
-- Change or delete Placeware's router rules.
-- Delete the Docker volume `deploy_certbot_conf` (the certificate and the Let's Encrypt account) or `deploy\certbot-secrets\cloudflare.ini`.
-- Turn on Cloudflare's orange-cloud proxy for this record (Cloudflare doesn't relay port 9443).
-- Run `issue-cert-dns.ps1` on the laptop.
+- Change or delete Placeware's router rules, or remove the `royan-acme.conf` add-on from Placeware's server (Royan's renewals use it).
+- Delete the Docker volume `deploy_certbot_conf` (the certificate and the Let's Encrypt account).
+- Run `issue-cert.ps1` on the laptop.
 - Keep entering patients on the laptop after Step 2: from Step 4 the **server** is the hospital's system.
