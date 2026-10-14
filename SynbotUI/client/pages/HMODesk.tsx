@@ -15,6 +15,7 @@ import { SignaturePad } from "@/components/pharmacy/SignaturePad";
 import { PANEL_WIDTH, SectionLabel } from "@/components/shared/panel-shared";
 import { naira } from "@/components/billing/billing-shared";
 import { api } from "@/lib/api-client";
+import { HmoServicesCheck } from "@/components/hmo/HmoServicesCheck";
 import { encounterStatusLabel } from "@/lib/encounter-status";
 import { motionTransitions } from "@/lib/motion";
 import { useToast } from "@/hooks/use-toast";
@@ -61,6 +62,7 @@ export default function HMODesk({ embedded = false }: { embedded?: boolean }) {
     { label: "Waiting on pharmacy", value: s.awaiting_pharmacy ?? 0, icon: <Pill className="h-4 w-4" /> },
     { label: "Claims form to sign", value: s.to_sign ?? 0, icon: <FileSignature className="h-4 w-4" /> },
     { label: "Claims to verify", value: s.to_verify ?? 0, icon: <BadgeCheck className="h-4 w-4" /> },
+    { label: "Services to check", value: s.services_to_check ?? 0, icon: <ShieldCheck className="h-4 w-4" /> },
     { label: "Approvals pending", value: s.approvals_pending ?? 0, icon: <KeyRound className="h-4 w-4" /> },
     { label: "HMO share (on this list)", value: naira(s.hmo_share ?? 0), icon: <ShieldCheck className="h-4 w-4" /> },
   ];
@@ -194,7 +196,7 @@ function HmoVisitPanel({ row: r }: { row: Row }) {
       <div className="flex flex-wrap gap-2">
         <Button className="gap-1.5" disabled={!r.claim_bill_id} onClick={claimsForm}><FileText className="h-4 w-4" /> Open Royan claims form</Button>
         <Button variant="outline" className="gap-1.5" onClick={() => navigate(`/hospital/patients/${r.mrn}`)}>Patient record</Button>
-        {r.approvals_pending > 0 && <Button variant="outline" className="gap-1.5 border-orange-400 text-orange-800" onClick={() => navigate("/hospital/hmo")}><KeyRound className="h-4 w-4" /> {r.approvals_pending} approval(s) to decide</Button>}
+        {r.approvals_pending > 0 && <Badge variant="outline" className="gap-1.5 border-orange-400 px-2.5 py-1 text-orange-800"><KeyRound className="h-4 w-4" /> {r.approvals_pending} approval(s) to decide - below</Badge>}
       </div>
       {!r.claim_bill_id && <p className="text-xs text-foreground/75">The claims form opens once the visit has a bill.</p>}
 
@@ -224,6 +226,8 @@ function HmoVisitPanel({ row: r }: { row: Row }) {
           </table>
         )}
       </section>
+
+      <HmoServicesCheck encounterId={r.encounter_id} title="Services - what the HMO covers (check before the claims form)" />
 
       <section>
         <SectionLabel icon={<ReceiptText className="h-3.5 w-3.5" />} label="Bills" />

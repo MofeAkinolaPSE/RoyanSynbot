@@ -705,15 +705,12 @@ def list_encounters(
     result = query.execute()
     encounters = _enrich_encounters(result.data or [])
     owed = _outstanding_by_encounter([e["id"] for e in encounters if e.get("id")])
-    from src.services.stage_billing import visit_clearance
     for e in encounters:
         e["amount_owed"] = round(owed.get(int(e["id"]), 0.0), 2) if e.get("id") else 0.0
-        # pay first: the patient goes to the cashier before the next service (vitals, doctor, results review)
+        # Royan's flow (confirmed 14 Oct 2026): vitals -> doctor -> cashier -> services. A patient is not held for
+        # payment before vitals or the consultation; they pay at the cashier after seeing the doctor, and lab / scan /
+        # pharmacy wait for that payment (stage_billing.require_clearance on each order).
         e["pay_first"] = None
-        if e["amount_owed"] > 0.009 and e.get("status") != "discharged":
-            c = visit_clearance(e["id"])
-            if not c["ok"]:
-                e["pay_first"] = {"owed": c["owed"], "bills": c["bills"]}
     return {"encounters": encounters, "count": len(encounters)}
 
 
@@ -796,8 +793,7 @@ async def nurse_assessment_done(encounter_id: int, user=Depends(verify_jwt)):
     """Nurse marks vitals recorded — patient ready for doctor."""
     encounter = _get_encounter(encounter_id)
     _assert_transition(encounter["status"], "nurse_assessment")
-    from src.services.stage_billing import require_visit_clearance   # pay at the cashier before the doctor
-    require_visit_clearance(encounter_id)
+    # no payment hold before the doctor: the patient pays at the cashier after the consultation (14 Oct 2026)
     now = datetime.now(timezone.utc).isoformat()
     db.table(TABLE_ENCOUNTERS).update({"status": "nurse_assessment", "nurse_done_at": now}).eq("id", encounter_id).execute()
     invalidate_cache_tags("hospital", "queue", "patient_flow", "encounters")
@@ -868,9 +864,7 @@ async def record_consultation(encounter_id: int, payload: ConsultRequest, user=D
     # this can be re-called on an already-consulting encounter to (re)assign the
     # doctor without requiring a status change.
     _assert_transition(encounter["status"], "consulting")
-    if encounter["status"] != "consulting":   # (re)assigning the doctor mid-consultation is not a new service
-        from src.services.stage_billing import require_visit_clearance   # pay before seeing (or returning to) the doctor
-        require_visit_clearance(encounter_id)
+    # No payment hold before the consultation (14 Oct 2026): vitals -> doctor -> cashier -> services.
 
     # Resolve the doctor as a stable royan_staff.id FK, not a free-text name:
     # a hand-typed name (or the submitting nurse/receptionist's own JWT sub)

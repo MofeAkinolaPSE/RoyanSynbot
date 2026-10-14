@@ -20,6 +20,7 @@ import {
   History, ExternalLink, Loader2, CheckCircle2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ViewReportButton } from "@/components/reports/ResultReport";
 import { useToast } from "@/hooks/use-toast";
 import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
 import { cn } from "@/lib/utils";
@@ -292,6 +293,8 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                           {order.tat_minutes != null && ` · TAT ${order.tat_minutes}m`}
                         </p>
                       </div>
+
+                      <ViewReportButton kind="scan" orderIds={[order.id]} className="w-full" label="View report (print)" />
 
                       {!order.verified_at && (
                         <Button size="sm" variant="outline" className="w-full" onClick={() => setReportMode("edit")}>

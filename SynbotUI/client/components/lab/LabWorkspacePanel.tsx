@@ -18,8 +18,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   User, FlaskConical, TestTube, Droplets, SendHorizonal, ShieldCheck,
-  History, Upload, Eye, ExternalLink, Loader2, XCircle, CheckCircle2,
+  History, Upload, Eye, ExternalLink, Loader2, XCircle, CheckCircle2, Plus, Trash2,
 } from "lucide-react";
+import { ViewReportButton } from "@/components/reports/ResultReport";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,8 @@ interface LabWorkspacePanelProps {
 const emptyCollect = { specimen_type: "", container: "", volume: "", specimen_label: "", collected_by: "", notes: "" };
 const emptySendOut = { external_lab: "", notes: "" };
 const emptyResultForm = { result_value: "", result_unit: "", reference_range: "", is_critical: false, notes: "" };
+type ParamRow = { name: string; value: string; unit: string; reference_range: string };
+const blankParam = (name = ""): ParamRow => ({ name, value: "", unit: "", reference_range: "" });
 
 export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: LabWorkspacePanelProps) {
   const navigate = useNavigate();
@@ -65,6 +68,7 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   const [analyteValues, setAnalyteValues] = useState<Array<{ name: string; unit?: string; observed_value: string; comment: string }>>([]);
   const [resultMode, setResultMode] = useState<"view" | "edit" | "amend">("view");
   const [amendReason, setAmendReason] = useState("");
+  const [params, setParams] = useState<ParamRow[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -117,6 +121,23 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
       }));
     } else {
       setAnalyteValues([]);
+      // No template: the report lines. Editing keeps what was entered; otherwise start from the lines (units, ranges)
+      // used last time for this test here, or Hope's parameter names, or one line named after the test.
+      const prior: any[] = resultMode === "edit" ? (result?.result_data?.analytes ?? []) : [];
+      if (prior.length) {
+        setParams(prior.map((a: any) => ({ name: a.name ?? "", value: String(a.observed_value ?? ""), unit: a.unit ?? "",
+          reference_range: a.reference_range ?? (a.normal_low != null && a.normal_high != null ? `${a.normal_low} - ${a.normal_high}` : "") })));
+      } else if (resultMode === "edit" && result?.result_data?.value != null) {
+        setParams([{ name: order.test_name ?? "", value: String(result.result_data.value), unit: result.result_data.unit ?? "",
+          reference_range: result.reference_range ?? "" }]);
+      } else {
+        setParams([blankParam(order.test_name ?? "")]);
+        api.hospital.lab.parameters(order.test_name ?? "").then((d: any) => {
+          const rows: any[] = d?.parameters ?? [];
+          if (rows.length) setParams((cur) => (cur.some((c) => c.value.trim()) ? cur
+            : rows.map((r) => ({ name: r.name ?? "", value: "", unit: r.unit ?? "", reference_range: r.reference_range ?? "" }))));
+        }).catch(() => undefined);
+      }
     }
     if (resultMode === "edit" && result) {
       setResultForm({
@@ -189,9 +210,9 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
       };
     }
     return {
-      result_value: resultForm.result_value,
-      result_unit: resultForm.result_unit,
-      reference_range: resultForm.reference_range || undefined,
+      parameters: params.filter((p) => p.name.trim() && p.value.trim()).map((p) => ({
+        name: p.name.trim(), value: p.value.trim(), unit: p.unit.trim() || undefined, reference_range: p.reference_range.trim() || undefined,
+      })),
       is_critical: resultForm.is_critical,
       notes: resultForm.notes || undefined,
     };
@@ -248,7 +269,7 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   const canAmend     = !!result && !!result.verified_at;
   const resultFormValid = template?.analytes?.length
     ? analyteValues.some(a => a.observed_value.trim())
-    : !!resultForm.result_value.trim();
+    : params.some((p) => p.name.trim() && p.value.trim());
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -435,28 +456,35 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
                         </Button>
                       )}
 
+                      <ViewReportButton kind="lab" orderIds={[orderId]} className="w-full" />
+
                       {result.verified_at && (
                         <>
-                          <Separator />
-                          <section className="space-y-2">
-                            <SectionLabel icon={<Upload className="h-3.5 w-3.5" />} label="Lab Report" />
-                            {result.report_file_url ? (
-                              <Button size="sm" variant="outline" className="w-full gap-1.5"
-                                onClick={() => window.open(api.hospital.lab.reportUrl(result.report_file_url.split("/").pop()), "_blank")}>
-                                <Eye className="h-3.5 w-3.5" /> View Report
-                              </Button>
-                            ) : (
-                              <div className="space-y-2">
-                                <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
-                                  onChange={e => setUploadFile(e.target.files?.[0] ?? null)} className="cursor-pointer text-xs" />
-                                <Button size="sm" variant="outline" className="w-full gap-1.5"
-                                  disabled={!uploadFile || uploading} onClick={handleUploadReport}>
-                                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                                  {uploading ? "Uploading…" : "Upload Report"}
-                                </Button>
-                              </div>
-                            )}
-                          </section>
+                          {(order.external_lab || order.sent_out_at || result.report_file_url) && (
+                            <>
+                              <Separator />
+                              <section className="space-y-2">
+                                <SectionLabel icon={<Upload className="h-3.5 w-3.5" />} label="External lab's own report" />
+                                {result.report_file_url ? (
+                                  <Button size="sm" variant="outline" className="w-full gap-1.5"
+                                    onClick={() => window.open(api.hospital.lab.reportUrl(result.report_file_url.split("/").pop()), "_blank")}>
+                                    <Eye className="h-3.5 w-3.5" /> View attached file
+                                  </Button>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Sent out to {order.external_lab ?? "an external lab"}: attach their report if they sent one.</p>
+                                    <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                      onChange={e => setUploadFile(e.target.files?.[0] ?? null)} className="cursor-pointer text-xs" />
+                                    <Button size="sm" variant="outline" className="w-full gap-1.5"
+                                      disabled={!uploadFile || uploading} onClick={handleUploadReport}>
+                                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                                      {uploading ? "Uploading…" : "Attach file"}
+                                    </Button>
+                                  </div>
+                                )}
+                              </section>
+                            </>
+                          )}
                           <Separator />
                           <Button size="sm" variant="ghost" className="w-full text-orange-500" onClick={() => setResultMode("amend")}>
                             Amend Result…
@@ -493,26 +521,31 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <Label>Result Value *</Label>
-                              <Input value={resultForm.result_value}
-                                onChange={e => setResultForm(f => ({ ...f, result_value: e.target.value }))}
-                                placeholder="e.g. 14.2" />
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Unit</Label>
-                              <Input value={resultForm.result_unit}
-                                onChange={e => setResultForm(f => ({ ...f, result_unit: e.target.value }))}
-                                placeholder="e.g. g/dL" />
-                            </div>
+                          <p className="text-xs text-muted-foreground">
+                            One line per investigation - this is what prints on the report (Scancare template).
+                          </p>
+                          <div className="grid grid-cols-[1.4fr_1fr_0.8fr_1fr_28px] gap-1.5 text-xs font-medium text-muted-foreground">
+                            <span>Investigation</span><span>Observed value</span><span>Units</span><span>Normal range</span><span />
                           </div>
-                          <div className="space-y-1">
-                            <Label>Reference Range</Label>
-                            <Input value={resultForm.reference_range}
-                              onChange={e => setResultForm(f => ({ ...f, reference_range: e.target.value }))}
-                              placeholder="e.g. 12.0–16.0 g/dL" />
-                          </div>
+                          {params.map((p, i) => (
+                            <div key={i} className="grid grid-cols-[1.4fr_1fr_0.8fr_1fr_28px] items-center gap-1.5">
+                              <Input className="h-8 text-xs" value={p.name} placeholder="e.g. Sodium"
+                                onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                              <Input className="h-8 text-xs" value={p.value} placeholder="Value" autoFocus={i === 0}
+                                onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} />
+                              <Input className="h-8 text-xs" value={p.unit} placeholder="mg/dl"
+                                onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} />
+                              <Input className="h-8 text-xs" value={p.reference_range} placeholder="135 - 150"
+                                onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, reference_range: e.target.value } : x))} />
+                              <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="Remove line"
+                                disabled={params.length === 1} onClick={() => setParams(ps => ps.filter((_, j) => j !== i))}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setParams(ps => [...ps, blankParam()])}>
+                            <Plus className="h-3.5 w-3.5" /> Add line
+                          </Button>
                           <div className="flex items-center gap-2">
                             <Checkbox id="panel-is-critical" checked={resultForm.is_critical}
                               onCheckedChange={v => setResultForm(f => ({ ...f, is_critical: !!v }))} />

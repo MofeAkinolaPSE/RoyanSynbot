@@ -1326,8 +1326,12 @@ def get_claims_form(bill_id: int, user=Depends(verify_jwt)):
         if enc:
             bill_ids = [r["id"] for r in _q(conn, """SELECT id FROM royan_billing WHERE encounter_id=%s AND status <> 'void'
                                                       AND COALESCE(entity,'ROYAN')=%s""", (enc["id"], company))] or [bill_id]
-        items = _q(conn, """SELECT description, category, quantity, unit_price, gross_amount, covered_amount, patient_amount,
-                                   source, source_id FROM royan_bill_items WHERE billing_id = ANY(%s) ORDER BY id""", (bill_ids,))
+        all_items = _q(conn, """SELECT description, category, quantity, unit_price, gross_amount, covered_amount, patient_amount,
+                                       source, source_id, hmo_decision, hmo_approval_code
+                                FROM royan_bill_items WHERE billing_id = ANY(%s) ORDER BY id""", (bill_ids,))
+        # services the HMO team marked not covered are the patient's, not the HMO's: they stay off the claim
+        items = [i for i in all_items if i.get("hmo_decision") != "not_covered"]
+        not_covered = [i for i in all_items if i.get("hmo_decision") == "not_covered"]
         diagnoses = visit_diagnoses(conn, enc["id"]) if enc else []
         note = _q1(conn, """SELECT subjective, assessment, plan FROM royan_encounter_notes WHERE encounter_id=%s
                             ORDER BY (signed_at IS NULL), created_at DESC LIMIT 1""", (enc["id"],)) if enc else None
@@ -1338,10 +1342,11 @@ def get_claims_form(bill_id: int, user=Depends(verify_jwt)):
                            WHERE p.encounter_id=%s ORDER BY p.prescribed_at""", (enc["id"],)) if enc else []
         claim = _q1(conn, """SELECT * FROM royan_insurance_claims WHERE billing_id = ANY(%s) ORDER BY id DESC LIMIT 1""", (bill_ids,))
     priced = {str(i["source_id"]): float(i["gross_amount"] or 0) for i in items if i.get("source") == "prescription"}
+    excluded_rx = {str(i["source_id"]) for i in not_covered if i.get("source") == "prescription"}
     medications = [{"name": m["drug_name"], "dosage": " ".join(x for x in (m.get("dosage"), m.get("frequency")) if x),
                     "duration": m.get("duration"), "quantity": m.get("quantity_dispensed") or m.get("quantity"),
                     "cost": priced.get(str(m["id"]), float(m.get("total_cost") or 0)), "dispensed": bool(m.get("dispensed_at"))}
-                   for m in meds]
+                   for m in meds if str(m["id"]) not in excluded_rx]
     # the patient signs once for the visit (HMO desk or pharmacy pad); an older visit falls back to the drug-collection
     # signature. Embedded inline: the image route needs a token an <img> tag cannot send.
     from src.signatures import signature_data_url
@@ -1383,6 +1388,8 @@ def get_claims_form(bill_id: int, user=Depends(verify_jwt)):
             "admission", "nursing", "pharmacy", "drug"})],
         "medications": medications,
         "total": total,
+        "not_covered": [{"description": i["description"], "cost": float(i["gross_amount"] or 0)} for i in not_covered],
+        "approval_codes": sorted({i["hmo_approval_code"] for i in items if i.get("hmo_approval_code")}),
         "authorisation_code": (claim or {}).get("authorisation_code"),
         "clinical_summary": _clinical_summary(enc or {}, note or {}),
         "patient_signature_url": signature,

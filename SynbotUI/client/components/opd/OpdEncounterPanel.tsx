@@ -30,6 +30,7 @@ import { EncounterResults } from "@/components/opd/EncounterResults";
 import { SignedNoteList } from "@/components/soap/SignedNoteList";
 import { CatalogCombobox } from "@/components/shared/CatalogCombobox";
 import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { HmoServicesCheck } from "@/components/hmo/HmoServicesCheck";
 
 interface OpdEncounterPanelProps {
   encounter: {
@@ -621,6 +622,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
 
                 {/* ── Orders (Lab + Radiology) ── */}
                 <TabsContent value="orders" className="mt-0 space-y-5">
+                  <HmoServicesCheck encounterId={encounterId} title="HMO cover for this visit" />
                   <section className="space-y-2">
                     <SectionLabel icon={<FlaskConical className="h-3.5 w-3.5" />} label="Order Lab Test" />
                     <Input placeholder="Test name, e.g. CBC" value={labForm.test_name}

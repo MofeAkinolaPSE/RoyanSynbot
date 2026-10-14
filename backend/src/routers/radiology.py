@@ -437,6 +437,19 @@ def amend_report(order_id: int, payload: ReportAmend, user=Depends(verify_jwt)):
     return {"ok": True, "order_id": order_id, "amended": True}
 
 
+@router.get("/report/{order_id}")
+def scan_report(order_id: int, user=Depends(verify_jwt)):
+    """The scan result as Scancare's printed report (services/result_reports)."""
+    from src.services.result_reports import scan_report as build
+    try:
+        out = build(order_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    audit_event("scan_report_viewed", {"order_id": order_id}, actor_id=user.get("sub"), subject_type="radiology_order",
+                subject_id=str(order_id))
+    return out
+
+
 @router.get("/patients/{patient_id}/history")
 def patient_history(
     patient_id: int,

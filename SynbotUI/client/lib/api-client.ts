@@ -1662,6 +1662,15 @@ export const api = {
         if (!res.ok) throw new ApiError('Signature upload failed', res.status, 'server');
         return res.json();
       },
+      /** The HMO team's check of a visit's billed services (covered / not covered / HMO approval). */
+      visitServices: (encounterId: number | string) => fetchRaw<any>('/coverage/visits/' + encounterId + '/services'),
+      decideService: (itemId: number | string, decision: 'covered' | 'not_covered', note?: string) =>
+        sendJson<any>('/coverage/bill-items/' + itemId + '/decision', 'POST', { decision, note }),
+      requestServiceApproval: (itemId: number | string, reason: string) =>
+        sendJson<any>('/coverage/bill-items/' + itemId + '/request-approval', 'POST', { reason }),
+      answerServiceApproval: (itemId: number | string, p: { approved: boolean; authorization_code?: string; note?: string }) =>
+        sendJson<any>('/coverage/bill-items/' + itemId + '/approval', 'POST', p),
+      approvalRequests: () => fetchRaw<any>('/coverage/approval-requests'),
     },
     hope: {
       sync: (entity: 'patients' | 'appointments' | 'admissions' | 'lab' | 'pharmacy' | 'billing', limit = 200) =>
@@ -2058,6 +2067,10 @@ export const api = {
         return res.json();
       },
       reportUrl: (filename: string) => apiUrl('/lab/reports/' + encodeURIComponent(filename)),
+      /** The printed lab report (Scancare template) for one or more orders of one patient. */
+      report: (orderIds: Array<number | string>) => fetchRaw<any>('/lab/report?orders=' + orderIds.join(',')),
+      /** Report lines to fill for a test with no template (last used here, else Hope's). */
+      parameters: (testName: string) => fetchRaw<any>('/lab/parameters?test_name=' + encodeURIComponent(testName)),
       listTemplates: (params?: { test_name?: string; active_only?: boolean }) => {
         const qs = new URLSearchParams();
         if (params?.test_name) qs.set('test_name', params.test_name);
@@ -2072,6 +2085,8 @@ export const api = {
     // ── Phase 3 — Radiology ───────────────────────────────────────────────
     radiology: {
       createOrder: (p: Record<string, any>) => sendJson<any>('/radiology/orders', 'POST', p),
+      /** The printed Scancare report for a scan. */
+      report: (orderId: number | string) => fetchRaw<any>('/radiology/report/' + orderId),
       scancareOverview: (p: { date_from?: string; date_to?: string; include_history?: boolean } = {}) => {
         const qs = new URLSearchParams();
         if (p.date_from) qs.set('date_from', p.date_from);

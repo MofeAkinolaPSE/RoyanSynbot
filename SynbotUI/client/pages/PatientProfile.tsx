@@ -33,6 +33,7 @@ import { BackButton } from "@/components/BackButton";
 import { useAuth } from "@/components/AuthProvider";
 import { EncounterStoryPanel } from "@/components/patient/EncounterStoryPanel";
 import { api } from "@/lib/api-client";
+import { ViewReportButton } from "@/components/reports/ResultReport";
 import { useToast } from "@/hooks/use-toast";
 import { CoverageQuote } from "@/components/CoverageQuote";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -2133,6 +2134,8 @@ export default function PatientProfile() {
                     { header: "Urgency", width: "w-[90px]", cell: (o: any) => <Badge variant="outline" className="text-xs uppercase">{o.urgency ?? "—"}</Badge> },
                     { header: "Status", width: "w-[120px]", cell: (o: any) => <Badge variant="outline" className="text-xs capitalize">{o.status?.replace(/_/g, " ") ?? "—"}</Badge> },
                     { header: "Ordered", width: "w-[110px]", className: "text-muted-foreground", cell: (o: any) => fmtDate(o.ordered_at) },
+                    { header: "", width: "w-[130px]", cell: (o: any) => (o.result_summary || ["resulted", "verified", "completed"].includes(o.status))
+                        ? <ViewReportButton kind="lab" orderIds={[o.id]} variant="ghost" /> : null },
                   ]}
                 />
               </div>
@@ -2159,6 +2162,8 @@ export default function PatientProfile() {
                     { header: "Impression", cell: (o: any) => o.impression ?? <span className="text-muted-foreground">—</span> },
                     { header: "Status", width: "w-[120px]", cell: (o: any) => <Badge variant="outline" className="text-xs capitalize">{o.status?.replace(/_/g, " ") ?? "—"}</Badge> },
                     { header: "Ordered", width: "w-[110px]", className: "text-muted-foreground", cell: (o: any) => fmtDate(o.ordered_at) },
+                    { header: "", width: "w-[130px]", cell: (o: any) => (o.report || o.impression || o.findings)
+                        ? <ViewReportButton kind="scan" orderIds={[o.id]} variant="ghost" /> : null },
                   ]}
                 />
               </div>

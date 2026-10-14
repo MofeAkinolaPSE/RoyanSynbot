@@ -946,6 +946,14 @@ def _hmo_desk_rows(days: int, encounter_id: Optional[int] = None) -> list[dict]:
                             WHERE b.encounter_id = ANY(%s) AND b.status <> 'void' ORDER BY b.id""", (ids,))
         auths = _q(conn, """SELECT encounter_id, status, COUNT(*) AS n FROM royan_coverage_authorizations
                             WHERE encounter_id = ANY(%s) GROUP BY 1, 2""", (ids,))
+        checks = {r["encounter_id"]: r for r in _q(conn, """
+            SELECT b.encounter_id,
+                   COUNT(*) FILTER (WHERE i.hmo_decision IS NULL) AS unchecked,
+                   COUNT(*) FILTER (WHERE i.hmo_decision = 'covered') AS covered,
+                   COUNT(*) FILTER (WHERE i.hmo_decision = 'not_covered') AS not_covered,
+                   COUNT(*) FILTER (WHERE i.hmo_approval_status = 'requested') AS approval_requested
+            FROM royan_bill_items i JOIN royan_billing b ON b.id = i.billing_id
+            WHERE b.encounter_id = ANY(%s) AND b.status <> 'void' GROUP BY 1""", (ids,))}
 
     def by(rows):
         out: dict = {i: [] for i in ids}
@@ -983,7 +991,10 @@ def _hmo_desk_rows(days: int, encounter_id: Optional[int] = None) -> list[dict]:
             "patient_owes": round(sum(max(b["patient_balance"] - b["paid"], 0) for b in bl), 2),
             "claim_bill_id": bl[0]["id"] if bl else None,
             "claim_status": next((b["claim_status"] for b in bl if b.get("claim_status")), None),
-            "approvals_pending": a.get("requested", 0), "approvals": a,
+            "approvals_pending": a.get("requested", 0) + int((checks.get(e["id"]) or {}).get("approval_requested") or 0),
+            "approvals": a,
+            "services_check": {k: int((checks.get(e["id"]) or {}).get(k) or 0)
+                               for k in ("unchecked", "covered", "not_covered", "approval_requested")},
             "signed": bool(e.get("claim_signature_url")) or any(d["signed"] for d in drugs),
             "signed_at": e["claim_signed_at"], "signed_by": e["claim_signed_by"],
             "verified_at": e["hmo_verified_at"], "verified_by": e["hmo_verified_by"], "verify_note": e["hmo_verify_note"],
@@ -1005,6 +1016,7 @@ def hmo_desk(days: int = Query(0, ge=0, le=14, description="also show HMO patien
             "to_sign": sum(1 for r in rows if r["bills"] and not r["signed"]),
             "to_verify": sum(1 for r in rows if r["bills"] and not r["verified_at"]),
             "approvals_pending": sum(r["approvals_pending"] for r in rows),
+            "services_to_check": sum(r["services_check"]["unchecked"] for r in rows),
             "hmo_share": round(sum(r["hmo_share"] for r in rows), 2),
         },
     }
@@ -1060,3 +1072,85 @@ def hmo_desk_verify(encounter_id: int, payload: HmoVerifyRequest, user=Depends(v
                 {"encounter_id": encounter_id, "note": payload.note}, actor_id=user.get("sub"),
                 subject_type="encounter", subject_id=str(encounter_id))
     return {"ok": True, "verified_at": now if payload.verified else None}
+
+
+# -- HMO service check (migration 244, services/hmo_review.py) ----------------
+# The HMO team goes through an HMO patient's billed services before the claims form: covered, or not covered (the
+# patient pays). A needed service that is not covered can be put to the HMO provider for approval by the doctor, the
+# cashier or the HMO team; the HMO team records the answer.
+
+class ServiceDecision(BaseModel):
+    decision: str            # covered | not_covered
+    note: Optional[str] = None
+
+
+class ApprovalRequest(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
+class ApprovalAnswer(BaseModel):
+    approved: bool
+    authorization_code: Optional[str] = None
+    note: Optional[str] = None
+
+
+def _review_call(fn, *a):
+    from src.services import hmo_review
+    try:
+        return fn(*a)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except hmo_review.ReviewError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+def _books(out: dict, user: dict) -> dict:
+    if out.get("review_id"):
+        from src.fin.integrations import after_commit
+        out["books"] = after_commit("BILL_COVER", out["review_id"], user.get("sub"))
+    return out
+
+
+@router.get("/visits/{encounter_id}/services")
+def visit_services(encounter_id: int, user=Depends(verify_jwt)):
+    """The visit's billed services with who pays each and where the HMO check stands."""
+    from src.services import hmo_review
+    return hmo_review.visit_services(encounter_id)
+
+
+@router.post("/bill-items/{item_id}/decision")
+def decide_service(item_id: int, payload: ServiceDecision, user=Depends(verify_jwt)):
+    from src.services import hmo_review
+    out = _review_call(hmo_review.decide, item_id, payload.decision, payload.note, user)
+    audit_event(f"hmo_service_{payload.decision}", {"note": payload.note}, actor_id=user.get("sub"),
+                subject_type="bill_item", subject_id=str(item_id))
+    return _books(out, user)
+
+
+@router.post("/bill-items/{item_id}/request-approval")
+def request_service_approval(item_id: int, payload: ApprovalRequest, user=Depends(verify_jwt)):
+    from src.services import hmo_review
+    out = _review_call(hmo_review.request_approval, item_id, payload.reason, user)
+    audit_event("hmo_approval_requested", {"reason": payload.reason}, actor_id=user.get("sub"),
+                subject_type="bill_item", subject_id=str(item_id))
+    return out
+
+
+@router.post("/bill-items/{item_id}/approval")
+def answer_service_approval(item_id: int, payload: ApprovalAnswer, user=Depends(verify_jwt)):
+    from src.services import hmo_review
+    out = _review_call(hmo_review.resolve_approval, item_id, payload.approved, payload.authorization_code, payload.note, user)
+    audit_event("hmo_approval_" + ("approved" if payload.approved else "declined"),
+                {"code": payload.authorization_code, "note": payload.note}, actor_id=user.get("sub"),
+                subject_type="bill_item", subject_id=str(item_id))
+    return _books(out, user)
+
+
+@router.get("/approval-requests")
+def approval_requests(user=Depends(verify_jwt)):
+    """Services waiting for the HMO provider's approval, oldest first (the HMO team's to-do list)."""
+    from src.services import hmo_review
+    rows = hmo_review.open_requests()
+    return {"requests": rows, "count": len(rows)}

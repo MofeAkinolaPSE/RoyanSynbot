@@ -21,6 +21,7 @@ import {
   ShieldOff, Ban, Printer, Percent, Undo2, Unlock, FileText, Wallet
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { HmoServicesCheck } from "@/components/hmo/HmoServicesCheck";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/AuthProvider";
 import { SectionLabel, PANEL_WIDTH } from "@/components/shared/panel-shared";
@@ -319,6 +320,12 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab, 
                     <DetailRow label="Amount Paid"  value={naira(bill.amount_paid)} accent="text-green-500" />
                     <DetailRow label="Outstanding"  value={naira(bill.outstanding)} accent={(bill.outstanding ?? 0) > 0 ? "text-red-500 font-semibold" : "text-green-500"} />
                   </section>
+                  {isHmo && bill.encounter_id && (
+                    <>
+                      <Separator />
+                      <HmoServicesCheck encounterId={bill.encounter_id} />
+                    </>
+                  )}
 
                   {/* Cashier applies a discount; an admin decides. The amount is
                       not deducted until approved, so what the patient owes never

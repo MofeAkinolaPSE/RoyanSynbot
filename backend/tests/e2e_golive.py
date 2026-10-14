@@ -143,13 +143,9 @@ def visit(kind: str):
         step("PRIVATE: front-desk bill raised for the patient", float(fb.get("patient_balance") or 0) > 0, f"patient={fb.get('patient_balance')}")
         _, ql = call("GET", "/queue/encounters?active_only=true")
         row = next((x for x in ql.get("encounters", []) if x["id"] == eid), {})
-        step("PRIVATE: queue shows 'to pay first' before vitals", bool(row.get("pay_first")), str(row.get("pay_first")))
-        call("POST", "/nursing/vitals", json={"patient_id": pid, "encounter_id": eid, "temperature": 37.0})
-        s, b = call("POST", f"/queue/encounters/{eid}/nurse-done", json={})
-        step("PRIVATE: unpaid - nurse cannot send the patient to the doctor", s == 402, f"HTTP {s}: {str(b)[:160]}")
-        s, b = call("POST", f"/queue/encounters/{eid}/consult", who="doctor", json={"doctor_id": DOCTOR_STAFF_ID})
-        step("PRIVATE: unpaid - doctor cannot start the consultation", s in (402, 409), f"HTTP {s}: {str(b)[:160]}")
-        pay_all(eid, label)
+        # vitals -> doctor -> cashier -> services (14 Oct 2026): no payment hold before vitals or the consultation;
+        # the front-desk bill is paid at the cashier with the orders, and lab / scan / pharmacy wait for that payment
+        step("PRIVATE: no payment hold before vitals and the doctor", not row.get("pay_first"), str(row.get("pay_first")))
 
     s, q = call("GET", f"/queue/doctors-today")
     me = next((d for d in (q or {}).get("doctors", []) if d["id"] == DOCTOR_STAFF_ID), {})

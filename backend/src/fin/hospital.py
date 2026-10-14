@@ -222,7 +222,16 @@ def sync_hmo_claim(conn, invoice_id: Any) -> Optional[Dict[str, Any]]:
                                                     GROUP BY source_type""", (inv["id"],))}
     paid = money((alloc.get("RECEIPT") or {}).get("amount"))
     credited = money((alloc.get("CREDIT_NOTE") or {}).get("amount"))
-    total = money(inv["total"])
+    # A service the HMO team marked not covered leaves the HMO's invoice by credit note (BILL_COVER): it was never
+    # claimed, so it shrinks what is claimed rather than counting as the HMO disallowing part of the claim.
+    moved = money(q1(conn, """SELECT COALESCE(SUM(a.amount), 0) AS amount FROM fin_ar_allocations a
+                              JOIN fin_credit_notes cn ON cn.id = a.source_id
+                              WHERE a.invoice_id=%s AND a.source_type='CREDIT_NOTE' AND NOT a.reversed
+                                AND cn.source_type='BILL_COVER'""", (inv["id"],))["amount"])
+    credited -= moved
+    total = money(inv["total"]) - moved
+    if total <= 0 and paid <= 0 and credited <= 0:
+        return None                                   # nothing left on the HMO to claim
     open_ = total - paid - credited
     if inv["status"] == "VOID":
         return None

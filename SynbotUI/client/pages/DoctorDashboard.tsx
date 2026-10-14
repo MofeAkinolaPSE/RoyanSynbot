@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
+import { ViewReportButton } from "@/components/reports/ResultReport";
 import { authClient } from "@/lib/auth-client";
 import { AlertBanner } from "@/components/AlertBanner";
 import { InlineWarning } from "@/components/InlineWarning";
@@ -499,12 +500,15 @@ function DoctorPatients() {
                       <p className="text-xs font-medium truncate">{o.test_name}</p>
                       <p className="text-xs text-muted-foreground">Patient #{o.patient_id} · {o.result_summary ?? "—"}</p>
                     </div>
-                    {o.patient_mrn && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <ViewReportButton kind="lab" orderIds={[o.id]} label="Report" variant="ghost" className="h-6 px-2 text-xs" />
+                      {o.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
                         onClick={e => e.stopPropagation()}>
                         <Link to={`/hospital/patients/${o.patient_mrn}`}>PCE</Link>
                       </Button>
                     )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -535,12 +539,15 @@ function DoctorPatients() {
                       <p className="text-xs font-medium truncate">{o.modality?.toUpperCase()} {o.body_part ? `— ${o.body_part}` : ""}</p>
                       <p className="text-xs text-muted-foreground">Patient #{o.patient_id} · {o.impression ?? "—"}</p>
                     </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <ViewReportButton kind="scan" orderIds={[o.id]} label="Report" variant="ghost" className="h-6 px-2 text-xs" />
                     {o.patient_mrn && (
                       <Button variant="ghost" size="sm" asChild className="h-6 px-2 text-xs shrink-0 text-primary"
                         onClick={e => e.stopPropagation()}>
                         <Link to={`/hospital/patients/${o.patient_mrn}`}>PCE</Link>
                       </Button>
                     )}
+                    </div>
                   </li>
                 ))}
               </ul>

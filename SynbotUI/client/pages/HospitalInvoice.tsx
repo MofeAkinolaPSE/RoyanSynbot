@@ -367,6 +367,14 @@ function ClaimsForm({ f }: { f: any }) {
             <tr><td colSpan={3} /><td className="px-2 py-1 text-right font-semibold">Total</td><td className={`${cell} text-right font-semibold`}>{plain(f.total)}</td></tr>
           </tbody>
         </table>
+        {(f.approval_codes ?? []).length > 0 && (
+          <p className="mt-2 text-xs">HMO approval code(s) for services added after review: <span className="font-semibold">{f.approval_codes.join(", ")}</span></p>
+        )}
+        {(f.not_covered ?? []).length > 0 && (
+          <p className="mt-2 text-xs text-gray-600">
+            Not covered by the HMO (paid by the patient, not claimed): {f.not_covered.map((n: any) => `${n.description} (${plain(n.cost)})`).join("; ")}
+          </p>
+        )}
         <div className="mt-4 text-sm">{field("Clinical Summary", f.clinical_summary)}</div>
         <div className="mt-12 flex items-end justify-between text-sm">
           <div className="text-center">

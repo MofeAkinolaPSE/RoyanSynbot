@@ -62,6 +62,7 @@ SOURCE_LABELS = {
     "DISPENSING": "Drug dispensed", "DISPENSE_RETURN": "Drug returned", "PHARMACY_RECEIPT": "Pharmacy stock received",
     "PHARMACY_ADJUST": "Pharmacy stock adjustment", "PAYROLL": "Payroll (salary cost)",
     "PAYROLL_PAYMENT": "Payroll paid", "PAYMENT_VOID": "Receipt voided", "CLAIM_PAYMENT": "HMO claim paid", "BILL_VOID": "Bill voided",
+    "BILL_COVER": "HMO cover decision",
 }
 
 # Cashier payment method -> receipt method and the fin_settings.receipt_accounts key.
@@ -351,6 +352,11 @@ def _post_bill(conn, ctx, s, payload, bill_id):
     patient_lines, payer_lines = _split_lines(conn, b)
     docs = []
     common = {"invoice_date": d, "terms_days": 0, "reference": b["bill_number"]}
+    # A bill goes into the books once, both shares together. Once it is in, a later change of who pays a line (the
+    # HMO team's cover decision, BILL_COVER) moves money between the two invoices itself - re-splitting the bill here
+    # would raise the moved amount a second time.
+    if _invoice_for_bill(conn, ctx.entity_id, b["id"]) or _invoice_for_bill(conn, ctx.entity_id, b["id"], "BILLING_HMO"):
+        patient_lines, payer_lines = [], []
     if patient_lines and not _invoice_for_bill(conn, ctx.entity_id, b["id"]):
         cid = sales.ensure_patient_customer(conn, b["patient_id"])
         inv = sales.create_invoice(conn, ctx, {**common, "customer_id": cid, "lines": patient_lines,
@@ -471,6 +477,62 @@ def _move_to_payer(conn, ctx, *, invoice, amount: Decimal, payer_customer_id: in
                                    source_type="MANUAL", number=number)
         existing = sales.post_invoice(conn, ctx, str(inv["id"]), override_credit=True, override_reason=reason)
     return f"credit note {cn['credit_note_number'] if cn else '-'} + invoice {existing['invoice_number']}"
+
+
+def _post_cover_decision(conn, ctx, s, payload, review_id):
+    """The HMO team decided a billed service is not covered (or, later, that it is): move that amount between the
+    HMO's invoice and the patient's. Same pattern as _move_to_payer - a credit note on one debtor's invoice and an
+    invoice to the other, both through Returns & Allowances, so income is untouched and only who owes it moves."""
+    r = q1(conn, "SELECT * FROM royan_hmo_service_reviews WHERE id=%s", (int(review_id),))
+    if not r:
+        raise not_found("HMO cover decision", review_id)
+    b = _bill(conn, r["billing_id"])
+    d = _local_date(r["decided_at"])
+    ref = f"{b['bill_number']}/HMO{r['id']}"
+    if b.get("external_source") or _before_cutover(s, _local_date(b["billed_at"])):
+        return _skip(ref, d)
+    amount = money(r["amount"])
+    if amount <= 0:
+        return ("IGNORED", ref, d, None, None, "Nothing moved")
+    in_books = [i for i in (_invoice_for_bill(conn, ctx.entity_id, b["id"]),
+                            _invoice_for_bill(conn, ctx.entity_id, b["id"], "BILLING_HMO")) if i]
+    if not in_books:
+        # the bill reaches the books now, already split the way the HMO team decided - nothing left to move
+        _ensure_bill(conn, ctx, s, b["id"])
+        return ("IGNORED", ref, d, None, None, "Bill posted with this decision already applied")
+    if min(i["created_at"] for i in in_books) > r["decided_at"]:
+        return ("IGNORED", ref, d, None, None, "Bill was posted after this decision - already split this way")
+    item = q1(conn, "SELECT description FROM royan_bill_items WHERE id=%s", (r["bill_item_id"],)) or {}
+    what = item.get("description") or "service"
+    if r["decision"] == "not_covered":
+        inv = _invoice_for_bill(conn, ctx.entity_id, b["id"], "BILLING_HMO")
+        if not inv:
+            raise FinError("INVALID_STATE_TRANSITION", f"Bill {b['bill_number']} has no HMO invoice in the books to move from")
+        reason = f"Not covered by the HMO - {what} ({b['bill_number']}), now the patient's"
+        msg = _move_to_payer(conn, ctx, invoice=inv, amount=amount, reason=reason, on=d,
+                             payer_customer_id=sales.ensure_patient_customer(conn, b["patient_id"]),
+                             source_type="BILL_COVER", source_id=str(r["id"]))
+        return ("POSTED", ref, d, "CREDIT_NOTE", None, f"Moved to the patient: {msg}")
+    # covered again: the patient's charge goes back to the HMO
+    prior = q1(conn, """SELECT id FROM royan_hmo_service_reviews WHERE bill_item_id=%s AND decision='not_covered' AND id < %s
+                        ORDER BY id DESC LIMIT 1""", (r["bill_item_id"], r["id"]))
+    hmo_inv = _invoice_for_bill(conn, ctx.entity_id, b["id"], "BILLING_HMO")
+    pat = None
+    if prior and hmo_inv:
+        pat = q1(conn, "SELECT * FROM fin_sales_invoices WHERE legal_entity_id=%s AND invoice_number=%s AND status <> 'VOID'",
+                 (ctx.entity_id, f"{hmo_inv['invoice_number']}-R{str(prior['id'])[-6:]}"))
+    if not pat:
+        pat = _invoice_for_bill(conn, ctx.entity_id, b["id"])
+    if not pat:
+        raise FinError("INVALID_STATE_TRANSITION", f"Bill {b['bill_number']} has no patient charge in the books to move back")
+    hmo_id = _bill_hmo(conn, b)
+    if not hmo_id:
+        raise FinError("MAPPING_MISSING", f"Bill {b['bill_number']}: the patient has no active HMO on file")
+    reason = f"Covered by the HMO after review - {what} ({b['bill_number']})"
+    msg = _move_to_payer(conn, ctx, invoice=pat, amount=amount, reason=reason, on=d,
+                         payer_customer_id=sales.ensure_hmo_customer(conn, hmo_id),
+                         source_type="BILL_COVER", source_id=str(r["id"]))
+    return ("POSTED", ref, d, "CREDIT_NOTE", None, f"Moved to the HMO: {msg}")
 
 
 # ---------------------------------------------------------------------------
@@ -860,6 +922,7 @@ _HANDLERS: Dict[str, Callable] = {
     "BILL_WRITEOFF": lambda c, x, s, p, i: _outstanding_credit(c, x, s, i, source_type="BILL_WRITEOFF",
                                                                  debit_key="BAD_DEBTS", label="Written off"),
     "BILL_ADJUSTMENT": _post_adjustment,
+    "BILL_COVER": _post_cover_decision,
     "DISPENSING": _post_dispensing,
     "DISPENSE_RETURN": _post_dispense_return,
     "PHARMACY_RECEIPT": _post_pharmacy_receipt,

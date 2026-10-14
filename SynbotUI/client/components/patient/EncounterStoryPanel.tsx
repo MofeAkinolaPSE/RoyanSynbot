@@ -10,6 +10,7 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { encounterStatusColor } from "@/lib/encounter-status";
 import { PANEL_WIDTH } from "@/components/shared/panel-shared";
+import { ViewReportButton } from "@/components/reports/ResultReport";
 
 interface EncounterStoryPanelProps {
   encounterId: number;
@@ -154,6 +155,7 @@ function buildStory(data: any): StoryEvent[] {
             )}
             {res.result_summary && <p>{res.result_summary}</p>}
             {res.reference_range && <p className="text-xs text-muted-foreground">Reference: {res.reference_range}</p>}
+            <ViewReportButton kind="lab" orderIds={[o.id]} variant="ghost" className="-ml-2 h-7" />
           </div>
         ),
       });
@@ -174,12 +176,13 @@ function buildStory(data: any): StoryEvent[] {
         title: `Radiology report: ${o.modality?.toUpperCase() ?? "Imaging"}`,
         meta: o.radiologist_id ? `By ${o.radiologist_id}` : undefined,
         open: { kind: "radiology", record: o },
-        detail: (o.impression || o.findings) ? (
+        detail: (
           <div className="space-y-1">
             {o.impression && <p><span className="text-muted-foreground">Impression: </span>{o.impression}</p>}
             {o.findings && <p><span className="text-muted-foreground">Findings: </span>{o.findings}</p>}
+            <ViewReportButton kind="scan" orderIds={[o.id]} variant="ghost" className="-ml-2 h-7" />
           </div>
-        ) : undefined,
+        ),
       });
     }
   }

@@ -440,7 +440,7 @@ export default function ClinicalQueue() {
   const renderActions = (enc: Encounter, compact = false) => {
     const h = compact ? "h-6" : "h-8";
     const btn = cn(h, "px-2.5 text-xs font-semibold gap-1");
-    // Pay first: after every stop a private patient pays at the cashier before the next service
+    // vitals -> doctor -> cashier -> services: the server no longer holds vitals or the doctor for payment (14 Oct 2026); kept for a visit it flags
     const held = !!enc.pay_first && ["patient_registered", "triaged", "nurse_assessment", "called", "awaiting_results"].includes(enc.status);
     return (
       <div className="flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>

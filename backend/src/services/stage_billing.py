@@ -202,12 +202,23 @@ def clearance(source: str, source_id: Any) -> Dict[str, Any]:
     with tx() as conn:
         mode = _setting(conn, "pay_first") or "off"
         if mode == "off":
+            # pay-first is a hospital setting; a service the HMO does not cover is held either way
+            nc = q1(conn, """SELECT i.billing_id, b.bill_number, b.status, b.released_at, i.hmo_decision, i.hmo_approval_status
+                             FROM royan_bill_items i JOIN royan_billing b ON b.id=i.billing_id
+                             WHERE i.source=%s AND i.source_id=%s AND i.hmo_decision='not_covered' AND b.status <> 'void'
+                             ORDER BY i.id DESC LIMIT 1""", (source, str(source_id)))
+            if nc and not q1(conn, "SELECT 1 AS x FROM royan_service_releases WHERE source=%s AND source_id=%s", (source, str(source_id))):
+                from src.services.hmo_review import hold
+                why = hold(nc, nc["status"] == "paid" or bool(nc["status"] == "partial" and nc["released_at"]))
+                if why:
+                    return {"ok": False, "bill_id": nc["billing_id"], "bill_number": nc["bill_number"], "reason": why}
             return {"ok": True, "reason": "pay first is off"}
         rel = q1(conn, "SELECT reason, released_by FROM royan_service_releases WHERE source=%s AND source_id=%s", (source, str(source_id)))
         if rel:
             return {"ok": True, "reason": f"released by {rel['released_by']}: {rel['reason']}"}
         item = q1(conn, """SELECT i.billing_id, b.bill_number, b.status, b.released_at, b.patient_balance, b.encounter_id, b.entity,
-                                  e.payer_type, e.encounter_type, e.bed_id, i.payer_type AS line_payer
+                                  e.payer_type, e.encounter_type, e.bed_id, i.payer_type AS line_payer,
+                                  i.hmo_decision, i.hmo_approval_status
                            FROM royan_bill_items i JOIN royan_billing b ON b.id=i.billing_id
                            LEFT JOIN royan_encounters e ON e.id=b.encounter_id
                            WHERE i.source=%s AND i.source_id=%s ORDER BY i.id DESC LIMIT 1""", (source, str(source_id)))
@@ -229,6 +240,13 @@ def clearance(source: str, source_id: Any) -> Dict[str, Any]:
         ctx = item or order_enc or {}
         if ctx.get("external_source"):
             return {"ok": True, "reason": "migrated history"}
+        if item and item.get("hmo_decision") == "not_covered":
+            # the HMO team said the plan does not cover it: the patient pays, or the HMO approves it (hmo_review)
+            from src.services.hmo_review import hold
+            why = hold(item, item["status"] == "paid" or bool(item["status"] == "partial" and item["released_at"]))
+            if why:
+                return {"ok": False, "bill_id": item["billing_id"], "bill_number": item["bill_number"], "reason": why}
+            return {"ok": True, "reason": f"not covered by the HMO; bill {item['bill_number']} {item['status']}"}
         if (ctx.get("payer_type") or "") in ("hmo", "staff") or (ctx.get("line_payer") or "") in ("hmo", "staff"):
             return {"ok": True, "reason": "HMO / staff scheme - claimed, not paid at the till"}
         if (ctx.get("encounter_type") or "outpatient") != "outpatient" or ctx.get("bed_id"):
@@ -257,6 +275,15 @@ def visit_clearance(encounter_id: Any) -> Dict[str, Any]:
         if not enc or enc.get("external_source"):
             return {"ok": True, "reason": "not a live visit"}
         if (enc.get("payer_type") or "") in ("hmo", "staff"):
+            # claimed, not paid at the till - unless the HMO team marked the consultation not covered
+            nc = q1(conn, """SELECT b.bill_number, i.hmo_approval_status FROM royan_bill_items i JOIN royan_billing b ON b.id=i.billing_id
+                             WHERE b.encounter_id=%s AND i.hmo_decision='not_covered' AND b.status IN ('pending','partial','disputed')
+                               AND b.released_at IS NULL AND COALESCE(i.source,'') NOT IN ('lab_order','radiology_order','prescription')
+                             LIMIT 1""", (encounter_id,))
+            if nc and enc.get("arrival_priority") != "emergency" and enc.get("triage_level") != "immediate":
+                from src.services.hmo_review import hold
+                return {"ok": False, "bills": [nc["bill_number"]],
+                        "reason": hold({"hmo_decision": "not_covered", "hmo_approval_status": nc["hmo_approval_status"]}, False)}
             return {"ok": True, "reason": "HMO / staff scheme - claimed, not paid at the till"}
         if (enc.get("encounter_type") or "outpatient") != "outpatient" or enc.get("bed_id"):
             return {"ok": True, "reason": "admitted - on the running bill"}

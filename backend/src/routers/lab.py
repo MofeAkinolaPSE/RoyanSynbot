@@ -111,8 +111,20 @@ class AnalyteValue(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class ResultParameter(BaseModel):
+    """One line of the printed report when the test has no template: e.g. Sodium 138 mg/dl, 135 - 150."""
+    name: str = Field(..., min_length=1)
+    value: Optional[str] = None
+    unit: Optional[str] = None
+    reference_range: Optional[str] = None
+    is_abnormal: Optional[bool] = None
+
+    model_config = {"extra": "ignore"}
+
+
 class LabResultCreate(BaseModel):
     result_data: Optional[dict] = None         # flexible: {"haemoglobin": "12.4 g/dL"}
+    parameters: Optional[List[ResultParameter]] = None    # report lines for a test with no template
     result_value: Optional[str] = None
     result_unit: Optional[str] = None
     analyte_values: Optional[List[AnalyteValue]] = None   # structured, per-test-template entry
@@ -314,6 +326,8 @@ def _build_result_row(order: dict, payload: "LabResultCreate", resulted_by: str)
 
     data = payload.model_dump(exclude_none=True)
     data.pop("analyte_values", None)
+    data.pop("parameters", None)
+    params = [p for p in (payload.parameters or []) if p.name.strip() and (p.value or "").strip()]
 
     if payload.analyte_values:
         template = _get_active_template(order["test_name"])
@@ -334,6 +348,22 @@ def _build_result_row(order: dict, payload: "LabResultCreate", resulted_by: str)
             data["interpretation"] = "critical" if any_critical else ("abnormal" if any_abnormal else "normal")
         if not payload.is_critical:
             data["is_critical"] = any_critical
+        data.pop("result_value", None)
+        data.pop("result_unit", None)
+    elif params:
+        # the lab's own report lines (Scancare report: investigation / observed value / units / normal range)
+        from src.services.result_reports import _flag
+        analytes_out = [{"name": p.name.strip(), "observed_value": p.value.strip(), "unit": (p.unit or "").strip() or None,
+                         "reference_range": (p.reference_range or "").strip() or None,
+                         "is_abnormal": bool(p.is_abnormal) if p.is_abnormal is not None
+                         else _flag(p.value, p.reference_range, None) in ("H", "L"),
+                         "is_critical": False} for p in params]
+        data["result_data"] = {**(payload.result_data or {}), "analytes": analytes_out}
+        if not payload.result_summary:
+            data["result_summary"] = "; ".join(
+                f"{a['name']}: {a['observed_value']}{(' ' + a['unit']) if a.get('unit') else ''}" for a in analytes_out)
+        if not payload.interpretation:
+            data["interpretation"] = "abnormal" if any(a["is_abnormal"] for a in analytes_out) else "normal"
         data.pop("result_value", None)
         data.pop("result_unit", None)
     elif payload.result_value or payload.result_unit:
@@ -1307,6 +1337,48 @@ def mark_sent_out(order_id: int, payload: SendOutRequest, user=Depends(verify_jw
     }).eq("id", order_id).execute()
     audit_event("lab_sent_out", {"external_lab": payload.external_lab}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(order_id))
     return {"ok": True, "order_id": order_id, "status": "sent_out", "external_lab": payload.external_lab}
+
+
+# ─── The printed report (Scancare template) ───────────────────────────────────
+
+@router.get("/report")
+def lab_report(orders: str = Query(..., description="lab order ids, comma separated (one patient)"), user=Depends(verify_jwt)):
+    """The lab result as the report the patient receives - built from what the lab entered (services/result_reports)."""
+    from src.services.result_reports import lab_report as build
+    ids = [int(x) for x in orders.split(",") if x.strip().isdigit()][:30]
+    try:
+        out = build(ids)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    audit_event("lab_report_viewed", {"orders": ids}, actor_id=user.get("sub"), subject_type="lab_order", subject_id=str(ids[0]))
+    return out
+
+
+@router.get("/parameters")
+def report_parameters(test_name: str = Query(..., min_length=1), user=Depends(verify_jwt)):
+    """The report lines to fill for a test that has no template: the lines (with units and ranges) used the last time
+    this test was resulted here, else the parameter names Hope recorded for it."""
+    from src.fin.db import q as _q, tx as _tx
+    with _tx() as conn:
+        last = _q(conn, """SELECT r.result_data FROM royan_lab_results r JOIN royan_lab_orders o ON o.id = r.lab_order_id
+                           WHERE upper(o.test_name) = upper(%s) AND r.external_source IS NULL
+                             AND jsonb_typeof(r.result_data->'analytes') = 'array'
+                           ORDER BY r.id DESC LIMIT 1""", (test_name,))
+        if last:
+            return {"source": "last_result", "parameters": [
+                {"name": a.get("name"), "unit": a.get("unit"), "reference_range": a.get("reference_range") or (
+                    f"{a['normal_low']:g} - {a['normal_high']:g}" if isinstance(a.get("normal_low"), (int, float))
+                    and isinstance(a.get("normal_high"), (int, float)) else None)}
+                for a in last[0]["result_data"]["analytes"] if a.get("name")]}
+        hope = _q(conn, """SELECT r.result_data->>'parameter' AS name, COUNT(*) AS n, MIN(r.id) AS first_seen
+                           FROM royan_lab_results r JOIN royan_lab_orders o ON o.id = r.lab_order_id
+                           WHERE upper(o.test_name) = upper(%s) AND r.result_data ? 'parameter'
+                             AND o.ordered_at > now() - interval '3 years'
+                           GROUP BY 1 HAVING COUNT(*) >= 3 ORDER BY MIN(r.id) LIMIT 40""", (test_name,))
+    return {"source": "hope" if hope else "none",
+            "parameters": [{"name": h["name"], "unit": None, "reference_range": None} for h in hope if h["name"]]}
 
 
 # ─── Lab Report Upload ────────────────────────────────────────────────────────
