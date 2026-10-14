@@ -192,19 +192,18 @@ stop and do this step with the consultant. **Don't edit or delete Placeware's ex
    Drag it **above** any other `srcnat` rule.
 4. **IP → DHCP Server → Leases**: find `172.16.0.26` → **Make Static**, so the server keeps its address.
 5. **The Placeware add-on** (once; passes Let's Encrypt's checks for the Royan domain to the Royan server; Placeware's
-   own traffic is untouched). On the **Placeware server**, in the Placeware folder (`...\Chat Assisant  placeware x1`):
-   - Copy `backend\nginx-extra\royan-acme.conf` from the laptop's Placeware folder to the same place on the server.
-   - In `backend\docker-compose.yml`, under the `frontend:` service's `volumes:`, add this line under the
-     `certbot_www` one (same indentation):
-     ```yaml
-           - ./nginx-extra/royan-acme.conf:/etc/nginx/conf.d/royan-acme.conf:ro
-     ```
-   - In PowerShell, in the Placeware `backend` folder:
+   own traffic is untouched). It is committed in the Placeware repo (`backend\nginx-extra\royan-acme.conf` and one
+   mount line in `backend\docker-compose.yml`, commit "Pass Let's Encrypt checks for royanhospitalaiapp.online…").
+   - On the laptop, in the Placeware folder: `git push origin main`.
+   - On the **Placeware server**, PowerShell in the Placeware folder (`...\Chat Assisant  placeware x1`):
      ```powershell
+     git pull
+     cd backend
      docker compose up -d frontend
      docker compose exec frontend nginx -t
      ```
-     The second line must say `syntax is ok` / `test is successful`. Placeware is back within seconds.
+     The last line must say `syntax is ok` / `test is successful`. No rebuild is needed (the add-on is mounted, not
+     built in); Placeware is back within seconds.
 
 - [ ] Both MikroTik rules saved; 9443 confirmed free; server address static; Placeware add-on in place
 
