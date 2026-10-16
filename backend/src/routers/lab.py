@@ -1357,28 +1357,42 @@ def lab_report(orders: str = Query(..., description="lab order ids, comma separa
 
 
 @router.get("/parameters")
-def report_parameters(test_name: str = Query(..., min_length=1), user=Depends(verify_jwt)):
-    """The report lines to fill for a test that has no template: the lines (with units and ranges) used the last time
-    this test was resulted here, else the parameter names Hope recorded for it."""
-    from src.fin.db import q as _q, tx as _tx
+def report_parameters(test_name: str = Query(..., min_length=1), order_id: Optional[int] = Query(None),
+                      user=Depends(verify_jwt)):
+    """The report lines to fill for a test, so the lab only types values: the test's result template (built from
+    Hope's history by migration 245, or set up by the lab) - else the lines used the last time this test was resulted
+    here - else the parameter names Hope recorded for it. `locked` = the lines come from a template."""
+    from src.fin.db import q as _q, q1 as _q1, tx as _tx
+
+    def rng(a):
+        if a.get("reference_range"):
+            return a["reference_range"]
+        lo, hi = a.get("normal_low"), a.get("normal_high")
+        return f"{lo:g} - {hi:g}" if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) else None
+
     with _tx() as conn:
+        catalog_id = None
+        if order_id:
+            o = _q1(conn, "SELECT catalog_id FROM royan_lab_orders WHERE id=%s", (order_id,))
+            catalog_id = (o or {}).get("catalog_id")
+        tpl = _q1(conn, """SELECT t.analytes, t.test_name FROM royan_lab_test_templates t
+                           LEFT JOIN royan_lab_catalog c ON c.id = %s
+                           WHERE t.is_active AND (upper(t.test_name) = upper(%s) OR (c.id IS NOT NULL AND
+                                 (t.catalog_id = c.id OR upper(t.test_name) = upper(c.name))))
+                           ORDER BY (upper(t.test_name) = upper(%s)) DESC, t.version DESC LIMIT 1""",
+                   (catalog_id, test_name, test_name))
+        if tpl and tpl["analytes"]:
+            return {"source": "template", "locked": True, "template": tpl["test_name"], "parameters": [
+                {"name": a.get("name"), "unit": a.get("unit"), "reference_range": rng(a)} for a in tpl["analytes"] if a.get("name")]}
         last = _q(conn, """SELECT r.result_data FROM royan_lab_results r JOIN royan_lab_orders o ON o.id = r.lab_order_id
                            WHERE upper(o.test_name) = upper(%s) AND r.external_source IS NULL
                              AND jsonb_typeof(r.result_data->'analytes') = 'array'
                            ORDER BY r.id DESC LIMIT 1""", (test_name,))
         if last:
-            return {"source": "last_result", "parameters": [
-                {"name": a.get("name"), "unit": a.get("unit"), "reference_range": a.get("reference_range") or (
-                    f"{a['normal_low']:g} - {a['normal_high']:g}" if isinstance(a.get("normal_low"), (int, float))
-                    and isinstance(a.get("normal_high"), (int, float)) else None)}
+            return {"source": "last_result", "locked": False, "parameters": [
+                {"name": a.get("name"), "unit": a.get("unit"), "reference_range": rng(a)}
                 for a in last[0]["result_data"]["analytes"] if a.get("name")]}
-        hope = _q(conn, """SELECT r.result_data->>'parameter' AS name, COUNT(*) AS n, MIN(r.id) AS first_seen
-                           FROM royan_lab_results r JOIN royan_lab_orders o ON o.id = r.lab_order_id
-                           WHERE upper(o.test_name) = upper(%s) AND r.result_data ? 'parameter'
-                             AND o.ordered_at > now() - interval '3 years'
-                           GROUP BY 1 HAVING COUNT(*) >= 3 ORDER BY MIN(r.id) LIMIT 40""", (test_name,))
-    return {"source": "hope" if hope else "none",
-            "parameters": [{"name": h["name"], "unit": None, "reference_range": None} for h in hope if h["name"]]}
+    return {"source": "none", "locked": False, "parameters": []}
 
 
 # ─── Lab Report Upload ────────────────────────────────────────────────────────

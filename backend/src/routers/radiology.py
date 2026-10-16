@@ -437,6 +437,17 @@ def amend_report(order_id: int, payload: ReportAmend, user=Depends(verify_jwt)):
     return {"ok": True, "order_id": order_id, "amended": True}
 
 
+@router.get("/orders/{order_id}/report-template")
+def scan_report_template(order_id: int, user=Depends(verify_jwt)):
+    """What the report form starts with: Scancare's standard wording for this study, measurements blanked,
+    this order's indication (services/radiology_prefill)."""
+    from src.services.radiology_prefill import report_template
+    try:
+        return report_template(order_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/report/{order_id}")
 def scan_report(order_id: int, user=Depends(verify_jwt)):
     """The scan result as Scancare's printed report (services/result_reports)."""

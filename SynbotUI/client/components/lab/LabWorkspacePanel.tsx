@@ -65,10 +65,11 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   const [collectForm, setCollectForm] = useState({ ...emptyCollect });
   const [sendOutForm, setSendOutForm] = useState({ ...emptySendOut });
   const [resultForm, setResultForm] = useState({ ...emptyResultForm });
-  const [analyteValues, setAnalyteValues] = useState<Array<{ name: string; unit?: string; observed_value: string; comment: string }>>([]);
   const [resultMode, setResultMode] = useState<"view" | "edit" | "amend">("view");
   const [amendReason, setAmendReason] = useState("");
   const [params, setParams] = useState<ParamRow[]>([]);
+  const [linesLocked, setLinesLocked] = useState(false);
+  const [linesSource, setLinesSource] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -98,60 +99,41 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   });
   const patientHistory: any[] = (historyData?.history ?? []).filter((h: any) => String(h.id) !== orderId);
 
-  const { data: templateData } = useQuery({
-    queryKey: ["lab-panel-template", order.test_name],
-    queryFn: () => api.hospital.lab.getTemplateForTest(order.test_name!),
-    enabled: !!order.test_name && (tab === "result"),
-    staleTime: 60_000,
-  });
-  const template: any = templateData?.template ?? null;
-
-  // Sync the result form to whichever result row is being edited/amended
+  // Entering a result (new, edit or amend): the report lines. A new result starts from the test's template (built from
+  // Hope's history - investigation, units and normal range filled in and locked) so the lab only types values; an edit
+  // or amendment starts from what was entered.
+  const entering = resultMode !== "view" || !result;
   useEffect(() => {
-    if (resultMode === "view") return;
-    if (template?.analytes?.length) {
-      const existingAnalytes: any[] = result?.result_data?.analytes ?? [];
-      setAnalyteValues(template.analytes.map((a: any) => {
-        const prior = existingAnalytes.find((e: any) => e.name === a.name);
-        return {
-          name: a.name, unit: a.unit,
-          observed_value: resultMode === "edit" ? (prior?.observed_value ?? "") : "",
-          comment: resultMode === "edit" ? (prior?.comment ?? "") : "",
-        };
-      }));
+    if (!entering) return;
+    const prior: any[] = resultMode !== "view" ? (result?.result_data?.analytes ?? []) : [];
+    if (prior.length) {
+      setLinesLocked(false);
+      setParams(prior.map((a: any) => ({ name: a.name ?? "", value: String(a.observed_value ?? ""), unit: a.unit ?? "",
+        reference_range: a.reference_range ?? (a.normal_low != null && a.normal_high != null ? `${a.normal_low} - ${a.normal_high}` : "") })));
+    } else if (resultMode !== "view" && result?.result_data?.value != null) {
+      setLinesLocked(false);
+      setParams([{ name: order.test_name ?? "", value: String(result.result_data.value), unit: result.result_data.unit ?? "",
+        reference_range: result.reference_range ?? "" }]);
     } else {
-      setAnalyteValues([]);
-      // No template: the report lines. Editing keeps what was entered; otherwise start from the lines (units, ranges)
-      // used last time for this test here, or Hope's parameter names, or one line named after the test.
-      const prior: any[] = resultMode === "edit" ? (result?.result_data?.analytes ?? []) : [];
-      if (prior.length) {
-        setParams(prior.map((a: any) => ({ name: a.name ?? "", value: String(a.observed_value ?? ""), unit: a.unit ?? "",
-          reference_range: a.reference_range ?? (a.normal_low != null && a.normal_high != null ? `${a.normal_low} - ${a.normal_high}` : "") })));
-      } else if (resultMode === "edit" && result?.result_data?.value != null) {
-        setParams([{ name: order.test_name ?? "", value: String(result.result_data.value), unit: result.result_data.unit ?? "",
-          reference_range: result.reference_range ?? "" }]);
-      } else {
-        setParams([blankParam(order.test_name ?? "")]);
-        api.hospital.lab.parameters(order.test_name ?? "").then((d: any) => {
-          const rows: any[] = d?.parameters ?? [];
-          if (rows.length) setParams((cur) => (cur.some((c) => c.value.trim()) ? cur
-            : rows.map((r) => ({ name: r.name ?? "", value: "", unit: r.unit ?? "", reference_range: r.reference_range ?? "" }))));
-        }).catch(() => undefined);
-      }
+      setParams([blankParam(order.test_name ?? "")]);
+      setLinesLocked(false);
+      api.hospital.lab.parameters(order.test_name ?? "", order.id).then((d: any) => {
+        const rows: any[] = d?.parameters ?? [];
+        if (!rows.length) return;
+        setParams((cur) => (cur.some((c) => c.value.trim()) ? cur
+          : rows.map((r) => ({ name: r.name ?? "", value: "", unit: r.unit ?? "", reference_range: r.reference_range ?? "" }))));
+        setLinesLocked(!!d.locked);
+        setLinesSource(d.locked ? `the ${d.template ?? "test"} template` : "the last result for this test");
+      }).catch(() => undefined);
     }
     if (resultMode === "edit" && result) {
-      setResultForm({
-        result_value: result.result_data?.value ?? "",
-        result_unit: result.result_data?.unit ?? "",
-        reference_range: result.reference_range ?? "",
-        is_critical: !!result.is_critical,
-        notes: result.notes ?? "",
-      });
+      setResultForm({ ...emptyResultForm, is_critical: !!result.is_critical, notes: result.notes ?? "" });
     } else if (resultMode === "amend") {
       setResultForm({ ...emptyResultForm });
       setAmendReason("");
     }
-  }, [resultMode, template, result]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultMode, result?.id, order.test_name, entering]);
 
   const invalidateAll = () => {
     void qc.invalidateQueries({ queryKey: ["lab-panel-order", orderId] });
@@ -200,15 +182,6 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   });
 
   function buildResultPayload() {
-    if (template?.analytes?.length) {
-      return {
-        analyte_values: analyteValues.map(a => ({
-          name: a.name, observed_value: a.observed_value || undefined,
-          unit: a.unit, comment: a.comment || undefined,
-        })),
-        notes: resultForm.notes || undefined,
-      };
-    }
     return {
       parameters: params.filter((p) => p.name.trim() && p.value.trim()).map((p) => ({
         name: p.name.trim(), value: p.value.trim(), unit: p.unit.trim() || undefined, reference_range: p.reference_range.trim() || undefined,
@@ -267,9 +240,7 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
   const canRecordResult = !result && ["processing", "sent_out"].includes(status ?? "");
   const canVerify    = !!result && !result.verified_at;
   const canAmend     = !!result && !!result.verified_at;
-  const resultFormValid = template?.analytes?.length
-    ? analyteValues.some(a => a.observed_value.trim())
-    : params.some((p) => p.name.trim() && p.value.trim());
+  const resultFormValid = params.some((p) => p.name.trim() && p.value.trim());
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -499,51 +470,42 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
                           Amending a verified result — the prior result stays on record and this creates a new, unverified version.
                         </div>
                       )}
-                      {template?.analytes?.length ? (
+                      {(
                         <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground">
-                            Using template: <span className="font-medium text-foreground">{template.test_name}</span> (v{template.version})
-                          </p>
-                          {analyteValues.map((row, i) => (
-                            <div key={row.name} className="grid grid-cols-[1fr_90px] gap-2 items-end border-b pb-2">
-                              <div className="space-y-1">
-                                <Label>{row.name}</Label>
-                                <Input value={row.observed_value}
-                                  onChange={e => setAnalyteValues(vs => vs.map((v, j) => j === i ? { ...v, observed_value: e.target.value } : v))}
-                                  placeholder="Observed value" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label>Unit</Label>
-                                <Input value={row.unit ?? ""} readOnly className="bg-muted" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground">
-                            One line per investigation - this is what prints on the report (Scancare template).
-                          </p>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <span>{linesLocked && linesSource
+                              ? <>Lines from {linesSource} - type each observed value; this is what prints on the report.</>
+                              : <>One line per investigation - this is what prints on the report (Scancare template).</>}</span>
+                            {linesLocked && (
+                              <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setLinesLocked(false)}>
+                                Edit lines
+                              </Button>
+                            )}
+                          </div>
                           <div className="grid grid-cols-[1.4fr_1fr_0.8fr_1fr_28px] gap-1.5 text-xs font-medium text-muted-foreground">
                             <span>Investigation</span><span>Observed value</span><span>Units</span><span>Normal range</span><span />
                           </div>
                           {params.map((p, i) => (
                             <div key={i} className="grid grid-cols-[1.4fr_1fr_0.8fr_1fr_28px] items-center gap-1.5">
-                              <Input className="h-8 text-xs" value={p.name} placeholder="e.g. Sodium"
+                              <Input className={cn("h-8 text-xs", linesLocked && "border-transparent bg-muted/60 font-medium")} value={p.name}
+                                readOnly={linesLocked} tabIndex={linesLocked ? -1 : 0} placeholder="Investigation"
                                 onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-                              <Input className="h-8 text-xs" value={p.value} placeholder="Value" autoFocus={i === 0}
+                              <Input className="h-8 text-xs" value={p.value} autoFocus={i === 0}
+                                placeholder={p.reference_range ? `e.g. within ${p.reference_range}` : p.unit ? "Value" : "e.g. Negative"}
                                 onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} />
-                              <Input className="h-8 text-xs" value={p.unit} placeholder="mg/dl"
+                              <Input className={cn("h-8 text-xs", linesLocked && "border-transparent bg-muted/60")} value={p.unit}
+                                readOnly={linesLocked} tabIndex={linesLocked ? -1 : 0} placeholder={linesLocked ? "" : "Units"}
                                 onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} />
-                              <Input className="h-8 text-xs" value={p.reference_range} placeholder="135 - 150"
+                              <Input className={cn("h-8 text-xs", linesLocked && "border-transparent bg-muted/60")} value={p.reference_range}
+                                readOnly={linesLocked} tabIndex={linesLocked ? -1 : 0} placeholder={linesLocked ? "" : "Normal range"}
                                 onChange={e => setParams(ps => ps.map((x, j) => j === i ? { ...x, reference_range: e.target.value } : x))} />
                               <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="Remove line"
-                                disabled={params.length === 1} onClick={() => setParams(ps => ps.filter((_, j) => j !== i))}>
+                                disabled={params.length === 1 || linesLocked} onClick={() => setParams(ps => ps.filter((_, j) => j !== i))}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           ))}
-                          <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setParams(ps => [...ps, blankParam()])}>
+                          <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => { setLinesLocked(false); setParams(ps => [...ps, blankParam()]); }}>
                             <Plus className="h-3.5 w-3.5" /> Add line
                           </Button>
                           <div className="flex items-center gap-2">

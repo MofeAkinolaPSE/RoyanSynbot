@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { handlePayFirst } from "@/lib/pay-first";
 import { useAuth } from "@/components/AuthProvider";
 import { SignaturePad } from "@/components/pharmacy/SignaturePad";
@@ -216,6 +216,21 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
 
   const status = rx.status;
   const canDispense  = remainingQuantity > 0 && !["cancelled", "returned"].includes(status ?? "");
+
+  // The dispense form starts with what the doctor prescribed (the quantity still to give) and the drug's price, so
+  // the pharmacist checks and confirms instead of typing. Filled once per prescription; their edits are kept.
+  const prefilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data || prefilledFor.current === rxId || !canDispense) return;
+    prefilledFor.current = rxId;
+    setDispenseForm((f) => ({
+      ...f,
+      quantity_dispensed: f.quantity_dispensed || String(remainingQuantity),
+      unit_cost: f.unit_cost || (data.unit_price ? String(data.unit_price) : ""),
+    }));
+    if (!initialTab) setTab("dispense");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, rxId, canDispense]);
   const canAdminister = ["dispensed", "partially_dispensed"].includes(status ?? "");
   const canCancel    = !["dispensed", "cancelled"].includes(status ?? "");
 
@@ -488,10 +503,16 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                     <section className="space-y-2 border-t pt-3">
                       <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dispense</Label>
                       <div className="grid grid-cols-2 gap-2">
-                        <Input placeholder={`Quantity (max ${remainingQuantity})`} type="number" value={dispenseForm.quantity_dispensed}
-                          onChange={e => setDispenseForm(f => ({ ...f, quantity_dispensed: e.target.value }))} />
-                        <Input placeholder="Unit cost" type="number" value={dispenseForm.unit_cost}
-                          onChange={e => setDispenseForm(f => ({ ...f, unit_cost: e.target.value }))} />
+                        <div className="space-y-1">
+                          <Label className="text-xs">Quantity <span className="text-muted-foreground">(prescribed {remainingQuantity} {rx.unit ?? ""} to give)</span></Label>
+                          <Input placeholder={`Quantity (max ${remainingQuantity})`} type="number" value={dispenseForm.quantity_dispensed}
+                            onChange={e => setDispenseForm(f => ({ ...f, quantity_dispensed: e.target.value }))} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Unit price (₦) <span className="text-muted-foreground">{data?.unit_price ? "from the price list" : "not on the price list - enter it"}</span></Label>
+                          <Input placeholder="Unit price" type="number" value={dispenseForm.unit_cost}
+                            onChange={e => setDispenseForm(f => ({ ...f, unit_cost: e.target.value }))} />
+                        </div>
                         {availableBatches.length > 0 ? (
                           <div className="col-span-2">
                             <Select value={dispenseForm.batch_id || "auto"} onValueChange={v => setDispenseForm(f => ({ ...f, batch_id: v === "auto" ? "" : v }))}>
@@ -599,9 +620,9 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
             {/* Footer action bar */}
             <Separator className="shrink-0" />
             <div className="px-5 py-3 flex flex-wrap gap-2 shrink-0">
-              {canDispense && (
+              {canDispense && tab !== "dispense" && (
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTab("dispense")}>
-                  <Pill className="h-3.5 w-3.5" /> Dispense
+                  <Pill className="h-3.5 w-3.5" /> Go to Dispense
                 </Button>
               )}
               {canAdminister && (

@@ -89,12 +89,9 @@ export function SoapNoteComposer({
   const [expanded, setExpanded] = useState<"s" | "o" | "a" | "p">("s");
   const [dxOpen, setDxOpen] = useState(false);
 
-  // Follow the gate forward as sections complete, but never fight a manual
-  // selection of an already-unlocked section.
-  useEffect(() => {
-    if (gate.focus && gate[expanded].status === "complete") setExpanded(gate.focus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gate.focus]);
+  // The doctor moves on when they choose (each section's Continue button, or the stepper). This used to follow the gate
+  // forward on its own - and a section counts as complete after ONE character of chief complaint / examination, so the
+  // section closed under the doctor's fingers after the first letter they typed (Oct 2026).
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -291,6 +288,8 @@ export function SoapNoteComposer({
         summary={sectionSummary.s}
         expanded={expanded === "s"}
         onToggle={() => setExpanded("s")}
+        nextLabel="Objective"
+        onNext={() => setExpanded("o")}
         templateSlot={
           <span data-tour-id="soap-template-subjective">
           <SoapTemplateButton
@@ -352,6 +351,8 @@ export function SoapNoteComposer({
         summary={sectionSummary.o}
         expanded={expanded === "o"}
         onToggle={() => setExpanded("o")}
+        nextLabel="Assessment"
+        onNext={() => setExpanded("a")}
         templateSlot={
           <SoapTemplateButton
             sources={["exam-pe", "note"]}
@@ -411,6 +412,8 @@ export function SoapNoteComposer({
         summary={sectionSummary.a}
         expanded={expanded === "a"}
         onToggle={() => setExpanded("a")}
+        nextLabel="Plan"
+        onNext={() => setExpanded("p")}
         templateSlot={
           <SoapTemplateButton
             sources={["note"]}

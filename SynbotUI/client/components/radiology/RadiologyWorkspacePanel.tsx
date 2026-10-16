@@ -87,6 +87,25 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
   });
   const templates: any[] = templatesData?.templates ?? [];
 
+  // A new report starts from Scancare's standard wording for this study (its latest normal report of the same type,
+  // measurements blanked to ___, this order's indication) - the radiologist fills the blanks and changes what differs.
+  const writingNew = tab === "report" && !order.report && reportMode !== "amend";
+  const { data: prefill } = useQuery({
+    queryKey: ["radiology-report-template", orderId],
+    queryFn: () => api.hospital.radiology.reportTemplate(orderId),
+    enabled: writingNew || reportMode !== "view",
+    staleTime: 300_000,
+  });
+  const applyPrefill = () => prefill && setReportForm((f) => ({ ...f, report: prefill.report ?? "", impression: prefill.impression ?? "" }));
+  useEffect(() => {
+    if (writingNew && prefill?.report && !reportForm.report.trim() && !reportForm.impression.trim()) applyPrefill();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, writingNew]);
+  const blanks = (reportForm.report.match(/___/g) ?? []).length + (reportForm.impression.match(/___/g) ?? []).length;
+  const phrases: { section: string; text: string }[] = prefill?.phrases ?? [];
+  const confirmBlanks = () => blanks === 0 ||
+    window.confirm(`${blanks} measurement blank${blanks === 1 ? "" : "s"} (___) not filled in. Save the report anyway?`);
+
   useEffect(() => {
     if (reportMode === "edit") {
       setReportForm({
@@ -96,7 +115,9 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
         radiologist_id: order.radiologist_id ?? "",
       });
     } else if (reportMode === "amend") {
-      setReportForm({ ...emptyReportForm });
+      // an amendment corrects the report: start from what was written, not an empty box
+      setReportForm({ report: order.report ?? "", impression: order.impression ?? "", findings: order.findings ?? "",
+        radiologist_id: order.radiologist_id ?? "" });
       setAmendReason("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,9 +361,29 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                           </div>
                         </div>
                       )}
+                      {prefill?.based_on && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs">
+                          <span>Pre-filled from {prefill.based_on}. Fill in the <b>___</b> blanks and change anything that differs for this patient.</span>
+                          <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={applyPrefill}>Reset to standard</Button>
+                        </div>
+                      )}
+                      {phrases.length > 0 && (
+                        <div className="space-y-1">
+                          <Label>Common phrases for this study (click to add)</Label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {phrases.slice(0, 16).map((ph, i) => (
+                              <button key={i} type="button" title={ph.text}
+                                className="max-w-full truncate rounded-full border px-2.5 py-0.5 text-xs hover:bg-muted"
+                                onClick={() => setReportForm((f) => ({ ...f, report: (f.report ? f.report.replace(/\s*$/, "\n") : "") + ph.text }))}>
+                                <span className="font-semibold">{ph.section}:</span> {ph.text.length > 70 ? ph.text.slice(0, 70) + "\u2026" : ph.text}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-1">
-                        <Label>Report *</Label>
-                        <Textarea rows={5} value={reportForm.report}
+                        <Label>Report *{blanks > 0 && <span className="ml-2 font-normal text-amber-700 dark:text-amber-400">{blanks} blank{blanks === 1 ? "" : "s"} to fill</span>}</Label>
+                        <Textarea rows={14} value={reportForm.report}
                           onChange={e => setReportForm(f => ({ ...f, report: e.target.value }))}
                           placeholder="Detailed radiological findings..." className="font-mono text-sm" />
                       </div>
@@ -372,7 +413,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                             !reportFormValid ||
                             (reportMode === "amend" ? !amendReason.trim() || amendMut.isPending : reportMut.isPending)
                           }
-                          onClick={() => reportMode === "amend" ? amendMut.mutate() : reportMut.mutate()}>
+                          onClick={() => { if (!confirmBlanks()) return; reportMode === "amend" ? amendMut.mutate() : reportMut.mutate(); }}>
                           {(reportMode === "amend" ? amendMut.isPending : reportMut.isPending) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                           {reportMode === "amend" ? "Save Amendment" : "Save Report"}
                         </Button>

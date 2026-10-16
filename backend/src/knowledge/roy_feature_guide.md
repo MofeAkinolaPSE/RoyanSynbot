@@ -170,6 +170,7 @@ Tabs across the top: **Cover Sheet**, **Problems**, **Meds**, **Orders**, **Note
 - Letters: **Referral Letter** or **Generate Letter**. Follow-up: **Book Follow-up**.
 - Consent: **Record Consent**, then **Save Consent**.
 - Documents: **Upload Document**.
+- Lab and scan results: **View report** (on the Orders tables, the visit timeline and each result) opens the printable Scancare report.
 - Change name, phone or other details: **Edit Patient Info**, then **Save Changes**.
 - Bills for this patient: **View Billing**.
 - Uploaded files (scans, PDFs) migrated from the old system are listed but cannot be opened. Only the list came across. This applies to document files only. Migrated notes, lab results and imaging reports open normally.
@@ -179,7 +180,7 @@ id: queue
 menu: Patients & Flow > Queue & Flow
 route: /hospital/queue
 roles: admin, ops, nurse, doctor, management, physiotherapist
-keywords: queue, queue and flow, patient flow, waiting list, triage, triage level, vitals, call patient, call into room, consulting room, start consultation, assign doctor, consult, workspace, generate bill, discharge, discharge patient, send home, open encounter, results ready, billing pending
+keywords: queue, queue and flow, patient flow, waiting list, triage, triage level, vitals, call patient, call into room, consulting room, start consultation, assign doctor, consult, workspace, generate bill, discharge, discharge patient, send home, open encounter, results ready, billing pending, pay first, when does the patient pay, pay before, to pay
 
 Each patient row shows the next action for their current stage:
 - **Awaiting triage**: click **Triage**, choose the level (**Immediate (Red)**, **Urgent (Orange)**, **Less Urgent**, **Non Urgent**), then **Confirm Triage**.
@@ -190,6 +191,7 @@ Each patient row shows the next action for their current stage:
 - **Billing pending**: click **Generate Bill**, or **Discharge** to choose the destination (**Home**, **Admit to Ward**, **Referred**, and so on) and **Confirm Discharge**.
 - Open a visit for someone not yet on the queue: **Open Encounter** at the top.
 - The stages, in order: registered, triaged, nurse assessment, called, consulting, lab ordered, pharmacy, billing pending, discharged.
+- When the patient pays: the visit goes **vitals, then the doctor, then the cashier, then services**. Nobody is held for payment before vitals or the consultation. After seeing the doctor the patient pays at the cashier for the consultation and what was ordered; lab, Scancare and pharmacy then wait for that payment before they take the sample, start the scan or dispense. HMO, staff, admitted and emergency patients are not held at the till.
 
 ## The consultation workspace
 id: consultation
@@ -201,7 +203,7 @@ keywords: consultation, consult, consultation workspace, encounter, see patient,
 Open it from **Queue & Flow** (**Start** or **Workspace** on the patient) or **My Dashboard** (**Begin**).
 - Notes: write the SOAP note (see the SOAP note section) or click **Save Note**.
 - Vitals: **Save Vitals**.
-- Orders: **Order Lab Test**, **Order Imaging**, **Write Prescription**, **Book Surgery**.
+- Orders tab: **Order Lab Test**, **Order Radiology**, **Order Medication** (the same prescription form as the Prescribe tab), **Book Surgery**.
 - Admit: **Request Admission**. The request goes to the Nursing Station and Wards & Beds.
 - Referral: **Generate Referral Letter**.
 - **Pause** and **Resume** hold a consultation. **Call Patient** recalls them.
@@ -215,7 +217,7 @@ route: /hospital/queue
 roles: doctor, admin, management
 keywords: soap, soap note, clinical note, consultation note, write note, chief complaint, history of presenting complaint, review of systems, examination, findings, assessment, diagnosis, add diagnosis, icd, icd-10, icd code, plan, locked section, section locked, can't open plan, plan locked, objective locked, sign note, signing, template, templates, smart phrase, all systems negative, order bar
 
-Sections unlock in order: Subjective, Objective, Assessment, Plan.
+Write the sections in order: Subjective, Objective, Assessment, Plan. A section stays open while you type; when it has what it needs, **Continue to <next section>** moves you on (or click a section in the bar at the top).
 1. **Subjective**: fill in **Chief Complaint**. This unlocks Objective. History of Presenting Complaint and Review of Systems are optional.
 2. **Objective**: general examination first, then systems. The **Findings** button has templates by organ system, including **All systems Negative**.
 3. **Assessment**: click **Add diagnosis** and search in words (for example "malaria"). The ICD-10 code fills itself. You never type a code. This unlocks Plan.
@@ -301,13 +303,14 @@ id: lab
 menu: Clinical Services > Lab & Diagnostics
 route: /hospital/lab
 roles: admin, ops, nurse, doctor, lab, management
-keywords: lab, laboratory, lab worklist, worklist, lab orders, order queue, sample, specimen, collect specimen, receive specimen, reject specimen, result, enter result, record result, verify, verify result, authenticate, release result, amend result, send out, reference range, test catalogue, turnaround, tat, critical value, critical result, stat, result template
+keywords: lab, laboratory, lab worklist, worklist, lab orders, order queue, sample, specimen, collect specimen, receive specimen, reject specimen, result, enter result, record result, verify, verify result, authenticate, release result, amend result, send out, reference range, test catalogue, turnaround, tat, critical value, critical result, stat, result template, view report, lab report, print result, print lab result, result sheet, upload report, scancare report
 
 Tabs: **Order Queue**, **Test Catalogue**, **Reference Ranges**, **Turnaround & Critical**.
 Doctors' orders land on **Order Queue** immediately. STAT and urgent sort to the top. Open an order, then:
 1. **Collect Specimen**, then **Receive Specimen** (or **Reject Specimen** with a reason).
-2. **Record Result**. Values outside the reference range are flagged.
+2. **Record Result**. The test's lines are already there - investigation, units and normal range, from its template (built from Royan's own past results, e.g. Urinalysis: Colour, Turbidity/Clarity, pH, Urobilinogen, Protein ...; Electrolytes: Sodium 135 - 150 mg/dl ...). Type only the observed values. The lines are locked; **Edit lines** unlocks them for an exception, **Add line** adds one. Values outside the range print in red.
 3. **Verify & Authenticate**. This releases the result to the doctor, who cannot see it until you verify.
+- **View report** shows the result as the Scancare report (letterhead, patient details, BIOCHEMISTRY / HAEMATOLOGY / CHEMISTRY heading, investigation, value, units, normal range, signatories) with **Print**. Results are not uploaded as files any more; the report is built from what was entered. Only a test sent to an outside lab can have that lab's own file attached.
 - Wrong verified result: **Amend Result**. It keeps the original on record.
 - Sending a test to an outside lab: **Send Out**.
 - Critical values are flagged on **Turnaround & Critical**. Still phone the requesting doctor.
@@ -322,7 +325,7 @@ roles: admin, ops, nurse, doctor, pharmacist, management
 keywords: pharmacy, dispense, dispensing, prescription queue, prescriptions, pending dispense, partially dispensed, override, allergy warning, drug interaction, return, returns, drug return, discount, request discount, signature, administer
 
 Tabs: **Prescriptions** and **Returns**.
-- Prescriptions arrive automatically when a doctor signs the note. Open one and click **Dispense**.
+- Prescriptions arrive automatically when a doctor signs the note (or prescribes from the Orders / Prescribe tab). Open one: it opens on **Dispense** with the quantity the doctor prescribed and the drug's unit price (from the patient's bill or the price list) already filled in. Check them, choose the batch (Auto FEFO is recommended) and click **Dispense**. Change the quantity for a part supply.
 - If an allergy or interaction warning appears, **Override & Dispense** records your reason.
 - Return: **Record Return**. Price reduction: **Request Discount** (sent for approval).
 - **Capture Signature** records the collector's signature.
@@ -361,11 +364,13 @@ id: radiology
 menu: Clinical Services > Radiology
 route: /hospital/radiology
 roles: admin, ops, nurse, doctor, radiology, management
-keywords: radiology, imaging, x-ray, xray, ultrasound, scan, ct, mri, echo, ecg, radiology worklist, radiology report, submit report, verify report, finalize report, amend report, start scan, schedule scan, modality
+keywords: radiology, imaging, x-ray, xray, ultrasound, scan, ct, mri, echo, ecg, radiology worklist, radiology report, submit report, verify report, finalize report, amend report, start scan, schedule scan, modality, print scan, scan report, view report, scancare report
 
 Tabs: **Worklist** and **TAT & Volume**.
 Open a request, then **Schedule**, **Start Scan**, **Submit Report**, and **Verify & Finalize**.
+- The report form opens already written: Scancare's standard report for that exact study (its latest normal report of the same type), with this order's indication. Every measurement is blanked to **___** - fill them in for this patient and change whatever differs. Saving with blanks left asks first. **Reset to standard** reloads it; **Common phrases for this study** adds a phrase with one click.
 - Change a finalized report: **Amend Report**.
+- **View report (print)** shows the scan as Scancare's printed report (letterhead, patient details, ULTRASOUND / X-RAY / CT / MRI REPORT heading, the report, impression) with **Print**.
 - Older imaging and reports are on the patient's chart, not on this worklist.
 
 ## Surgical Theatre
@@ -430,13 +435,13 @@ Tabs: **Ward Overview** and **Bed Detail**.
 id: billing
 menu: Roy Books > Billing & Cashier
 route: /hospital/billing, /hospital/billing/:billId/invoice
-roles: admin, finance
+roles: admin, auditor, cashier, finance, hmo
 keywords: bill, billing, generate bill, create bill, invoice, print invoice, receipt, payment, take payment, record payment, cashier, pay, outstanding, balance, waive, write off, hmo claim, submit claim, claims, disputed bill, partial payment
 
 Tabs: **Bills** and **HMO Claims**.
 - Create a bill: on **Queue & Flow**, a patient in billing pending has **Generate Bill**. Add items with **Add Line (Consultation / Procedure / Misc)**, then **Generate Bill**.
 - Take payment: open the bill, click **Record Payment**, then **Save**. Then **Receipt** or **Print Invoice**.
-- HMO patients: **Submit HMO Claim**.
+- HMO patients: **Submit HMO Claim**. An HMO visit's bill also shows **What the HMO covers**: a service the HMO team marked not covered is the patient's to pay here; if the patient needs it covered, **Request HMO approval** with the reason.
 - Adjustments (need authority): **Waive** or **Write Off**.
 - Doctors and nurses do not see this page. They hand over at the Generate Bill step on the queue.
 
@@ -444,9 +449,13 @@ Tabs: **Bills** and **HMO Claims**.
 id: hmo
 menu: Roy Books > HMO & Coverage
 route: /hospital/hmo
-roles: admin, finance
-keywords: hmo, insurance, coverage, cover, plan, hmo plan, tariff, hmo tariff, pre-authorisation, preauthorization, approval, hmo rules, nhis
+roles: admin, auditor, finance, hmo, management
+keywords: hmo, insurance, coverage, cover, plan, hmo plan, tariff, hmo tariff, pre-authorisation, preauthorization, approval, hmo rules, nhis, hmo desk, not covered, covered, hmo approval, request approval, authorisation code, authorization code, claims form, claim form, services check, hmo declined, hmo approved
 
+- **HMO Desk** (first tab): today's HMO patients. Open one to see their services, bills, drugs, the claims form, the patient's signature and **I have checked the claims form**.
+- **Services - what the HMO covers**: before the claims form goes out, the HMO team marks each billed service **Covered** or **Not covered**. Not covered moves it to the patient: they pay for it at the cashier before it is given (lab, scan and pharmacy hold it), and it stays off the claims form. Unless marked, the HMO pays in full.
+- A needed service the HMO does not cover: the doctor, cashier or HMO team clicks **Request HMO approval** and gives the reason; the service is held. The HMO team asks the HMO, then records **HMO approved** (with the HMO's authorisation code - it goes back on the HMO's bill and the claims form) or **HMO declined** (the patient pays). The patient can pay instead of waiting.
+- Doctors see the same panel on the consultation's **Orders** tab (**HMO cover for this visit**).
 - Set up HMO plans: **Add Plan**, then **Create Plan**. Coverage rules: **Add Rule**. Prices per HMO: **Tariff**.
 - Filter by HMO and see its patients, admissions, appointments, billing, lab results and pharmacy.
 - To check one patient's cover, look on their chart.
@@ -547,7 +556,7 @@ Bills, cashier payments, HMO claims and pharmacy stock post here automatically o
 id: credit-control
 menu: Roy Books > Credit Control & Alerts
 route: /finance/ar, /finance/reports/ar/:bucket
-roles: admin, finance, management
+roles: admin, auditor, finance, management
 keywords: credit control, ar, accounts receivable, aging, ageing, overdue, debtors, who owes, collection, payment matching, run match, alert rules, alerts, hmo debt
 
 - What HMOs and corporate payers owe, aged (Hope's billing less what Sage shows they paid; the books once live). The list is A to Z.
@@ -606,6 +615,7 @@ roles: admin
 keywords: user access, new user, create account, add user, staff account, role, change role, permissions, access, reset password, forgot password, password, staff registration, approve registration, approve staff, reject registration, sign up, register account, duplicate staff, hr record, link login, already in hr, approve, registered, registration, approve doctor, new staff, onboarding staff
 
 - New staff account: **User Access**, then **New user**. Tick every role the person needs (access is the union); the preview shows exactly which menus they will see. A reason is required.
+- Ticking every role (a chief) opens every page and every menu entry. Roles only add access: holding Doctor or Auditor alongside Admin or Management takes nothing away - the full workspace stays, appointments are not narrowed to one doctor, and read-only applies only to an account whose sole role is Auditor.
 - Change someone's access: **Edit access**. Password: **Password**. Deactivate: **Deactivate**.
 - Self-registered staff: **Staff Registrations**, then **Approve** or **Reject**. When approving, the system looks for the person in HR first: if HR already has them (same email, or the same name), the login is attached to that existing record - HR never holds the same person twice. Only someone genuinely new gets a new HR record.
 - Every login has its HR record from the start, so the person appears in HR and on the Team tab straight away.

@@ -472,8 +472,9 @@ const diary = page("Diary").children ?? [];
 const pharmacy = page("Pharmacy");
 const procurement = page("Procurement & Stores").children ?? [];
 
-export const NAV_ITEMS: NavItem[] = [
-  page("ROY Workstation"),
+// The sidebar: home (ROY Workstation) first, then every section A-Z so people can find what they are looking for
+// (Oct 2026). Pages inside a section keep the order they are listed in below.
+const SECTIONS: NavItem[] = [
 
   // Everyone's own day. Doctors and nurses get their clinical home (patients / the ward) with the
   // workspace built in, so they do not also see a separate My Workspace; everyone else does.
@@ -527,4 +528,9 @@ export const NAV_ITEMS: NavItem[] = [
     [child("Workflow"), child("Reliability Console"), child("Agent Stack"), child("Settings")]),
 
   page("Ask Synbot"),
+];
+
+export const NAV_ITEMS: NavItem[] = [
+  page("ROY Workstation"),
+  ...[...SECTIONS].sort((x, y) => x.label.localeCompare(y.label, "en", { sensitivity: "base" })),
 ];

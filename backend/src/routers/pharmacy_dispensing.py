@@ -243,6 +243,20 @@ def pharmacy_stats(user=Depends(verify_jwt)):
     }
 
 
+def _rx_unit_price(prescription_id: int, rx: dict, formulary_id) -> float:
+    """The price per unit for this prescription, so the pharmacist does not type it: what the patient's bill charges
+    for it (cashier stage), else the pharmacy price list (stage_billing._drug_price - item rates, formulary, catalogue)."""
+    from src.fin.db import q1 as _q1, tx as _tx
+    from src.services.stage_billing import _drug_price
+    with _tx() as conn:
+        billed = _q1(conn, """SELECT unit_price FROM royan_bill_items i JOIN royan_billing b ON b.id = i.billing_id
+                              WHERE i.source = 'prescription' AND i.source_id = %s AND b.status <> 'void'
+                              ORDER BY i.id DESC LIMIT 1""", (str(prescription_id),))
+        if billed and float(billed["unit_price"] or 0) > 0:
+            return round(float(billed["unit_price"]), 2)
+        return round(_drug_price(conn, formulary_id or rx.get("formulary_id"), rx.get("drug_name") or ""), 2)
+
+
 @router.get("/prescriptions/{prescription_id:int}")
 def get_prescription(prescription_id: int, user=Depends(verify_jwt)):
     """Enriched detail — patient info, dispensing history, MAR history,
@@ -282,6 +296,7 @@ def get_prescription(prescription_id: int, user=Depends(verify_jwt)):
 
     return {
         "prescription": rx,
+        "unit_price": _rx_unit_price(prescription_id, rx, resolved_formulary_id),
         "dispensing_records": disp_rows,
         "mar_entries": mar_rows,
         "returns": returns,
@@ -397,6 +412,8 @@ async def dispense_prescription(prescription_id: int, payload: DispenseRequest, 
     # (audit-correct — a single row can't honestly represent two lots).
     resolved_formulary_id = inv.resolve_formulary_id(rx["drug_name"], rx.get("formulary_id"))
     disp_rows_written: list = []
+    if not payload.unit_cost:
+        payload.unit_cost = _rx_unit_price(prescription_id, rx, resolved_formulary_id)
 
     if resolved_formulary_id:
         taken = inv.apply_fefo_deduction(resolved_formulary_id, dispensed_qty, batch_id=payload.batch_id)

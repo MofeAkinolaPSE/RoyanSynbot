@@ -1,4 +1,5 @@
-import { Lock } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SectionState } from "@/lib/soap-gate";
 import { SoapLetterBadge, SectionStatusBadge } from "./soap-shared";
@@ -22,6 +23,8 @@ export function SoapSectionShell({
   summary,
   expanded,
   onToggle,
+  onNext,
+  nextLabel,
   children,
 }: {
   letter: string;
@@ -32,6 +35,9 @@ export function SoapSectionShell({
   summary?: React.ReactNode;
   expanded: boolean;
   onToggle: () => void;
+  /** "Continue to <next section>" - shown once this section has what it needs; the doctor decides when to move on. */
+  onNext?: () => void;
+  nextLabel?: string;
   children: React.ReactNode;
 }) {
   const locked = state.status === "locked";
@@ -79,7 +85,18 @@ export function SoapSectionShell({
         )}
       </div>
 
-      {open && <div className="space-y-3 border-t px-3 py-3">{children}</div>}
+      {open && (
+        <div className="space-y-3 border-t px-3 py-3">
+          {children}
+          {onNext && state.status === "complete" && (
+            <div className="flex justify-end">
+              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={onNext}>
+                Continue to {nextLabel} <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

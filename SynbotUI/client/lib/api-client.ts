@@ -2070,7 +2070,8 @@ export const api = {
       /** The printed lab report (Scancare template) for one or more orders of one patient. */
       report: (orderIds: Array<number | string>) => fetchRaw<any>('/lab/report?orders=' + orderIds.join(',')),
       /** Report lines to fill for a test with no template (last used here, else Hope's). */
-      parameters: (testName: string) => fetchRaw<any>('/lab/parameters?test_name=' + encodeURIComponent(testName)),
+      parameters: (testName: string, orderId?: number | string) =>
+        fetchRaw<any>('/lab/parameters?test_name=' + encodeURIComponent(testName) + (orderId ? '&order_id=' + orderId : '')),
       listTemplates: (params?: { test_name?: string; active_only?: boolean }) => {
         const qs = new URLSearchParams();
         if (params?.test_name) qs.set('test_name', params.test_name);
@@ -2087,6 +2088,8 @@ export const api = {
       createOrder: (p: Record<string, any>) => sendJson<any>('/radiology/orders', 'POST', p),
       /** The printed Scancare report for a scan. */
       report: (orderId: number | string) => fetchRaw<any>('/radiology/report/' + orderId),
+      /** What the report form starts with: Scancare's standard wording for this study (measurements blanked). */
+      reportTemplate: (orderId: number | string) => fetchRaw<any>('/radiology/orders/' + orderId + '/report-template'),
       scancareOverview: (p: { date_from?: string; date_to?: string; include_history?: boolean } = {}) => {
         const qs = new URLSearchParams();
         if (p.date_from) qs.set('date_from', p.date_from);

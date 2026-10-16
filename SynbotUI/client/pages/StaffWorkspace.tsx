@@ -36,6 +36,8 @@ export type LeadTab = { key: string; label: string; icon: any; render: () => Rea
 
 /** Where a person's combined home is, if their role has one. */
 export function clinicalHome(roles: string[]): string | null {
+  // a chief who also holds a clinical role (all roles ticked on User Access) keeps the full workspace
+  if (roles.includes("admin") || roles.includes("management")) return null;
   if (roles.includes("doctor")) return "/hospital/doctor";
   if (roles.includes("nurse")) return "/hospital/nurse";
   return null;

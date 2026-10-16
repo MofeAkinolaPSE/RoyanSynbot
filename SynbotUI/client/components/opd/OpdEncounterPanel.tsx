@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   User, HeartPulse, FileText, FlaskConical, ScanLine, Share2, Scissors,
-  PhoneCall, Pause, Play, LogOut, ExternalLink, Loader2, Copy, BedDouble, ChevronRight,
+  PhoneCall, Pause, Play, LogOut, ExternalLink, Loader2, Copy, BedDouble, ChevronRight, Pill,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
@@ -399,6 +399,83 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
   const canEndConsult = ["consulting", "lab_ordered", "pharmacy_dispensing", "awaiting_results"].includes(status);
   const canDischarge = status === "billing_pending";
 
+  // The prescription form - shown on the Prescribe tab and as "Order Medication" on the Orders tab, so medication is
+  // ordered alongside lab and radiology (Oct 2026), not only from the note's plan.
+  const prescribeForm = (
+    <div className="space-y-3">
+      {prescriptions.length > 0 && (
+        <ul className="text-xs text-muted-foreground space-y-0.5">
+          {prescriptions.slice(0, 4).map((r: any) => <li key={r.id}>· {r.drug_name} {r.dosage} — {r.status}</li>)}
+        </ul>
+      )}
+      <div className="space-y-1">
+        <Label>Drug Name *</Label>
+        <Input value={rxForm.drug_name} onChange={e => { setRxForm(f => ({ ...f, drug_name: e.target.value })); setDrugSearch(e.target.value); }} placeholder="e.g. Amoxicillin 500mg" />
+        {drugResults.length > 0 && (
+          <div className="rounded-md border max-h-28 overflow-y-auto">
+            {drugResults.map((d: any) => (
+              <button key={d.id} className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => { setRxForm(f => ({
+                  ...f,
+                  drug_name: `${d.generic_name}${d.strength ? " " + d.strength : ""}`,
+                  dosage: f.dosage || (d.strength ?? ""),
+                  // A single licensed route can be filled in; more
+                  // than one is the prescriber's choice to make.
+                  route: f.route || (Array.isArray(d.route) && d.route.length === 1 ? d.route[0] : ""),
+                  unit: f.unit || (d.unit ?? unitForDoseForm(d.form) ?? ""),
+                })); setDrugSearch(""); }}>
+                {d.generic_name} {d.strength}{d.unit} {d.brand_name ? `(${d.brand_name})` : ""}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1"><Label>Dosage *</Label><Input value={rxForm.dosage} onChange={e => setRxForm(f => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 500mg" /></div>
+        <div className="space-y-1">
+          <Label>Frequency *</Label>
+          <Select value={rxForm.frequency} onValueChange={v => setRxForm(f => ({ ...f, frequency: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FREQUENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Duration</Label>
+          <Select value={rxForm.duration} onValueChange={v => setRxForm(f => ({ ...f, duration: v }))}>
+            <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+            <SelectContent>
+              {DURATION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Route</Label>
+          <Select value={rxForm.route} onValueChange={v => setRxForm(f => ({ ...f, route: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {ROUTE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1"><Label>Quantity</Label><Input type="number" value={rxForm.quantity} onChange={e => setRxForm(f => ({ ...f, quantity: e.target.value }))} /></div>
+        <div className="space-y-1">
+          <Label>Unit</Label>
+          <Select value={rxForm.unit} onValueChange={v => setRxForm(f => ({ ...f, unit: v }))}>
+            <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+            <SelectContent>
+              {UNIT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <Button className="w-full" disabled={!rxForm.drug_name.trim() || !rxForm.dosage.trim() || !rxForm.frequency.trim() || rxMut.isPending} onClick={() => rxMut.mutate(false)}>
+        {rxMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Write Prescription
+      </Button>
+    </div>
+  );
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent className={cn(PANEL_WIDTH.wide, "overflow-y-auto p-0 flex flex-col")} side="right">
@@ -709,6 +786,11 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
                   </section>
                   <Separator />
                   <section className="space-y-2">
+                    <SectionLabel icon={<Pill className="h-3.5 w-3.5" />} label="Order Medication" />
+                    {prescribeForm}
+                  </section>
+                  <Separator />
+                  <section className="space-y-2">
                     <SectionLabel icon={<Scissors className="h-3.5 w-3.5" />} label="Book Surgery" />
                     {/* Catalog-backed: 112 named procedures with surgeon fees,
                         migrated from Hope. Was free text. */}
@@ -769,76 +851,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
 
                 {/* ── Prescribe ── */}
                 <TabsContent value="prescribe" className="mt-0 space-y-3">
-                  {prescriptions.length > 0 && (
-                    <ul className="text-xs text-muted-foreground space-y-0.5">
-                      {prescriptions.slice(0, 4).map((r: any) => <li key={r.id}>· {r.drug_name} {r.dosage} — {r.status}</li>)}
-                    </ul>
-                  )}
-                  <div className="space-y-1">
-                    <Label>Drug Name *</Label>
-                    <Input value={rxForm.drug_name} onChange={e => { setRxForm(f => ({ ...f, drug_name: e.target.value })); setDrugSearch(e.target.value); }} placeholder="e.g. Amoxicillin 500mg" />
-                    {drugResults.length > 0 && (
-                      <div className="rounded-md border max-h-28 overflow-y-auto">
-                        {drugResults.map((d: any) => (
-                          <button key={d.id} className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
-                            onClick={() => { setRxForm(f => ({
-                              ...f,
-                              drug_name: `${d.generic_name}${d.strength ? " " + d.strength : ""}`,
-                              dosage: f.dosage || (d.strength ?? ""),
-                              // A single licensed route can be filled in; more
-                              // than one is the prescriber's choice to make.
-                              route: f.route || (Array.isArray(d.route) && d.route.length === 1 ? d.route[0] : ""),
-                              unit: f.unit || (d.unit ?? unitForDoseForm(d.form) ?? ""),
-                            })); setDrugSearch(""); }}>
-                            {d.generic_name} {d.strength}{d.unit} {d.brand_name ? `(${d.brand_name})` : ""}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1"><Label>Dosage *</Label><Input value={rxForm.dosage} onChange={e => setRxForm(f => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 500mg" /></div>
-                    <div className="space-y-1">
-                      <Label>Frequency *</Label>
-                      <Select value={rxForm.frequency} onValueChange={v => setRxForm(f => ({ ...f, frequency: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {FREQUENCY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Duration</Label>
-                      <Select value={rxForm.duration} onValueChange={v => setRxForm(f => ({ ...f, duration: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>
-                          {DURATION_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Route</Label>
-                      <Select value={rxForm.route} onValueChange={v => setRxForm(f => ({ ...f, route: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {ROUTE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1"><Label>Quantity</Label><Input type="number" value={rxForm.quantity} onChange={e => setRxForm(f => ({ ...f, quantity: e.target.value }))} /></div>
-                    <div className="space-y-1">
-                      <Label>Unit</Label>
-                      <Select value={rxForm.unit} onValueChange={v => setRxForm(f => ({ ...f, unit: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>
-                          {UNIT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <Button className="w-full" disabled={!rxForm.drug_name.trim() || !rxForm.dosage.trim() || !rxForm.frequency.trim() || rxMut.isPending} onClick={() => rxMut.mutate(false)}>
-                    {rxMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Write Prescription
-                  </Button>
+                  {prescribeForm}
                 </TabsContent>
 
                 {/* ── Referral ── */}

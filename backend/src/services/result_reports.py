@@ -171,8 +171,9 @@ def _rows(results: List[Dict[str, Any]], test_name: str) -> tuple:
                              "flag": "C" if a.get("is_critical") else _flag(val, rng, a.get("is_abnormal")),
                              "comment": a.get("comment")})
         elif isinstance(data, dict) and data.get("parameter"):
-            rows.append({"name": data["parameter"], "value": data.get("result"), "unit": data.get("unit"),
-                         "range": r.get("reference_range"), "flag": _flag(data.get("result"), r.get("reference_range"), None)})
+            rng = data.get("range") or r.get("reference_range")          # Hope: {"parameter","result","uom","range"}
+            rows.append({"name": data["parameter"], "value": data.get("result"), "unit": data.get("uom") or data.get("unit"),
+                         "range": rng, "flag": _flag(data.get("result"), rng, None)})
         elif isinstance(data, dict) and data.get("value") is not None:
             rows.append({"name": test_name, "value": data.get("value"), "unit": data.get("unit"), "range": r.get("reference_range"),
                          "flag": _flag(data.get("value"), r.get("reference_range"), r.get("interpretation") in ("abnormal", "critical"))})

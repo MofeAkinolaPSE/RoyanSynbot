@@ -79,10 +79,12 @@ export function resolveRouteRoles(pathname: string): string[] | undefined {
 }
 
 /** Menu placement only (access is canViewByRoles): showFor / hideFor keep, say, a doctor's menu to their
- * own clinical home instead of every page they are allowed to open. */
+ * own clinical home instead of every page they are allowed to open. hideFor tidies the menu of someone who is ONLY
+ * those roles: a person who also holds another role (a chief given every role, a doctor who is also management)
+ * keeps the entry - roles widen access, they never take a page away. */
 export function shownInMenu(userRoles: string[], entry: { showFor?: string[]; hideFor?: string[] }): boolean {
   if (entry.showFor && !userRoles.some((r) => entry.showFor!.includes(r))) return false;
-  if (entry.hideFor && userRoles.some((r) => entry.hideFor!.includes(r))) return false;
+  if (entry.hideFor && userRoles.length > 0 && userRoles.every((r) => entry.hideFor!.includes(r))) return false;
   return true;
 }
 
