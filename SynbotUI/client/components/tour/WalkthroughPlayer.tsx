@@ -6,7 +6,6 @@ import {
   Eye, AlertTriangle, List, Check, ArrowDown, ArrowUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useWalkthrough } from "./WalkthroughProvider";
 
@@ -218,12 +217,11 @@ export function WalkthroughPlayer() {
           />
           <div
             key={`pulse-${i}-${nudge}`}
-            className="pointer-events-none absolute rounded-lg motion-safe:animate-ping"
+            className="pointer-events-none absolute rounded-lg motion-safe:animate-pulse"
             style={{
               ...spot,
               animationDuration: "1.8s",
-              boxShadow: `0 0 0 3px ${ringColor}`,
-              opacity: 0.45,
+              boxShadow: `0 0 0 6px ${ringColor}55`,
             }}
           />
         </>
@@ -261,12 +259,14 @@ export function WalkthroughPlayer() {
             <div className="min-w-0 flex-1">
               <button
                 onClick={() => setShowSteps((v) => !v)}
-                className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                title="Show all steps"
+                className="flex w-full min-w-0 items-center gap-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
               >
-                <List className="h-3 w-3" />
-                {walkthrough.title} · {i + 1} of {walkthrough.steps.length}
+                <List className="h-3 w-3 shrink-0" />
+                <span className="truncate">{walkthrough.title}</span>
+                <span className="shrink-0">· step {i + 1} of {walkthrough.steps.length}</span>
               </button>
-              <p className="text-[15px] font-semibold leading-tight">{step.title}</p>
+              <p className="mt-0.5 text-base font-semibold leading-snug">{step.title}</p>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               <button
@@ -313,7 +313,7 @@ export function WalkthroughPlayer() {
             </div>
           )}
 
-          <p className="text-xs leading-relaxed text-muted-foreground">{step.body}</p>
+          <p className="text-sm leading-relaxed text-foreground/80">{step.body}</p>
 
           {/* The cue: what to physically do, separated from the explanation. */}
           {wantsClick && (
@@ -350,11 +350,11 @@ export function WalkthroughPlayer() {
             </p>
           )}
 
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <Badge variant="outline" className="text-xs font-normal">
-              Your clicks are real · nothing is saved for you
-            </Badge>
-            <div className="flex items-center gap-1.5">
+          <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3">
+            <p className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+              You are on the real page: safe clicks only - nothing is saved unless you save it.
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5">
               {i > 0 && (
                 <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => goToStep(i - 1)} aria-label="Previous step">
                   <ChevronLeft className="h-3.5 w-3.5" />

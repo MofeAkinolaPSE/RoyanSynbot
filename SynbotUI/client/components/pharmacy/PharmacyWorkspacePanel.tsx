@@ -500,7 +500,7 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                   )}
 
                   {canDispense && !safetyAlert && (
-                    <section className="space-y-2 border-t pt-3">
+                    <section className="space-y-2 border-t pt-3" data-tour-id="pharmacy-dispense-form">
                       <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dispense</Label>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
@@ -545,7 +545,7 @@ export function PharmacyWorkspacePanel({ prescription: initialRx, onClose, initi
                         <Textarea rows={2} placeholder="Counselling notes" value={dispenseForm.counselling_notes}
                           onChange={e => setDispenseForm(f => ({ ...f, counselling_notes: e.target.value }))} />
                       )}
-                      <Button size="sm" className="w-full gap-1.5"
+                      <Button size="sm" className="w-full gap-1.5" data-tour-id="pharmacy-dispense-button"
                         disabled={!dispenseForm.quantity_dispensed.trim() || Number(dispenseForm.quantity_dispensed) > remainingQuantity || dispenseMut.isPending}
                         onClick={() => dispenseMut.mutate({})}>
                         {dispenseMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pill className="h-3.5 w-3.5" />}

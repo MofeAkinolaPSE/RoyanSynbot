@@ -22,6 +22,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useTour } from "@/components/tour/TourProvider";
+import { primaryTourRole } from "@/lib/day-tours";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +40,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
   const location = useLocation();
   const { roles, isLoading: authLoading, logout } = useAuth();
   const { startTour, hasTour } = useTour();
-  const tourRole = roles?.[0] ?? "admin";
+  const tourRole = primaryTourRole(roles);
 
   // Track which collapsible groups are open
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});

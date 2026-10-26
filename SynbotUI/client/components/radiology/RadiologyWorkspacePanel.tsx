@@ -383,7 +383,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                       )}
                       <div className="space-y-1">
                         <Label>Report *{blanks > 0 && <span className="ml-2 font-normal text-amber-700 dark:text-amber-400">{blanks} blank{blanks === 1 ? "" : "s"} to fill</span>}</Label>
-                        <Textarea rows={14} value={reportForm.report}
+                        <Textarea rows={14} value={reportForm.report} data-tour-id="radiology-report-text"
                           onChange={e => setReportForm(f => ({ ...f, report: e.target.value }))}
                           placeholder="Detailed radiological findings..." className="font-mono text-sm" />
                       </div>
@@ -489,7 +489,7 @@ export function RadiologyWorkspacePanel({ order: initialOrder, onClose, initialT
                 </Button>
               )}
               {canVerify && (
-                <Button size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700"
+                <Button size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700" data-tour-id="radiology-verify-button"
                   disabled={verifyMut.isPending}
                   onClick={() => { if (window.confirm("Verify and finalize this report? Once verified it can only be corrected via an amendment.")) verifyMut.mutate(); }}>
                   {verifyMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verify & Finalize

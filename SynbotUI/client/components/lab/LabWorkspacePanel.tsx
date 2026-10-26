@@ -276,7 +276,7 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
               <TabsList className="mx-5 mt-3 bg-muted border border-border shrink-0 flex-wrap h-auto">
                 <TabsTrigger value="detail">Detail</TabsTrigger>
                 <TabsTrigger value="specimen">Specimen</TabsTrigger>
-                <TabsTrigger value="result">Result</TabsTrigger>
+                <TabsTrigger value="result" data-tour-id="lab-result-tab">Result</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
 
@@ -471,7 +471,7 @@ export function LabWorkspacePanel({ order: initialOrder, onClose, initialTab }: 
                         </div>
                       )}
                       {(
-                        <div className="space-y-3">
+                        <div className="space-y-3" data-tour-id="lab-result-lines">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                             <span>{linesLocked && linesSource
                               ? <>Lines from {linesSource} - type each observed value; this is what prints on the report.</>

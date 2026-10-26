@@ -627,7 +627,7 @@ export function BillingWorkspacePanel({ bill: initialBill, onClose, initialTab, 
             <Separator className="shrink-0" />
             <div className="px-5 py-3 flex flex-wrap gap-2 shrink-0">
               {isOpen && (
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setTab("payments"); setPaymentFormOpen(true); }}>
+                <Button size="sm" variant="outline" className="gap-1.5" data-tour-id="billing-record-payment" onClick={() => { setTab("payments"); setPaymentFormOpen(true); }}>
                   <CreditCard className="h-3.5 w-3.5" /> Record Payment
                 </Button>
               )}

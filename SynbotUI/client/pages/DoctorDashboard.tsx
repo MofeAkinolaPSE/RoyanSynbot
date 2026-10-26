@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { ViewReportButton } from "@/components/reports/ResultReport";
 import { authClient } from "@/lib/auth-client";
 import { AlertBanner } from "@/components/AlertBanner";
@@ -207,11 +208,13 @@ function DoctorPatients() {
 
   return (
     <motion.div
+      data-tour-id="doctor-my-patients"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={motionTransitions.standard}
       className="pw-page-surface space-y-6"
     >
+      <div className="flex justify-end"><ShowMeHow only={["journey-doctor", "soap-note"]} /></div>
       {/* the workspace header above names the doctor and the day; this keeps only the specialty line */}
       <div className="hidden">
         <h1 className="text-2xl font-bold">My Dashboard</h1>

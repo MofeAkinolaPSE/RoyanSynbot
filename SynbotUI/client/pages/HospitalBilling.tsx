@@ -13,6 +13,7 @@ import {
   User, FilePlus2, AlertTriangle,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -169,9 +170,12 @@ export default function HospitalBilling() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {patientIdFilter ? "Patient Billing" : "Hospital Billing"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {patientIdFilter ? "Patient Billing" : "Hospital Billing"}
+            </h1>
+            <ShowMeHow only={["cashier-payment"]} />
+          </div>
           <p className="text-sm text-muted-foreground">
             {patientIdFilter ? "Bills, payments and claims for this patient" : "Bills, payments, and HMO claims management"}
           </p>
@@ -209,7 +213,7 @@ export default function HospitalBilling() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="bills">Bills</TabsTrigger>
+          <TabsTrigger value="bills" data-tour-id="billing-bills-tab">Bills</TabsTrigger>
           <TabsTrigger value="claims">HMO Claims</TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5">
             Patient Account

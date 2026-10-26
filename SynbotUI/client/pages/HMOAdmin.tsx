@@ -24,6 +24,7 @@ import {
   Pencil, Check, X, ClipboardList,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
@@ -219,7 +220,10 @@ export default function HMOAdmin() {
     <motion.div className="space-y-6" {...motionTransitions.fadeInUp}>
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">HMO Desk & Coverage</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">HMO Desk & Coverage</h1>
+          <ShowMeHow only={["hmo-services"]} />
+        </div>
         <p className="text-sm text-muted-foreground">
           Today's HMO patients and their claims forms; HMOs, service pricing, coverage rules and approvals
         </p>
@@ -227,7 +231,7 @@ export default function HMOAdmin() {
 
       <Tabs defaultValue={new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("tab") ?? "desk"}>
         <TabsList className="mb-4 h-auto flex-wrap">
-          <TabsTrigger value="desk" className="gap-2">
+          <TabsTrigger value="desk" className="gap-2" data-tour-id="hmo-desk-tab">
             <ClipboardList className="h-4 w-4" /> HMO Desk
           </TabsTrigger>
           <TabsTrigger value="patients" className="gap-2">
@@ -242,7 +246,7 @@ export default function HMOAdmin() {
           <TabsTrigger value="services" className="gap-2">
             <Tag className="h-4 w-4" /> Service Catalog
           </TabsTrigger>
-          <TabsTrigger value="approvals" className="gap-2">
+          <TabsTrigger value="approvals" className="gap-2" data-tour-id="hmo-approvals-tab">
             <KeyRound className="h-4 w-4" /> Approvals
             {requestedCount > 0 && (
               <span className="ml-1 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white">

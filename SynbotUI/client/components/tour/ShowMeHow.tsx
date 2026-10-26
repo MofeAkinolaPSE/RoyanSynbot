@@ -4,7 +4,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/AuthProvider";
-import { getWalkthroughsForRole, type Walkthrough } from "@/lib/walkthroughs";
+import { getWalkthroughsForRoles, type Walkthrough } from "@/lib/walkthroughs";
 import { useWalkthrough } from "./WalkthroughProvider";
 
 /**
@@ -29,8 +29,8 @@ export function ShowMeHow({
   const { roles } = useAuth();
   const { start: startWalkthrough } = useWalkthrough();
 
-  const role = roles?.[0] ?? "admin";
-  let available = getWalkthroughsForRole(role);
+  // every walkthrough any of the person's roles may use (a chief with every role sees them all)
+  let available = getWalkthroughsForRoles(roles?.length ? roles : ["admin"]);
   if (only?.length) available = available.filter((w) => only.includes(w.id));
 
   if (available.length === 0) return null;

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 
 type Dict = Record<string, any>;
@@ -144,7 +145,10 @@ export default function Executive() {
       {/* header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Executive overview</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Executive overview</h1>
+            <ShowMeHow only={["journey-hospital"]} label="Follow a patient through Royan" />
+          </div>
           <p className="text-sm text-muted-foreground">
             The Royan Hospital on one page, read live from Roy Books and every department · updated{" "}
             {new Date(d.generated_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}

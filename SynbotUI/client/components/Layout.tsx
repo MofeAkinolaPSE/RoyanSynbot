@@ -13,6 +13,7 @@ import { Inbox, Menu } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { api } from "@/lib/api-client";
 import { useTour } from "@/components/tour/TourProvider";
+import { primaryTourRole } from "@/lib/day-tours";
 
 const Layout = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -38,11 +39,11 @@ const Layout = () => {
       if (!res.profile_complete) {
         setStaffData(res.data);
         setShowSetup(true);
+      } else {
+        // First sign-in of an account whose profile is already complete (made on User Access): the tour runs once,
+        // then never again - startTourIfNeeded checks the saved completed / skipped state.
+        startTourIfNeeded(primaryTourRole(roles), res.data?.tour_state);
       }
-      // The role tour is only ever started from ProfileSetup's onComplete
-      // below — i.e. once, right when a new user finishes registering.
-      // It intentionally does NOT re-check on every sign-in here: an
-      // already-onboarded user should never see it again.
     }).catch(() => {
       // Non-fatal — don't block the UI if /staff/me fails
     });
@@ -102,7 +103,7 @@ const Layout = () => {
           initialData={staffData}
           onComplete={() => {
             setShowSetup(false);
-            startTourIfNeeded(roles[0] ?? "admin", staffData?.tour_state);
+            startTourIfNeeded(primaryTourRole(roles), staffData?.tour_state);
           }}
         />
       )}

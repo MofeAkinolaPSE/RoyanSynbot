@@ -245,7 +245,7 @@ export function ViewReportButton({ kind, orderIds, label = "View report", size =
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size={size} variant={variant} className={cn("gap-1.5", className)} onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
+      <Button size={size} variant={variant} className={cn("gap-1.5", className)} data-tour-id="view-report" onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
         <FileText className="h-3.5 w-3.5" /> {label}
       </Button>
       {open && <ResultReportDialog kind={kind} orderIds={orderIds} open={open} onOpenChange={setOpen} />}

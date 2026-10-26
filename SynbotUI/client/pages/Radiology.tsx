@@ -17,6 +17,7 @@ import {
   Timer, BarChart3, Plus
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { AlertBanner } from "@/components/AlertBanner";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
@@ -109,6 +110,7 @@ export default function Radiology() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">Scancare</h1>
+            <ShowMeHow only={["scancare-report"]} />
             <Badge variant="outline" className="text-xs">Imaging · its own company and books</Badge>
             <HelpHint id="radiology-worklist-scope" />
             {/* Radiology could only ever RECEIVE work. ScanCare also takes
@@ -150,7 +152,7 @@ export default function Radiology() {
         <TabsList>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="billing">Billing & cashier</TabsTrigger>
-          <TabsTrigger value="worklist">Worklist</TabsTrigger>
+          <TabsTrigger value="worklist" data-tour-id="radiology-worklist-tab">Worklist</TabsTrigger>
           <TabsTrigger value="tobill">Not yet billed</TabsTrigger>
           <TabsTrigger value="stats">TAT & Volume</TabsTrigger>
         </TabsList>

@@ -59,31 +59,260 @@ export type Walkthrough = {
 // exactly as they appear on screen. Roy's chat guide
 // (backend/src/knowledge/roy_feature_guide.md) describes the same tasks; keep the
 // two in step.
+//
+// Shape (Oct 2026): most walkthroughs follow ONE PATIENT through a department -
+// how that team receives the patient, serves them and hands them on - moving
+// across the pages involved (navigateTo). The visit order they teach is Royan's:
+// front desk -> vitals -> doctor -> cashier -> lab / Scancare / pharmacy ->
+// discharge. Anything that writes to a real record stays observe-only.
 export const WALKTHROUGHS: Walkthrough[] = [
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "journey-hospital",
+    title: "Follow a patient through Royan",
+    summary: "One visit, end to end: front desk, vitals, doctor, cashier, lab, Scancare, pharmacy, discharge - and where it lands in the books.",
+    roles: ["management", "admin"],
+    homeRoute: "/executive",
+    estMinutes: 6,
+    steps: [
+      {
+        title: "The patient arrives at the Front Desk",
+        body: "The desk searches for the patient (or registers them), chooses the payer - Private or HMO - picks a doctor who is on seat today and issues a queue ticket.",
+        navigateTo: "/hospital/front-desk",
+        anchor: "frontdesk-rooms",
+        action: "observe",
+        cue: "Each morning the desk puts every doctor in a consulting room here.",
+      },
+      {
+        title: "Vitals, then the doctor",
+        body: "On Queue & Flow the patient waits for vitals; the nurse records them and the patient moves to Ready for doctor. Nobody pays before seeing the doctor.",
+        navigateTo: "/hospital/queue",
+        anchor: "queue-stages",
+        action: "click",
+        cue: "Click a stage to see who is waiting there",
+      },
+      {
+        title: "The consultation",
+        body: "The doctor sees the patient on My Dashboard, writes the SOAP note with an ICD-10 diagnosis, and orders lab tests, scans and drugs from the Orders tab.",
+        navigateTo: "/hospital/doctor",
+        anchor: "doctor-my-patients",
+        action: "observe",
+        cue: "A doctor's patients for today.",
+      },
+      {
+        title: "The cashier",
+        body: "After the doctor the patient pays for the consultation and what was ordered. HMO patients pay only for what the HMO team marked not covered.",
+        navigateTo: "/hospital/billing",
+        anchor: "billing-bills-tab",
+        action: "observe",
+        cue: "Every bill, paid or owing.",
+      },
+      {
+        title: "Lab, Scancare and pharmacy",
+        body: "Once the bill is paid, the lab takes the sample, Scancare does the scan and the pharmacy dispenses. Results come back to the doctor as the printed Scancare report.",
+        navigateTo: "/hospital/lab",
+        anchor: "lab-worklist",
+        action: "observe",
+        cue: "The lab's order queue.",
+      },
+      {
+        title: "HMO patients",
+        body: "The HMO Desk checks what each HMO covers before the claims form goes out; the patient signs the form on the signature pad.",
+        navigateTo: "/hospital/hmo",
+        anchor: "hmo-desk-tab",
+        action: "observe",
+        cue: "Today's HMO patients.",
+      },
+      {
+        title: "Discharge and the books",
+        body: "The patient leaves from Done - pay & discharge on the queue. Every bill, payment, HMO claim and dispensed drug has already posted to Roy Books; the Executive Overview shows the day.",
+        navigateTo: "/executive",
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "find-register-patient",
+    title: "Serving a patient at the front desk",
+    summary: "Put doctors in rooms, find or register the patient, check them in to a doctor, answer pharmacy approvals.",
+    roles: ["receptionist", "ops", "nurse", "admin", "management"],
+    homeRoute: "/hospital/front-desk",
+    estMinutes: 4,
+    steps: [
+      {
+        title: "Before the first patient: doctors to rooms",
+        body: "As each doctor arrives, click Assign a doctor next to a room on Consulting rooms today and type their name. Only doctors on seat are offered at check-in.",
+        navigateTo: "/hospital/front-desk",
+        anchor: "frontdesk-rooms",
+        action: "observe",
+        cue: "Assign a doctor next to each room.",
+      },
+      {
+        title: "A patient walks in: search first",
+        body: "Type the name, phone number or MRN. Most patients are already here, with records from as far back as 2016.",
+        anchor: "frontdesk-search",
+        action: "click",
+        cue: "Click in the search box",
+      },
+      {
+        title: "Not found? Try another spelling, then New patient",
+        body: "Try a different spelling or the phone number first - a duplicate record splits the patient's history in two. Only then click New patient at the top, register them, and come back to check them in.",
+      },
+      {
+        title: "Choose payer, doctor and priority",
+        body: "Pick the visit type and the Payer: Private, or HMO / Insurance (the card number fills from their record). Choose the doctor - each shows their room and how many are waiting - then the Priority and the complaint.",
+        anchor: "frontdesk-doctor",
+        action: "click",
+        cue: "Click to see the doctors on seat",
+      },
+      {
+        title: "Click Register Encounter & Issue Ticket",
+        body: "The patient goes on the queue with a number and appears on the chosen doctor's dashboard. If the button reads Already on the queue, they are already checked in today.",
+        anchor: "frontdesk-register",
+        action: "observe",
+        caution: true,
+        cue: "This creates a real registration. Look, then come back.",
+      },
+      {
+        title: "Where the patient goes next",
+        body: "Vitals with the nurse, then the doctor. They pay at the cashier after the doctor, not here. Display board at the top shows the waiting room their number and room.",
+      },
+      {
+        title: "Pharmacy approvals",
+        body: "When the pharmacy asks the desk to approve a drug it appears under Pharmacy approvals waiting: tick to approve, cross to reject.",
+        anchor: "frontdesk-approvals",
+        action: "observe",
+        cue: "Requests from the pharmacy land here.",
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "journey-nurse",
+    title: "Serving a patient as a nurse",
+    summary: "Take the patient's vitals, send them to the doctor, and look after admissions and the nursing record.",
+    roles: ["nurse", "ops", "admin", "management"],
+    homeRoute: "/hospital/queue",
+    estMinutes: 3,
+    steps: [
+      {
+        title: "Find the patients waiting for vitals",
+        body: "Queue & Flow lists today's outpatients by stage. Waiting for vitals is your list; the front desk's check-ins land here.",
+        navigateTo: "/hospital/queue",
+        anchor: "queue-stages",
+        action: "click",
+        cue: "Click Waiting for vitals",
+      },
+      {
+        title: "Click Vitals on the patient",
+        body: "It opens the vitals form. Nothing is saved until you press Save & Confirm Vitals.",
+        anchor: "queue-vitals",
+        action: "click",
+        cue: "Click Vitals",
+      },
+      {
+        title: "Save & Confirm Vitals",
+        body: "Fill in what you measured and save. The doctor sees the vitals in the consultation at once, and the patient moves to Ready for doctor.",
+      },
+      {
+        title: "Send the patient to the doctor",
+        body: "The patient's chosen doctor sees them on My Dashboard. If no doctor was chosen at the desk, Doctor on the patient's row assigns one.",
+      },
+      {
+        title: "Admissions and the ward",
+        body: "When a doctor requests an admission it appears at the Nursing Station. On Wards & Beds pick a free bed and Confirm Admission; Free Bed after discharge.",
+        navigateTo: "/hospital/nurse",
+      },
+      {
+        title: "The nursing record",
+        body: "Open a patient for Notes, Vitals, Flowsheet, Fluid Balance, Care Plans and MAR. Show me how inside the record walks you through it.",
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "journey-doctor",
+    title: "Seeing a patient as a doctor",
+    summary: "From your dashboard to the note, orders, the cashier and the results - one patient end to end.",
+    roles: ["doctor", "admin", "management"],
+    homeRoute: "/hospital/doctor",
+    estMinutes: 5,
+    steps: [
+      {
+        title: "Your patients for today",
+        body: "My patients shows today's appointments, the patients checked in to you, results to review and who you have finished. The nurse's vitals are already recorded.",
+        navigateTo: "/hospital/doctor",
+        anchor: "doctor-my-patients",
+        action: "observe",
+        cue: "Begin next to a patient opens the consultation.",
+      },
+      {
+        title: "Click Begin",
+        body: "The consultation opens: Summary, Vitals, Results, Notes, Orders, Prescribe and Referral. Read the vitals first.",
+      },
+      {
+        title: "Write the note",
+        body: "Notes: Subjective, Objective, Assessment, Plan. Each section stays open while you type; Continue moves you on. Add diagnosis searches in words and fills the ICD-10 code. The note's own Show me how covers it in detail.",
+      },
+      {
+        title: "Order what the patient needs",
+        body: "Orders: Order Lab Test, Order Radiology, Order Medication, Book Surgery. An HMO patient shows what their HMO covers at the top; Request HMO approval asks for a service it does not.",
+        anchor: "consult-orders-tab",
+        action: "click",
+        cue: "Click Orders",
+      },
+      {
+        title: "End the consultation",
+        body: "End consultation sends the patient on: they pay at the cashier, then go to lab, Scancare or the pharmacy. End - see again with results brings them back to you when the results are in.",
+        anchor: "consult-end",
+        action: "observe",
+        caution: true,
+        cue: "This moves the patient on. Look, do not press during training.",
+      },
+      {
+        title: "Review the results",
+        body: "Returned results show on My Dashboard and in the consultation's Results tab, each with View report - the printable Scancare report sheet.",
+        anchor: "consult-results-tab",
+        action: "click",
+        cue: "Click Results",
+      },
+      {
+        title: "Open a result as the printed report",
+        body: "View report shows the result with the patient's details on the Scancare letterhead; Print prints it. Print all lab results gives the visit on one sheet.",
+        anchor: "view-report",
+        action: "click",
+        cue: "Click View report",
+      },
+    ],
+  },
+
   // ───────────────────────────────────────────────────────────────────────────
   {
     id: "soap-note",
     title: "Writing a SOAP note",
-    summary: "Fill each section in order, add a diagnosis, order from the Plan, then sign.",
+    summary: "Fill each section, add a diagnosis, order from the Plan, then sign.",
     roles: ["doctor", "admin", "management"],
     homeRoute: "/hospital/queue",
     estMinutes: 5,
     steps: [
       {
-        title: "Work through the four sections in order",
+        title: "Work through the four sections",
         body:
-          "Subjective, then Objective, Assessment and Plan. Each section opens when the one before it is complete. A locked section tells you what it is waiting for.",
+          "Subjective, Objective, Assessment and Plan. Every section is open to write in; a section stays open while you type, and Continue to the next section moves you on when you are ready.",
         anchor: "soap-stepper",
         action: "observe",
-        cue: "Check which sections are open and which are locked.",
+        cue: "Click any section in this bar to jump to it.",
       },
       {
         title: "Fill in the Chief Complaint",
         body:
-          "Type the main complaint in Chief Complaint. This opens Objective. History of Presenting Complaint and Review of Systems are optional.",
+          "Type the main complaint in Chief Complaint. History of Presenting Complaint and Review of Systems are optional. Continue to Objective when you are done.",
         anchor: "soap-chief-complaint",
         action: "observe",
-        cue: "Type a complaint here and watch Objective open.",
+        cue: "Type the complaint here.",
       },
       {
         title: "Insert phrases with the template button",
@@ -115,12 +344,12 @@ export const WALKTHROUGHS: Walkthrough[] = [
         cue: "Click Add diagnosis",
       },
       {
-        title: "Plan opens once a diagnosis is recorded",
+        title: "A note needs a diagnosis to be signed",
         body:
-          "Plan stays locked until Assessment has at least one diagnosis. A plan without a recorded diagnosis is a clinical and medico-legal gap.",
+          "You can write the Plan at any time, but the note cannot be signed until Assessment has at least one diagnosis. A plan without a recorded diagnosis is a clinical and medico-legal gap.",
         anchor: "soap-plan-section",
         action: "observe",
-        cue: "Plan stays closed until Assessment has a diagnosis.",
+        cue: "Plan: what you will do, plus orders.",
       },
       {
         title: "Place orders from the Plan",
@@ -239,41 +468,131 @@ export const WALKTHROUGHS: Walkthrough[] = [
 
   // ───────────────────────────────────────────────────────────────────────────
   {
-    id: "lab-verify",
-    title: "From sample to verified result",
-    summary: "Open the order, collect and receive the sample, record the result, verify.",
-    roles: ["lab", "admin", "management"],
-    homeRoute: "/hospital/lab",
+    id: "cashier-payment",
+    title: "Serving a patient at the cashier",
+    summary: "The patient comes from the doctor: take the payment, print the receipt, release the services, handle HMO not-covered items.",
+    roles: ["cashier", "finance", "admin", "management"],
+    homeRoute: "/hospital/billing",
     estMinutes: 3,
     steps: [
       {
-        title: "Open the Order Queue",
-        body:
-          "Click Order Queue. A doctor's order appears here as soon as it is placed. STAT and urgent orders sort to the top.",
+        title: "Find the patient's bill",
+        body: "The patient comes to you after the doctor. Bills lists every bill; the consultation and everything ordered are on it - Royan's and, separately, Scancare's.",
+        navigateTo: "/hospital/billing",
+        anchor: "billing-bills-tab",
+        action: "click",
+        cue: "Click Bills",
+      },
+      {
+        title: "Open the bill",
+        body: "Click the patient's bill. It shows each service, what the HMO covers (if any), what the patient owes and what is paid.",
+      },
+      {
+        title: "Record Payment",
+        body: "The amount owed is filled in. Choose Cash, POS, Transfer or Card and save, then Receipt or Print Invoice for the patient. Once paid, lab, Scancare and the pharmacy can serve them.",
+        anchor: "billing-record-payment",
+        action: "observe",
+        caution: true,
+        cue: "This records real money. Look, do not press during training.",
+      },
+      {
+        title: "Part payment",
+        body: "If the patient can only pay part and must be seen now, Release services lets lab, scan and pharmacy go ahead; the balance stays on their account.",
+      },
+      {
+        title: "HMO patients",
+        body: "An HMO visit's bill shows What the HMO covers. A service the HMO team marked not covered is the patient's to pay here; Request HMO approval asks the HMO team to get it approved instead.",
+        anchor: "hmo-services-check",
+        action: "observe",
+        cue: "Only on an HMO patient's bill.",
+      },
+      {
+        title: "Corrections",
+        body: "A discount is requested here and approved by an administrator. A wrong bill is voided with a reason; its orders can then be billed again.",
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "hmo-services",
+    title: "Serving an HMO patient",
+    summary: "Check what the HMO covers, answer approval requests, and get the claims form signed and checked.",
+    roles: ["hmo", "finance", "admin", "management"],
+    homeRoute: "/hospital/hmo",
+    estMinutes: 3,
+    steps: [
+      {
+        title: "Today's HMO patients",
+        body: "HMO Desk lists every HMO patient on the queue: where they are, what was ordered and what the pharmacy has given.",
+        navigateTo: "/hospital/hmo",
+        anchor: "hmo-desk-tab",
+        action: "click",
+        cue: "Click HMO Desk",
+      },
+      {
+        title: "Open the patient",
+        body: "Click the patient. Their card number, diagnosis, drugs, bills and the claims form are on one panel.",
+      },
+      {
+        title: "Mark what the HMO covers",
+        body: "Under Services - what the HMO covers, mark each service Covered or Not covered. Not covered moves it to the patient to pay; it is held at lab, scan or pharmacy until paid and stays off the claim. Unmarked, the HMO pays in full.",
+        anchor: "hmo-services-check",
+        action: "observe",
+        cue: "Covered / Not covered on each service.",
+      },
+      {
+        title: "Answer approval requests",
+        body: "When the doctor or cashier requests approval for a not-covered service, ask the HMO, then record HMO approved with the authorisation code (it goes back on the claim) or HMO declined (the patient pays).",
+      },
+      {
+        title: "The claims form",
+        body: "Open Royan claims form prints the visit's claim. The patient signs on the signature pad; then I have checked the claims form.",
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "lab-verify",
+    title: "Serving a patient in the lab",
+    summary: "From the doctor's order to the sample, the result, verification and the printed report.",
+    roles: ["lab", "admin", "management"],
+    homeRoute: "/hospital/lab",
+    estMinutes: 4,
+    steps: [
+      {
+        title: "The order arrives",
+        body: "Order Queue: a doctor's order appears as soon as it is placed. STAT and urgent orders sort to the top.",
+        navigateTo: "/hospital/lab",
         anchor: "lab-worklist",
         action: "click",
         cue: "Click Order Queue",
       },
       {
-        title: "Search for the order",
-        body:
-          "Type the patient's name, the test or the order number to find it. Click the order to open it.",
+        title: "Find the patient's order",
+        body: "Type the patient's name, the test or the order number, then click the order to open it.",
         anchor: "lab-order-status",
         action: "click",
         cue: "Click in the search box",
       },
       {
-        title: "Move the sample through its steps",
-        body:
-          "In the open order, click Collect Specimen, then Receive Specimen, then Record Result. Use Reject Specimen if the sample is unusable. Each step is timed, and those times build the turnaround figures.",
+        title: "Take and receive the sample",
+        body: "Collect Specimen, then Receive Specimen (Reject Specimen if it is unusable). A private patient who has not paid is held - send them to the cashier first.",
       },
       {
-        title: "Check critical results",
-        body:
-          "Click Turnaround & Critical. Values outside the reference range are flagged here. Phone the requesting doctor about a critical value as well; the flag does not replace the call.",
-        anchor: "lab-result-entry",
+        title: "Open the Result tab",
+        body: "The test's lines are already there - investigation, units and normal range from its template.",
+        anchor: "lab-result-tab",
         action: "click",
-        cue: "Click Turnaround & Critical",
+        cue: "Click Result",
+      },
+      {
+        title: "Type only the values",
+        body: "Enter the observed value on each line and Save Result. Values outside the range print in red. Edit lines unlocks the lines for an exception.",
+        anchor: "lab-result-lines",
+        action: "observe",
+        cue: "One value per line.",
       },
       {
         title: "Click Verify & Authenticate to release the result",
@@ -285,58 +604,64 @@ export const WALKTHROUGHS: Walkthrough[] = [
         cue: "Verifying releases the result to the doctor. Do not verify a real result during training.",
       },
       {
-        title: "Past results are already on the chart",
-        body:
-          "Results from the old system are on each patient's chart, under the Labs tab, so doctors can compare with earlier values.",
+        title: "The printed report",
+        body: "View report shows the result on the Scancare report sheet with the patient's details; Print prints it for the patient.",
+        anchor: "view-report",
+        action: "click",
+        cue: "Click View report",
+      },
+      {
+        title: "Critical values",
+        body: "Turnaround & Critical flags values outside the critical range. Phone the requesting doctor as well; the flag does not replace the call.",
+        anchor: "lab-result-entry",
+        action: "click",
+        cue: "Click Turnaround & Critical",
       },
     ],
   },
 
   // ───────────────────────────────────────────────────────────────────────────
   {
-    id: "find-register-patient",
-    title: "Finding and registering a patient",
-    summary: "Search first, then register today's visit and issue a ticket.",
-    roles: ["receptionist", "ops", "nurse", "admin", "management"],
-    homeRoute: "/hospital/front-desk",
-    estMinutes: 3,
+    id: "scancare-report",
+    title: "Serving a patient at Scancare",
+    summary: "From the doctor's request (or a walk-in) to the scan, the pre-filled report, verification and the printed report.",
+    roles: ["radiology", "admin", "management"],
+    homeRoute: "/hospital/radiology",
+    estMinutes: 4,
     steps: [
       {
-        title: "Search for the patient first",
-        body:
-          "Type the name, phone number or MRN. Most patients are already in the system, with records from as far back as 2016.",
-        anchor: "frontdesk-search",
+        title: "The request arrives",
+        body: "Worklist shows the studies doctors have ordered. A patient who comes straight to Scancare is registered with Walk-in study.",
+        navigateTo: "/hospital/radiology",
+        anchor: "radiology-worklist-tab",
         action: "click",
-        cue: "Click in the search box",
+        cue: "Click Worklist",
       },
       {
-        title: "Try another spelling before creating a new record",
-        body:
-          "If nothing matches, try a different spelling or search by phone. A duplicate record splits the patient's history in two and is hard to undo.",
+        title: "Do the scan",
+        body: "Open the study: Schedule, then Start Scan. A private patient who has not paid is held - send them to the cashier (or Billing & cashier here) first.",
       },
       {
-        title: "New patient? Click Register new patient →",
-        body:
-          "Only if they are genuinely not found, click Register new patient → under the search. It opens PCE / Patients, where you create the record.",
+        title: "The report is already written",
+        body: "The Report tab opens with Scancare's standard report for that study and this patient's indication. Fill in every ___ (measurements) and change what differs; Common phrases for this study adds a phrase with one click.",
+        anchor: "radiology-report-text",
+        action: "observe",
+        cue: "Fill the ___ blanks for this patient.",
       },
       {
-        title: "Choose the visit type, priority and complaint",
-        body:
-          "Pick the visit type (for example Walk-In / Outpatient or Emergency), choose Normal or Urgent, and type the chief complaint.",
-      },
-      {
-        title: "Click Register Encounter & Issue Ticket",
-        body:
-          "This puts the patient on the clinical queue with a number, and the nurses see them immediately. If the button reads Already on the queue, they are already checked in today.",
-        anchor: "frontdesk-register",
+        title: "Save, then verify",
+        body: "Save Report, then Verify & Finalize. A finalized report can only be corrected with Amend Report; the original stays on record.",
+        anchor: "radiology-verify-button",
         action: "observe",
         caution: true,
-        cue: "This creates a real registration. Look, then come back.",
+        cue: "Verifying finalizes the report. Do not verify a real report during training.",
       },
       {
-        title: "Check HMO cover before they go through",
-        body:
-          "Check the patient's HMO cover on their record now. Sorting it out after treatment is much harder.",
+        title: "The printed report",
+        body: "View report (print) shows the scan on the Scancare report sheet; Print prints it for the patient. The doctor sees the same report.",
+        anchor: "view-report",
+        action: "click",
+        cue: "Click View report",
       },
     ],
   },
@@ -344,24 +669,30 @@ export const WALKTHROUGHS: Walkthrough[] = [
   // ───────────────────────────────────────────────────────────────────────────
   {
     id: "dispensing",
-    title: "Dispensing a prescription",
-    summary: "Open the prescription, check allergies, dispense, and check stock.",
+    title: "Serving a patient at the pharmacy",
+    summary: "The prescription arrives, you check it, dispense what the doctor prescribed and keep stock right.",
     roles: ["pharmacist", "admin", "management"],
     homeRoute: "/hospital/pharmacy",
-    estMinutes: 3,
+    estMinutes: 4,
     steps: [
       {
-        title: "Open the Prescriptions tab",
-        body:
-          "Click Prescriptions. Anything a doctor prescribes appears here when they sign the note, split into pending, partially dispensed and dispensed.",
+        title: "The prescription arrives",
+        body: "Prescriptions: anything a doctor prescribes appears here at once. To Dispense lists what is waiting.",
+        navigateTo: "/hospital/pharmacy",
         anchor: "pharmacy-queue",
         action: "click",
         cue: "Click Prescriptions",
       },
       {
-        title: "Open a prescription and click Dispense",
-        body:
-          "Drug, dose, route and frequency are exactly as the doctor chose them from fixed lists. Check them, then click Dispense.",
+        title: "Open the patient's prescription",
+        body: "It opens on Dispense. Drug, dose, route and frequency are exactly as the doctor chose them.",
+      },
+      {
+        title: "Check what is filled in",
+        body: "The quantity the doctor prescribed and the drug's unit price are already filled in. Keep Auto (FEFO) for the batch, change the quantity for a part supply, and tick Counselling given.",
+        anchor: "pharmacy-dispense-form",
+        action: "observe",
+        cue: "Check, do not retype.",
       },
       {
         title: "Ask about allergies: an empty list is not a clear patient",
@@ -369,14 +700,20 @@ export const WALKTHROUGHS: Walkthrough[] = [
           "No allergy history came across from the old system. An empty allergy list means nobody recorded one; it does not mean the patient has none. Ask, and record any allergy you find.",
       },
       {
-        title: "Act on allergy and interaction warnings",
-        body:
-          "Once an allergy is recorded, a matching drug raises a warning. To go ahead anyway, use Override & Dispense, which records your reason.",
+        title: "Click Dispense",
+        body: "Stock is taken from the batch and the dispensing posts to the books. An allergy or interaction warning stops you first; Override & Dispense records your reason.",
+        anchor: "pharmacy-dispense-button",
+        action: "observe",
+        caution: true,
+        cue: "This gives out real stock. Look, do not press during training.",
       },
       {
-        title: "Check stock in the Inventory Workspace",
-        body:
-          "Click Inventory Workspace to see live stock, batches, expiry dates and low-stock flags. A drug's Pricing tab shows cost against sale price per batch.",
+        title: "Held prescriptions",
+        body: "A private patient who has not paid is held - send them to the cashier first. A drug the HMO team marked not covered is held until the patient pays or the HMO approves it.",
+      },
+      {
+        title: "Keep stock right",
+        body: "Inventory Workspace shows live stock, batches, expiry dates and low-stock flags; the Reorder plan says what to order.",
         anchor: "pharmacy-inventory-link",
         action: "click",
         cue: "Click Inventory Workspace",
@@ -436,6 +773,12 @@ export const WALKTHROUGHS: Walkthrough[] = [
 
 export function getWalkthroughsForRole(role: string): Walkthrough[] {
   return WALKTHROUGHS.filter((w) => !w.roles || w.roles.includes(role));
+}
+
+/** Every walkthrough any of these roles may use (a person with several roles gets them all). */
+export function getWalkthroughsForRoles(roles: string[]): Walkthrough[] {
+  const have = new Set(roles.map((r) => r.toLowerCase()));
+  return WALKTHROUGHS.filter((w) => !w.roles || w.roles.some((r) => have.has(r)));
 }
 
 export function getWalkthroughsForRoute(route: string, role: string): Walkthrough[] {

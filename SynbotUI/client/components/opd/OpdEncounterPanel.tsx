@@ -519,9 +519,9 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
               <TabsList className="mx-5 mt-3 bg-muted border border-border shrink-0 flex-wrap h-auto">
                 <TabsTrigger value="summary">Summary</TabsTrigger>
                 <TabsTrigger value="vitals">Vitals</TabsTrigger>
-                <TabsTrigger value="results">Results</TabsTrigger>
+                <TabsTrigger value="results" data-tour-id="consult-results-tab">Results</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
-                <TabsTrigger value="orders">Orders</TabsTrigger>
+                <TabsTrigger value="orders" data-tour-id="consult-orders-tab">Orders</TabsTrigger>
                 <TabsTrigger value="prescribe">Prescribe</TabsTrigger>
                 <TabsTrigger value="referral">Referral</TabsTrigger>
               </TabsList>
@@ -909,7 +909,7 @@ export function OpdEncounterPanel({ encounter: initialEncounter, onClose, initia
               )}
               {canEndConsult && (
                 <>
-                  <Button size="sm" className="gap-1.5 bg-blue-700 hover:bg-blue-800" disabled={endConsultMut.isPending} onClick={() => endConsultMut.mutate(false)}
+                  <Button size="sm" className="gap-1.5 bg-blue-700 hover:bg-blue-800" data-tour-id="consult-end" disabled={endConsultMut.isPending} onClick={() => endConsultMut.mutate(false)}
                           title="The visit moves on: the patient pays, collects drugs and goes home (results go to the record)">
                     {endConsultMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />} End consultation
                   </Button>

@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Compass, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getTourStepsForRole, type TourStep } from "@/lib/tour-config";
 import { TourStepContent } from "./TourStep";
@@ -106,18 +106,35 @@ export function TourProvider({ children }: { children: ReactNode }) {
   );
   const currentStep = steps[stepIndex];
 
+  // The tour walks the person's day: each step opens its page behind the card, so they see the real screen while
+  // they read what to do on it. The card does not block the page - they can try things as they go.
+  const location = useLocation();
+  useEffect(() => {
+    if (!open || !currentStep) return;
+    const here = location.pathname + location.search;
+    if (here !== currentStep.href) navigate(currentStep.href);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stepIndex, currentStep?.href]);
+
   return (
     <TourContext.Provider value={value}>
       {children}
-      <Dialog open={open} onOpenChange={(o) => !o && skip()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {isReplay ? "Guided tour" : "Welcome — let's get you oriented"}
-            </DialogTitle>
-          </DialogHeader>
-          {currentStep && <TourStepContent step={currentStep} index={stepIndex} total={steps.length} />}
-          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+      {open && currentStep && (
+        <div role="dialog" aria-modal="false" aria-label={isReplay ? "Guided tour" : "Welcome tour"}
+          className="fixed bottom-4 right-4 z-[60] w-[min(440px,calc(100vw-2rem))] rounded-xl border bg-card p-5 text-card-foreground shadow-2xl">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <Compass className="h-4 w-4 text-primary" />
+              {isReplay ? "Your day in Royan" : "Welcome - here is your day in Royan"}
+            </p>
+            <button type="button" aria-label="Close the tour" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={skip}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto pr-1">
+            <TourStepContent step={currentStep} index={stepIndex} total={steps.length} />
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3">
             <Button variant="ghost" size="sm" onClick={skip}>
               {isReplay ? "Close" : "Skip tour"}
             </Button>
@@ -125,22 +142,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
               {stepIndex > 0 && (
                 <Button variant="outline" size="sm" onClick={back}>Back</Button>
               )}
-              {currentStep && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => navigate(currentStep.href)}
-                >
-                  Go to page
-                </Button>
-              )}
               <Button size="sm" onClick={next}>
                 {stepIndex + 1 >= steps.length ? "Finish" : "Next"}
               </Button>
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      )}
     </TourContext.Provider>
   );
 }

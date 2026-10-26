@@ -1,11 +1,17 @@
+import { Compass } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/nav-items";
-import { canViewByRoles, menuChildren } from "@/lib/nav-access";
+import { canViewByRoles, getNavEntryByHref, menuChildren, resolveRouteRoles } from "@/lib/nav-access";
+import { getDayTour } from "@/lib/day-tours";
 
 export type TourStep = {
   label: string;
   href: string;
   description: string;
   icon: React.ElementType;
+  /** What to press on that page (day tours). */
+  points?: string[];
+  /** The page's name in the menu, shown so people learn where it lives. */
+  page?: string;
 };
 
 /**
@@ -50,6 +56,17 @@ function toStep(item: StepSource): TourStep {
  * a reference list, not an onboarding.
  */
 export function getTourStepsForRole(role: string, opts?: { full?: boolean }): TourStep[] {
+  // First sign-in: a typical day in this role (day-tours.ts), never a page the role cannot open.
+  const day = !opts?.full ? getDayTour(role) : undefined;
+  if (day?.length) {
+    return day
+      .filter((d) => canViewByRoles([role], resolveRouteRoles(d.href.split("?")[0])))
+      .map((d) => {
+        const nav = getNavEntryByHref(d.href) ?? getNavEntryByHref(d.href.split("?")[0]);
+        return { label: d.title, href: d.href, description: d.body, points: d.points, page: nav?.label ?? (d.href === "/" ? "ROY Workstation" : undefined),
+                 icon: nav?.icon ?? Compass };
+      });
+  }
   const visible = visibleStepsForRole(role);
 
   if (opts?.full || visible.length <= MAX_INTRO_STEPS) {

@@ -28,6 +28,7 @@ import { PatientCprsPanel } from "@/components/PatientCprsPanel";
 import { OpdEncounterPanel } from "@/components/opd/OpdEncounterPanel";
 import { GenerateBillPanel } from "@/components/billing/GenerateBillPanel";
 import { api } from "@/lib/api-client";
+import { ShowMeHow } from "@/components/tour/ShowMeHow";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { motionTransitions } from "@/lib/motion";
@@ -451,7 +452,7 @@ export default function ClinicalQueue() {
           </Button>
         )}
         {!held && ["patient_registered", "triaged"].includes(enc.status) && (
-          <Button size="sm" className={cn(btn, "bg-teal-600 text-white hover:bg-teal-700")} onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
+          <Button size="sm" className={cn(btn, "bg-teal-600 text-white hover:bg-teal-700")} data-tour-id="queue-vitals" onClick={() => { setVitalsEnc(enc); setVitalsOpen(true); }}>
             <Syringe className="h-3.5 w-3.5" /> Vitals
           </Button>
         )}
@@ -490,7 +491,10 @@ export default function ClinicalQueue() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{queueKind === "ipd" ? "IPD Workspace" : "OPD Workspace"}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">{queueKind === "ipd" ? "IPD Workspace" : "OPD Workspace"}</h1>
+            <ShowMeHow only={["journey-nurse", "journey-doctor", "journey-hospital"]} />
+          </div>
           <p className="text-sm text-foreground/80">{queueKind === "ipd"
             ? "Patients on the wards: their beds, doctor's rounds and nursing care"
             : "Today's outpatients in order: vitals → doctor → cashier → services → discharge"}</p>
@@ -597,7 +601,7 @@ export default function ClinicalQueue() {
 
       {/* Filter tabs */}
       {queueKind === "opd" && (
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" data-tour-id="queue-stages">
         {statuses.map(s => (
           <button
             key={s}

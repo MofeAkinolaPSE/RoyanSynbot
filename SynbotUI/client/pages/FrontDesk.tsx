@@ -441,7 +441,9 @@ export default function FrontDesk() {
 
                 <div className="space-y-1.5">
                   <Label>Doctor <span className="font-normal text-muted-foreground">(optional - their consulting room today comes with them)</span></Label>
-                  <DoctorPicker value={doctorId} onChange={(d) => { setDoctorId(d?.id ?? ""); setRoom(d?.room ?? ""); }} />
+                  <div data-tour-id="frontdesk-doctor">
+                    <DoctorPicker value={doctorId} onChange={(d) => { setDoctorId(d?.id ?? ""); setRoom(d?.room ?? ""); }} />
+                  </div>
                   {doctorId && (
                     <div className="flex items-center gap-2">
                       <Label className="shrink-0 text-xs">Consulting room</Label>
@@ -580,7 +582,7 @@ export default function FrontDesk() {
 
         {/* ─── RIGHT PANEL: Live Queue Status ─────────────────────────────── */}
         <div className="lg:col-span-2 space-y-4">
-          <PharmacyApprovalsCard />
+          <div data-tour-id="frontdesk-approvals"><PharmacyApprovalsCard /></div>
           {/* Department breakdown */}
           <Card>
             <CardHeader className="pb-2">
@@ -601,7 +603,7 @@ export default function FrontDesk() {
             </CardContent>
           </Card>
 
-          <RoomBoard />
+          <div data-tour-id="frontdesk-rooms"><RoomBoard /></div>
 
         </div>
       </div>

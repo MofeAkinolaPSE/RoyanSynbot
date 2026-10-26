@@ -105,7 +105,7 @@ export function HmoServicesCheck({ encounterId, title = "What the HMO covers", c
   };
 
   return (
-    <section className={cn("space-y-2", className)}>
+    <section className={cn("space-y-2", className)} data-tour-id="hmo-services-check">
       <SectionLabel icon={<ShieldCheck className="h-3.5 w-3.5" />} label={title} />
       <p className="text-xs text-foreground/75">
         {data.hmo_name ?? "HMO"}{data.membership_id ? ` · card ${data.membership_id}` : ""}. HMO pays {naira(sm.hmo_total ?? 0)} · patient pays {naira(sm.patient_total ?? 0)}

@@ -75,6 +75,7 @@ keywords: workstation, home, home page, start page, landing page, main page, das
 - Your home page. The panels show what is happening across the hospital now.
 - **Live Queue** jumps to the live patient queue. **Open** on any panel opens its full page.
 - Click **Refresh** to reload the figures.
+- **Training**: the first time you sign in, a short tour walks you through a typical day in your role (management and admin see the whole hospital). Replay it any time: your name at the bottom of the menu, then **Take the tour again**. **Show me how** on Front Desk, Queue & Flow, My Dashboard, Lab, Scancare, Pharmacy, Billing & Cashier, the HMO Desk, the nursing record and the Executive Overview follows a patient through that department step by step on the real page.
 
 ## My Workspace (your day, tasks, messages, leave)
 id: my-workspace
