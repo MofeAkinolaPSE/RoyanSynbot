@@ -66,7 +66,7 @@ The laptop's Hope data comes from the **25 Jan 2026** dumps; Royan has kept work
 4. The refresh is run together: incremental Hope load, then the HMO billing lines and Sage receipts. The exact
    commands are confirmed on the real files first (dry run, then counts checked).
 
-- [ ] Hope data refreshed and checked on the laptop
+- [x] Hope data refreshed and checked on the laptop — done 28 Oct 2026 (`hopefull.sql.gz`, through 26 Oct; `fin_hope_charges` refreshed to match)
 
 ## Step 2: Make the database dump (on the laptop)
 
@@ -85,14 +85,18 @@ Write down the last line (the counts). The dump is about 270 MB.
 files through the clipboard. A USB stick works too. It holds patient data: never email it; wipe the USB after.
 (The settings file is not copied: the server keeps its own, see Step 3.)
 
-**Dump made 14 Oct 2026, 14:39** (current Hope data from the 25 Jan 2026 dumps, test activity cleared), on the
-laptop's Desktop as `royan-golive.dump`. Its counts:
+**Dump made 28 Oct 2026** — Hope clinical data refreshed from the full extract `hopefull.sql.gz` (activity through
+26 Oct 2026) and the Hope billing lines (`fin_hope_charges`) refreshed to match, so each patient's ledger reflects
+every encounter since January. Test activity cleared. On the laptop's Desktop as `royan-golive.dump` (about 275 MB).
+Its counts:
 
 ```
-patients=60929  bills=259067  users=4  books_diff=0.00
+patients=66545  bills=268746  users=4  books_diff=0.00
 ```
 
-The same dump was restored into a fresh database on the laptop as a rehearsal of Step 4: no errors, same counts.
+**This dump is already made** — you do not need to run the Step 2 commands above again (they are kept for reference
+and for a future refresh). Just copy `royan-golive.dump` from the Desktop to the server and go to Step 4. The same
+dump was restored into a fresh database on the laptop as a rehearsal of Step 4: **no errors, identical counts.**
 
 - [ ] Dump copied to the server; counts noted: ____________________
 
